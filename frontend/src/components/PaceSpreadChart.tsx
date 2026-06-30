@@ -1,18 +1,25 @@
 import { useMemo, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { driverPhoto, teamLogo } from '@/lib/assets'
+import { teamLogo } from '@/lib/assets'
 import { constructorRows, driverRows, type PaceRow } from '@/lib/paceStats'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import type { PaceStint } from '@/lib/api'
 
 type ViewMode = 'drivers' | 'constructors'
 
-const MARGIN = { top: 24, right: 16, bottom: 150, left: 66 }
+const MARGIN = { top: 24, right: 16, bottom: 124, left: 58 }
 const WIDTH = 1100
-const HEIGHT = 560
+const HEIGHT = 500
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
-const AVATAR = 50 // driver headshot / team logo size under each box
+const LOGO = 40 // team logo size under each box (constructor view)
+
+// Trim the long team names so they fit under a column.
+const SHORT_TEAM: Record<string, string> = {
+  'Red Bull Racing': 'Red Bull',
+  'Haas F1 Team': 'Haas',
+}
+const shortTeam = (t: string | null) => (t ? (SHORT_TEAM[t] ?? t) : '')
 
 // Inline d3-scaleBand (paddingInner 0.35, paddingOuter 0.12) so we don't pull in d3-scale.
 function bandLayout(n: number) {
@@ -85,7 +92,7 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
             {yTicks.map((tick) => (
               <g key={tick}>
                 <line x1={0} x2={INNER_W} y1={y(tick)} y2={y(tick)} stroke="var(--color-border)" strokeDasharray="4 4" />
-                <text x={-12} y={y(tick)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={20}>
+                <text x={-10} y={y(tick)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={16}>
                   {tick.toFixed(1)}s
                 </text>
               </g>
@@ -93,7 +100,7 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
 
             {rows.map((row, i) => {
               const cx = band.center(i)
-              const bw = Math.min(band.bandwidth * 0.6, 40)
+              const bw = Math.min(band.bandwidth * 0.6, 34)
               const logo = teamLogo(row.team)
               const s = row.stats
               const stroke = resolveTeamColor(row.team)
@@ -124,41 +131,28 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
 
                   {viewMode === 'drivers' ? (
                     <>
-                      <foreignObject x={cx - AVATAR / 2} y={INNER_H + 8} width={AVATAR} height={AVATAR}>
-                        <div className="h-full w-full overflow-hidden rounded-full border border-border bg-surface">
-                          <div
-                            className="h-full w-full bg-no-repeat"
-                            style={{
-                              backgroundImage: `url(${driverPhoto(row.id)})`,
-                              backgroundSize: '220%',
-                              backgroundPosition: 'center top',
-                            }}
-                          />
-                        </div>
-                      </foreignObject>
-                      <text x={cx} y={INNER_H + AVATAR + 28} textAnchor="middle" fill="var(--color-ink)" fontSize={20} fontWeight={500}>
+                      <text x={cx} y={INNER_H + 26} textAnchor="middle" fill="var(--color-ink)" fontSize={16} fontWeight={500}>
                         {row.label}
                       </text>
-                      <text x={cx} y={INNER_H + AVATAR + 50} textAnchor="middle" fill="var(--color-muted)" fontSize={18}>
+                      <text x={cx} y={INNER_H + 46} textAnchor="middle" fill="var(--color-muted)" fontSize={14}>
                         +{row.gap_to_fastest_s.toFixed(2)}
                       </text>
-                      <text x={cx} y={INNER_H + AVATAR + 70} textAnchor="middle" fill="var(--color-muted)" fontSize={18}>
+                      <text x={cx} y={INNER_H + 64} textAnchor="middle" fill="var(--color-muted)" fontSize={14}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
                     </>
                   ) : (
                     <>
-                      {logo ? (
-                        <image href={logo} x={cx - AVATAR / 2} y={INNER_H + 12} width={AVATAR} height={AVATAR * 0.7} preserveAspectRatio="xMidYMid meet" />
-                      ) : (
-                        <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-ink)" fontSize={20} fontWeight={500}>
-                          {row.label}
-                        </text>
+                      {logo && (
+                        <image href={logo} x={cx - LOGO / 2} y={INNER_H + 8} width={LOGO} height={LOGO * 0.7} preserveAspectRatio="xMidYMid meet" />
                       )}
-                      <text x={cx} y={INNER_H + 72} textAnchor="middle" fill="var(--color-muted)" fontSize={18}>
+                      <text x={cx} y={INNER_H + 50} textAnchor="middle" fill="var(--color-ink)" fontSize={13} fontWeight={500}>
+                        {shortTeam(row.team)}
+                      </text>
+                      <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={14}>
                         +{row.gap_to_fastest_s.toFixed(2)}
                       </text>
-                      <text x={cx} y={INNER_H + 92} textAnchor="middle" fill="var(--color-muted)" fontSize={18}>
+                      <text x={cx} y={INNER_H + 86} textAnchor="middle" fill="var(--color-muted)" fontSize={14}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
                     </>
