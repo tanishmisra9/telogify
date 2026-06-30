@@ -88,9 +88,48 @@ def clean_lap_counts(session) -> dict[str, int]:
 
 
 def get_corners(session) -> list[Corner]:
-    """Corner number + lap distance from FastF1 circuit info."""
-    info = session.get_circuit_info()
+    """Corner number + lap distance from FastF1 circuit info.
+
+    FastF1 projects corner positions onto `laps.pick_fastest()`; on circuits like Monaco that
+    reference lap's telemetry can fail to merge (tunnel position gaps), raising deep inside
+    FastF1. Fall back to a reference lap whose telemetry merges cleanly, then to no corners.
+    """
+    try:
+        info = session.get_circuit_info()
+    except Exception:
+        info = _circuit_info_resilient(session)
+    if info is None or getattr(info, "corners", None) is None or len(info.corners) == 0:
+        return []
     return [Corner(int(r["Number"]), float(r["Distance"])) for _, r in info.corners.iterrows()]
+
+
+def _circuit_info_resilient(session):
+    """Rebuild circuit info using the first lap whose telemetry merges cleanly as the distance
+    reference, instead of FastF1's default (and here failing) pick_fastest()."""
+    try:
+        from fastf1.mvapi import get_circuit_info as _mv_circuit_info
+
+        circuit_key = session.session_info["Meeting"]["Circuit"]["Key"]
+        year = session.event.year
+    except Exception:
+        return None
+    try:
+        laps = session.laps.pick_accurate()
+    except Exception:
+        laps = session.laps
+    attempts = 0
+    for _, lap in laps.iterlaps():
+        if attempts >= 8:  # bound the cost if many laps have unmergeable telemetry
+            break
+        attempts += 1
+        try:
+            info = _mv_circuit_info(year=year, circuit_key=circuit_key)
+            info.add_marker_distance(reference_lap=lap)
+            if info.corners is not None and len(info.corners):
+                return info
+        except Exception:
+            continue
+    return None
 
 
 def corner_windows(

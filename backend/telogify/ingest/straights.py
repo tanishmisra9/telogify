@@ -71,7 +71,12 @@ def extract_straights(session) -> dict[str, list[StraightSeg]]:
     for driver in clean["Driver"].unique():
         drv_laps = clean[clean["Driver"] == driver]
         lap = drv_laps.loc[drv_laps["LapTime"].idxmin()]
-        tel = lap.get_telemetry()
+        try:
+            tel = lap.get_telemetry()
+        except Exception:
+            continue  # some laps (e.g. Monaco tunnel) have telemetry that won't merge
+        if "Distance" not in tel or len(tel) == 0:
+            continue
         dist = tel["Distance"].to_numpy()
         spd = tel["Speed"].to_numpy()
         lap_len = float(dist.max())
