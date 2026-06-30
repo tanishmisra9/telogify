@@ -20,7 +20,6 @@ def build_agent(year: int, round: int, session_factory=None):
     model = ChatAnthropic(
         model=settings.anthropic_model,
         api_key=settings.anthropic_api_key,
-        temperature=0,
         max_tokens=4096,
     )
     tools = build_tools(year, round, session_factory=session_factory)
