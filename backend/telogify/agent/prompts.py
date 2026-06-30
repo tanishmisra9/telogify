@@ -35,8 +35,10 @@ of another, not how or when.
 victory", "back-to-back", "consecutive", "Nth win", "this season", standings or title, and \
 never "debut", "first race", "first weekend", "newcomer" or "new team". You cannot know what \
 came before this weekend, so you cannot know if anything is a first.
-- The lap a driver retired on. Say a driver "retired" or "did not finish". Do not state a \
-retirement lap number; the data does not capture it reliably.
+- How far into the race a driver got. Say a driver "retired" or "did not finish"; do NOT state \
+the lap they retired on OR how many laps they completed ("retired after 29 laps", "completed \
+only four laps"). That count is unreliable here. You may say a driver finished "a lap down" if \
+the status says so.
 
 PACE CAVEAT:
 A comfortable leader manages the gap and laps slower than its true pace, so median race pace \

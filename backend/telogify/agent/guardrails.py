@@ -34,6 +34,11 @@ _BLOCKLIST = [
     "first corner",
     "turn one",
     "got the jump",
+    # retirement lap counts (the laps field is unreliable, so never cite it)
+    "completed only",
+    "before retiring",
+    "laps before he retired",
+    "laps before she retired",
 ]
 
 
