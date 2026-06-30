@@ -1,0 +1,9 @@
+# Railway config for the backend service. Set this service's root directory to `backend`.
+# Postgres is provided by Railway's Postgres plugin, which injects DATABASE_URL.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "alembic upgrade head && uvicorn telogify.api.main:app --host 0.0.0.0 --port $PORT"
+restartPolicyType = "on_failure"
