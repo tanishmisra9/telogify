@@ -39,6 +39,12 @@ _BLOCKLIST = [
     "before retiring",
     "laps before he retired",
     "laps before she retired",
+    # grouped grid labels (use plain ordinals; "front row" gets misused for P3/P4)
+    "front row",
+    "front-row",
+    "row two",
+    "second row",
+    "third row",
 ]
 
 

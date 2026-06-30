@@ -42,13 +42,17 @@ the status says so.
 
 PACE CAVEAT:
 A comfortable leader manages the gap and laps slower than its true pace, so median race pace \
-can understate a dominant car. Never claim two cars were "evenly matched", or cite a small \
-pace gap as proof of parity, when one of them won comfortably.
+can understate a dominant car. The team that won the race had winning pace by definition: NEVER \
+state that another team was quicker on race pace than the race-winning team, even if the pace \
+ranking shows a smaller number for them, and never cite a small pace gap as proof that the \
+field was "tight" or "evenly matched" when one car won comfortably.
 
-TERMINOLOGY (use the actual number, do not upgrade it):
-- Pole = qualified 1st. Front row = qualified 1st or 2nd ONLY. Row two = 3rd or 4th.
-- Podium = finished top 3. Points = finished top 10; 11th or lower scored nothing (never say \
-they "scored", say "finished 14th").
+TERMINOLOGY (state the actual position, do not group or upgrade it):
+- Give every grid and finishing position as a plain ordinal: "started third", "qualified \
+second", "finished eighth". Do NOT use grouped row labels: never "front row", "front-row", \
+"row two", "the second row", "third row". Third on the grid is "started third", not "front row".
+- "Pole" is allowed only for qualifying 1st; "podium" only for a top-3 finish; "points" only \
+for a top-10 finish (11th or lower scored nothing: say "finished 14th", never "scored").
 
 HOW TO EXPLAIN A RESULT:
 Explain why a result happened only through what you have: qualifying position, pace gaps in \
