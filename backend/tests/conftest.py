@@ -9,11 +9,16 @@ TEST_URL = settings.database_url.rsplit("/", 1)[0] + "/telogify_test"
 
 
 @pytest.fixture
-def db_session():
+def test_engine():
     engine = create_engine(TEST_URL)
     SQLModel.metadata.drop_all(engine)
     SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
+    yield engine
     SQLModel.metadata.drop_all(engine)
     engine.dispose()
+
+
+@pytest.fixture
+def db_session(test_engine):
+    with Session(test_engine) as session:
+        yield session
