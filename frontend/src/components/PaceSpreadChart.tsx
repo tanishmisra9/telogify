@@ -159,7 +159,9 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
               <foreignObject x={Math.min(INNER_W - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100))} y={4} width={200} height={132}>
                 <div className="glass rounded-xl px-3 py-2 text-xs text-ink">
                   <div className="font-medium">{hovered.label}</div>
-                  <div className="mt-1 text-muted">{hovered.team}</div>
+                  {hovered.team && hovered.team !== hovered.label && (
+                    <div className="mt-1 text-muted">{hovered.team}</div>
+                  )}
                   <div className="mt-2 space-y-0.5 text-muted">
                     <div>Mean {hovered.stats.mean.toFixed(3)}s</div>
                     <div>Median {hovered.stats.median.toFixed(3)}s</div>
