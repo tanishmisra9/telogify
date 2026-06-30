@@ -1,0 +1,27 @@
+# Web / API
+fastapi
+uvicorn[standard]
+
+# DB / migrations
+sqlmodel
+alembic
+psycopg2-binary
+
+# Config
+pydantic-settings
+
+# CLI
+typer
+
+# Telemetry ingest
+fastf1
+
+# Insight agent (LangGraph ReAct + Anthropic)
+langgraph
+langchain-anthropic
+
+# Email
+resend
+
+# Tests
+pytest
