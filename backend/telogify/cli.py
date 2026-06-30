@@ -18,8 +18,13 @@ def run_weekend(year: int, round: int) -> None:
 @app.command("diagnose")
 def diagnose(year: int, round: int) -> None:
     """Print per-constructor clean-lap counts and mean attribution confidence."""
-    # ponytail: stub until M9.
-    raise typer.Exit(_todo("diagnose", year, round))
+    from sqlmodel import Session
+
+    from telogify.analysis.diagnose import diagnose as run_diagnose
+    from telogify.db import engine
+
+    with Session(engine) as db:
+        typer.echo(run_diagnose(year, round, db))
 
 
 @app.command("send-digest")
