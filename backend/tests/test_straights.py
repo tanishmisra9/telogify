@@ -1,30 +1,28 @@
-from telogify.ingest.straights import find_straights
+from telogify.ingest.straights import speed_in_zone, zone_windows
 
 
-def test_find_straights_splits_on_corner_and_computes_max_and_trap():
-    distance = [i * 10.0 for i in range(20)]
-    speed = [
-        200, 250, 280, 300, 310, 305,  # straight 1 (idx 0-5)
-        300, 295, 290, 285, 280,       # corner (idx 6-10, distances 60-100)
-        220, 260, 290, 310, 320, 330, 335, 332, 328,  # straight 2 (idx 11-19)
+def test_zone_windows_are_corner_gaps_plus_wrap():
+    zones = zone_windows([200.0, 500.0, 900.0], lap_length=1500.0, margin=50.0)
+    assert zones == [
+        (1, [(250.0, 450.0)]),
+        (2, [(550.0, 850.0)]),
+        (0, [(950.0, 1500.0), (0.0, 150.0)]),  # start/finish straight wraps the line
     ]
-    throttle = [100.0] * 20
-    windows = [(1, 60.0, 100.0)]
-
-    segs = find_straights(distance, speed, throttle, windows, min_samples=5)
-
-    assert len(segs) == 2
-    assert segs[0].drs_zone_id == 1
-    assert segs[0].max_speed_kmh == 310 and segs[0].trap_speed_kmh == 305
-    assert segs[1].drs_zone_id == 2
-    assert segs[1].max_speed_kmh == 335 and segs[1].trap_speed_kmh == 328
 
 
-def test_find_straights_drops_short_runs_and_low_throttle():
-    distance = [0.0, 10, 20, 30, 40, 50, 60, 70]
-    speed = [300, 305, 310, 100, 100, 280, 290, 295]
-    # only idx 0-2 are high throttle (a 3-sample blip); rest below threshold
-    throttle = [100.0, 100, 100, 50, 50, 50, 50, 50]
+def test_zone_ids_are_stable_across_drivers():
+    # Same circuit geometry -> identical zone ids regardless of who is driving.
+    a = zone_windows([200.0, 500.0, 900.0], 1500.0)
+    b = zone_windows([200.0, 500.0, 900.0], 1500.0)
+    assert [z[0] for z in a] == [z[0] for z in b]
 
-    assert find_straights(distance, speed, throttle, [], min_samples=5) == []
-    assert len(find_straights(distance, speed, throttle, [], min_samples=3)) == 1
+
+def test_speed_in_zone_max_and_trap():
+    distance = [0.0, 100, 200, 300, 400, 500]
+    speed = [100, 200, 310, 305, 150, 140]
+    # window covers idx 2 (d=200) and idx 3 (d=300)
+    assert speed_in_zone(distance, speed, [(150.0, 350.0)]) == (310.0, 305.0)
+
+
+def test_speed_in_zone_empty_returns_none():
+    assert speed_in_zone([0.0, 100.0], [250.0, 260.0], [(1000.0, 1100.0)]) is None

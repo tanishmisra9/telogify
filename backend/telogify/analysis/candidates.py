@@ -27,6 +27,7 @@ from telogify.models import (
 )
 
 POSITION_SWING_MIN = 2  # only notable grid-to-finish swings become signals
+REAL_STRAIGHT_KMH = 300.0  # a zone only counts as a real top-speed straight if the field tops this
 
 
 @dataclass
@@ -156,6 +157,8 @@ def _mine_straight_deltas(db, sessions, dc_map):
             if len(con_speed) < 2:
                 continue
             fastest = max(con_speed.values())
+            if fastest < REAL_STRAIGHT_KMH:
+                continue  # an inter-corner squirt, not a real straight; skip
             leader = max(con_speed, key=con_speed.get)
             for constructor, speed in con_speed.items():
                 deficit = fastest - speed

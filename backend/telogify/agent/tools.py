@@ -214,8 +214,8 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
 
     @tool
     def get_constructor_ranking() -> str:
-        """Weekend constructor index: per constructor the high/mid/low corner scores,
-        overall rank, and lap deficit (s) to the fastest team."""
+        """Teams ranked by real race pace this weekend: overall_rank (1 = fastest) and
+        race_pace_gap_s, the seconds per lap each team was off the fastest team's pace."""
         with sf() as db:
             wid = _weekend_id(db, year, round)
             rows = db.exec(
@@ -228,10 +228,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
                     {
                         "constructor": r.constructor,
                         "overall_rank": r.overall_rank,
-                        "high_score": r.high_score,
-                        "mid_score": r.mid_score,
-                        "low_score": r.low_score,
-                        "lap_deficit_s": r.lap_deficit_s,
+                        "race_pace_gap_s": r.lap_deficit_s,
                     }
                     for r in rows
                 ]

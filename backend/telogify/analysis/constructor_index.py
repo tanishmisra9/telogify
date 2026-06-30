@@ -108,11 +108,17 @@ def build_constructor_index(weekend_id: int, db: DBSession) -> None:
                 per_constructor[c].append(CornerScore(speed_class, metric[c] - field, conf))
 
     summaries = {c: summarize_constructor(scores) for c, scores in per_constructor.items()}
-    ranks = rank_constructors({c: s["overall"] for c, s in summaries.items()})
     deficits = lap_deficits(_race_best_pace(db, sessions, dc_map))
 
+    # Rank by real race pace (smallest deficit first); the corner scores are kept only as
+    # supporting detail. A team with no race pace ranks last.
+    constructors = set(summaries) | set(deficits)
+    ordered = sorted(constructors, key=lambda c: (c not in deficits, deficits.get(c, 0.0)))
+    ranks = {c: i + 1 for i, c in enumerate(ordered)}
+
     db.exec(delete(ConstructorIndex).where(ConstructorIndex.weekend_id == weekend_id))
-    for constructor, summary in summaries.items():
+    for constructor in constructors:
+        summary = summaries.get(constructor, {"high": None, "mid": None, "low": None})
         db.add(
             ConstructorIndex(
                 weekend_id=weekend_id,
