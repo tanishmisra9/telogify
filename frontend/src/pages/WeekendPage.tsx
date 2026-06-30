@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
 import { Insight } from '@/components/Insight'
-import { PaceChart } from '@/components/PaceChart'
+import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { Results } from '@/components/Results'
 import {
   useApi,
@@ -59,16 +59,8 @@ export function WeekendPage() {
       </section>
 
       <section className="mt-20">
-        <SectionTitle>Constructor pace</SectionTitle>
         <BlurFade>
-          <PaceChart stints={stints} mode="constructor" />
-        </BlurFade>
-      </section>
-
-      <section className="mt-16">
-        <SectionTitle>Driver pace</SectionTitle>
-        <BlurFade>
-          <PaceChart stints={stints} mode="driver" />
+          <PaceSpreadChart stints={stints} />
         </BlurFade>
       </section>
 
