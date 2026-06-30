@@ -9,6 +9,7 @@ import json
 from sqlmodel import Session as DBSession
 from sqlmodel import delete
 
+from telogify.agent.guardrails import flag_unsupported_claims
 from telogify.models import Insight
 from telogify.serialize import strip_em_dashes
 
@@ -66,12 +67,21 @@ def persist_insights(
     db.exec(delete(Insight).where(Insight.weekend_id == weekend_id))
     rows = []
     for slot, ins in enumerate(insights[:3], start=1):
+        header = strip_em_dashes(ins["header"])
+        web = strip_em_dashes(ins["explanation_web"])
+        email = strip_em_dashes(ins["explanation_email"])
+
+        # Regression net: warn loudly if the prose contains a claim the data cannot support.
+        flagged = flag_unsupported_claims(f"{header} {web} {email}")
+        if flagged:
+            print(f"[guardrail] insight {slot} contains unsupported claim phrases: {flagged}")
+
         row = Insight(
             weekend_id=weekend_id,
             slot=slot,
-            header=strip_em_dashes(ins["header"]),
-            explanation_web=strip_em_dashes(ins["explanation_web"]),
-            explanation_email=strip_em_dashes(ins["explanation_email"]),
+            header=header,
+            explanation_web=web,
+            explanation_email=email,
             source_tool_calls_json=trace,
         )
         db.add(row)
