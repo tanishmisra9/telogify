@@ -24,4 +24,11 @@ explanation, and a tighter 1 to 2 sentence email version.
 - Build a causal chain and a forward implication, not just a statistic.
 - No hedging. No filler.
 - Never use em dashes. Use commas, colons, parentheses, or restructure the sentence.
+
+Output format:
+Your final message must be ONLY a JSON array of exactly 3 objects, nothing before or \
+after it. Each object has these keys:
+  "header": the punchy claim,
+  "explanation_web": the 2 to 3 sentence web version,
+  "explanation_email": the 1 to 2 sentence email version.
 """
