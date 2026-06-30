@@ -102,14 +102,12 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
               const yQ3 = y(s.q3)
               const boxTop = Math.min(yQ1, yQ3)
               const boxH = Math.abs(yQ3 - yQ1) || 1
-              const isHovered = hoveredId === row.id
 
               return (
                 <g
                   key={row.id}
                   onMouseEnter={() => setHoveredId(row.id)}
                   onMouseLeave={() => setHoveredId(null)}
-                  opacity={hoveredId && !isHovered ? 0.45 : 1}
                 >
                   <line x1={cx} x2={cx} y1={y(s.whisker_high)} y2={yQ3} stroke={stroke} strokeWidth={2} />
                   <line x1={cx} x2={cx} y1={yQ1} y2={y(s.whisker_low)} stroke={stroke} strokeWidth={2} />
