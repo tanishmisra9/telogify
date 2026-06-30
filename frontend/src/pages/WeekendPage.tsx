@@ -59,8 +59,8 @@ export function WeekendPage() {
       </section>
 
       <section className="mt-20">
-        {/* Break out of the max-w-5xl column so the box plot gets real horizontal room. */}
-        <div className="relative left-1/2 w-screen max-w-[95rem] -translate-x-1/2 px-6">
+        {/* Break out of the max-w-5xl column so the box plot gets a bit more horizontal room. */}
+        <div className="relative left-1/2 w-screen max-w-6xl -translate-x-1/2 px-6">
           <BlurFade>
             <PaceSpreadChart stints={stints} />
           </BlurFade>

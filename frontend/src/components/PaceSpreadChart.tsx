@@ -7,19 +7,12 @@ import type { PaceStint } from '@/lib/api'
 
 type ViewMode = 'drivers' | 'constructors'
 
-const MARGIN = { top: 24, right: 16, bottom: 124, left: 58 }
+const MARGIN = { top: 24, right: 16, bottom: 100, left: 54 }
 const WIDTH = 1100
-const HEIGHT = 500
+const HEIGHT = 480
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
-const LOGO = 40 // team logo size under each box (constructor view)
-
-// Trim the long team names so they fit under a column.
-const SHORT_TEAM: Record<string, string> = {
-  'Red Bull Racing': 'Red Bull',
-  'Haas F1 Team': 'Haas',
-}
-const shortTeam = (t: string | null) => (t ? (SHORT_TEAM[t] ?? t) : '')
+const LOGO = 38 // team logo size under each box (constructor view)
 
 // Inline d3-scaleBand (paddingInner 0.35, paddingOuter 0.12) so we don't pull in d3-scale.
 function bandLayout(n: number) {
@@ -92,7 +85,7 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
             {yTicks.map((tick) => (
               <g key={tick}>
                 <line x1={0} x2={INNER_W} y1={y(tick)} y2={y(tick)} stroke="var(--color-border)" strokeDasharray="4 4" />
-                <text x={-10} y={y(tick)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={16}>
+                <text x={-9} y={y(tick)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={14}>
                   {tick.toFixed(1)}s
                 </text>
               </g>
@@ -131,28 +124,29 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
 
                   {viewMode === 'drivers' ? (
                     <>
-                      <text x={cx} y={INNER_H + 26} textAnchor="middle" fill="var(--color-ink)" fontSize={16} fontWeight={500}>
+                      <text x={cx} y={INNER_H + 24} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={500}>
                         {row.label}
                       </text>
-                      <text x={cx} y={INNER_H + 46} textAnchor="middle" fill="var(--color-muted)" fontSize={14}>
+                      <text x={cx} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                         +{row.gap_to_fastest_s.toFixed(2)}
                       </text>
-                      <text x={cx} y={INNER_H + 64} textAnchor="middle" fill="var(--color-muted)" fontSize={14}>
+                      <text x={cx} y={INNER_H + 58} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
                     </>
                   ) : (
                     <>
-                      {logo && (
+                      {logo ? (
                         <image href={logo} x={cx - LOGO / 2} y={INNER_H + 8} width={LOGO} height={LOGO * 0.7} preserveAspectRatio="xMidYMid meet" />
+                      ) : (
+                        <text x={cx} y={INNER_H + 28} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={500}>
+                          {row.label}
+                        </text>
                       )}
-                      <text x={cx} y={INNER_H + 50} textAnchor="middle" fill="var(--color-ink)" fontSize={13} fontWeight={500}>
-                        {shortTeam(row.team)}
-                      </text>
-                      <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={14}>
+                      <text x={cx} y={INNER_H + 48} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                         +{row.gap_to_fastest_s.toFixed(2)}
                       </text>
-                      <text x={cx} y={INNER_H + 86} textAnchor="middle" fill="var(--color-muted)" fontSize={14}>
+                      <text x={cx} y={INNER_H + 64} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
                     </>
