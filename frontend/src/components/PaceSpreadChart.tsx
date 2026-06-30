@@ -175,7 +175,7 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
         </svg>
       )}
 
-      <p className="mt-3 max-w-prose text-xs text-muted">
+      <p className="mt-4 whitespace-nowrap text-center text-sm text-muted">
         Dashed line mean, solid line median, box is the middle 50 percent of laps, whiskers cover
         99.3 percent, dots are outliers.
       </p>
