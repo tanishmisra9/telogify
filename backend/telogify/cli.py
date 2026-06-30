@@ -33,13 +33,14 @@ def diagnose(year: int, round: int) -> None:
 @app.command("send-digest")
 def send_digest(year: int, round: int) -> None:
     """Email the 3 insights for a weekend via Resend."""
-    # ponytail: stub until M20.
-    raise typer.Exit(_todo("send-digest", year, round))
+    from sqlmodel import Session
 
+    from telogify.db import engine
+    from telogify.email import send_digest as run_send
 
-def _todo(cmd: str, year: int, round: int) -> int:
-    typer.echo(f"{cmd} {year} {round}: not yet implemented")
-    return 1
+    with Session(engine) as db:
+        sent = run_send(year, round, db)
+    typer.echo(f"Sent digest to {sent} recipient(s).")
 
 
 if __name__ == "__main__":
