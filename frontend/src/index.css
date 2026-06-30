@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  /* Color (OKLCH). Dark, restrained, single amber accent. */
+  --color-bg: oklch(0.16 0.006 260);
+  --color-surface: oklch(0.205 0.007 260);
+  --color-glass: oklch(0.24 0.008 260 / 55%);
+  --color-ink: oklch(0.965 0.004 250);
+  --color-muted: oklch(0.745 0.012 250);
+  --color-accent: oklch(0.81 0.14 78);
+  --color-accent-ink: oklch(0.22 0.03 80);
+  --color-border: oklch(0.99 0 0 / 8%);
+
+  /* Type: system sans (SF on Apple) + mono for telemetry numbers. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+
+  --radius-panel: 16px;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background-color: var(--color-bg);
+  }
+  body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 {
+    text-wrap: balance;
+    letter-spacing: -0.02em;
+  }
+  p {
+    text-wrap: pretty;
+  }
+}
+
+/* Glass surface, used purposefully on insight panels and nav. */
+.glass {
+  background-color: var(--color-glass);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--color-border);
+}
+
+/* Emphasised telemetry figures read as data, not prose. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
