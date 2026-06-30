@@ -11,8 +11,11 @@ app = typer.Typer(
 @app.command("run-weekend")
 def run_weekend(year: int, round: int) -> None:
     """Ingest a weekend, compute substrate, generate and persist 3 insights."""
-    # ponytail: stub until M14 wires the pipeline.
-    raise typer.Exit(_todo("run-weekend", year, round))
+    from telogify.pipeline import run_weekend as run
+
+    typer.echo(f"Running weekend {year} round {round}...")
+    state = run(year, round)
+    typer.echo(f"Done: persisted {state.get('insight_count', 0)} insights.")
 
 
 @app.command("diagnose")

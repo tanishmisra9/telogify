@@ -1,0 +1,95 @@
+"""End-to-end weekend pipeline as a LangGraph: ingest -> analyze -> candidates -> insights.
+
+State holds only primitives so checkpointing stays serializable; the live FastF1
+WeekendData never leaves the ingest node. Each phase is idempotent (delete + reinsert),
+and FastF1 caches raw data on disk, so re-running a weekend is safe and skips re-downloads.
+"""
+
+from typing import TypedDict
+
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+from sqlmodel import Session
+
+from telogify.agent.graph import build_agent
+from telogify.agent.insights import _content_text, extract_trace, parse_insights, persist_insights
+from telogify.analysis.attribution import store_attributions
+from telogify.analysis.candidates import compute_candidates
+from telogify.analysis.constructor_index import build_constructor_index
+from telogify.analysis.fingerprints import store_fingerprints
+from telogify.db import engine
+from telogify.ingest.loader import load_weekend
+from telogify.ingest.results import store_results
+from telogify.ingest.stints import store_stints
+from telogify.ingest.straights import store_straights
+
+
+class PipelineState(TypedDict, total=False):
+    year: int
+    round: int
+    weekend_id: int
+    insight_count: int
+
+
+def _ingest(state: PipelineState) -> dict:
+    with Session(engine) as db:
+        data = load_weekend(state["year"], state["round"], db)
+        store_straights(data, db)
+        store_stints(data, db)
+        store_results(data, db)
+        store_fingerprints(data, db)
+        return {"weekend_id": data.weekend.id}
+
+
+def _analyze(state: PipelineState) -> dict:
+    with Session(engine) as db:
+        store_attributions(state["weekend_id"], db)
+        build_constructor_index(state["weekend_id"], db)
+    return {}
+
+
+def _candidates(state: PipelineState) -> dict:
+    with Session(engine) as db:
+        compute_candidates(state["weekend_id"], db)
+    return {}
+
+
+def _insights(state: PipelineState, agent_runner) -> dict:
+    messages = agent_runner(state["year"], state["round"])
+    final = _content_text(messages[-1].content)
+    insights = parse_insights(final)
+    trace = extract_trace(messages)
+    with Session(engine) as db:
+        rows = persist_insights(state["weekend_id"], insights, trace, db)
+    return {"insight_count": len(rows)}
+
+
+def _default_agent_runner(year: int, round: int) -> list:
+    agent = build_agent(year, round)
+    result = agent.invoke(
+        {"messages": [("user", f"Write the 3 insights for {year} round {round}.")]},
+        config={"configurable": {"thread_id": f"agent-{year}-{round}"}},
+    )
+    return result["messages"]
+
+
+def build_pipeline(agent_runner):
+    g = StateGraph(PipelineState)
+    g.add_node("ingest", _ingest)
+    g.add_node("analyze", _analyze)
+    g.add_node("candidates", _candidates)
+    g.add_node("insights", lambda s: _insights(s, agent_runner))
+    g.add_edge(START, "ingest")
+    g.add_edge("ingest", "analyze")
+    g.add_edge("analyze", "candidates")
+    g.add_edge("candidates", "insights")
+    g.add_edge("insights", END)
+    return g.compile(checkpointer=MemorySaver())
+
+
+def run_weekend(year: int, round: int, agent_runner=None) -> PipelineState:
+    pipeline = build_pipeline(agent_runner or _default_agent_runner)
+    return pipeline.invoke(
+        {"year": year, "round": round},
+        config={"configurable": {"thread_id": f"weekend-{year}-{round}"}},
+    )
