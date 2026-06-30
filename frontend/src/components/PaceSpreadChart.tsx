@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
+import { driverPhoto, teamLogo } from '@/lib/assets'
 import { constructorRows, driverRows, type PaceRow } from '@/lib/paceStats'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import type { PaceStint } from '@/lib/api'
 
 type ViewMode = 'drivers' | 'constructors'
 
-const MARGIN = { top: 24, right: 16, bottom: 88, left: 52 }
+const MARGIN = { top: 24, right: 16, bottom: 150, left: 66 }
 const WIDTH = 1100
-const HEIGHT = 480
+const HEIGHT = 560
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
+const AVATAR = 50 // driver headshot / team logo size under each box
 
 // Inline d3-scaleBand (paddingInner 0.35, paddingOuter 0.12) so we don't pull in d3-scale.
 function bandLayout(n: number) {
@@ -83,7 +85,7 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
             {yTicks.map((tick) => (
               <g key={tick}>
                 <line x1={0} x2={INNER_W} y1={y(tick)} y2={y(tick)} stroke="var(--color-border)" strokeDasharray="4 4" />
-                <text x={-10} y={y(tick)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={11}>
+                <text x={-12} y={y(tick)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={20}>
                   {tick.toFixed(1)}s
                 </text>
               </g>
@@ -91,7 +93,8 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
 
             {rows.map((row, i) => {
               const cx = band.center(i)
-              const bw = Math.min(band.bandwidth * 0.55, 28)
+              const bw = Math.min(band.bandwidth * 0.6, 40)
+              const logo = teamLogo(row.team)
               const s = row.stats
               const stroke = resolveTeamColor(row.team)
               const fill = teamColorWithAlpha(row.team, 0.28)
@@ -108,25 +111,58 @@ export function PaceSpreadChart({ stints }: { stints: PaceStint[] }) {
                   onMouseLeave={() => setHoveredId(null)}
                   opacity={hoveredId && !isHovered ? 0.45 : 1}
                 >
-                  <line x1={cx} x2={cx} y1={y(s.whisker_high)} y2={yQ3} stroke={stroke} strokeWidth={1.5} />
-                  <line x1={cx} x2={cx} y1={yQ1} y2={y(s.whisker_low)} stroke={stroke} strokeWidth={1.5} />
-                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.whisker_high)} y2={y(s.whisker_high)} stroke={stroke} strokeWidth={1.5} />
-                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.whisker_low)} y2={y(s.whisker_low)} stroke={stroke} strokeWidth={1.5} />
-                  <rect x={cx - bw / 2} y={boxTop} width={bw} height={boxH} fill={fill} stroke={stroke} strokeWidth={1} rx={2} />
-                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.median)} y2={y(s.median)} stroke={stroke} strokeWidth={2} />
-                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.mean)} y2={y(s.mean)} stroke={stroke} strokeWidth={1.5} strokeDasharray="4 3" />
+                  <line x1={cx} x2={cx} y1={y(s.whisker_high)} y2={yQ3} stroke={stroke} strokeWidth={2} />
+                  <line x1={cx} x2={cx} y1={yQ1} y2={y(s.whisker_low)} stroke={stroke} strokeWidth={2} />
+                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.whisker_high)} y2={y(s.whisker_high)} stroke={stroke} strokeWidth={2} />
+                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.whisker_low)} y2={y(s.whisker_low)} stroke={stroke} strokeWidth={2} />
+                  <rect x={cx - bw / 2} y={boxTop} width={bw} height={boxH} fill={fill} stroke={stroke} strokeWidth={1.25} rx={3} />
+                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.median)} y2={y(s.median)} stroke={stroke} strokeWidth={3} />
+                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.mean)} y2={y(s.mean)} stroke={stroke} strokeWidth={2} strokeDasharray="5 4" />
                   {s.outliers.map((o, oi) => (
-                    <circle key={`${row.id}-o-${oi}`} cx={cx} cy={y(o)} r={3} fill="none" stroke={stroke} strokeWidth={1.25} />
+                    <circle key={`${row.id}-o-${oi}`} cx={cx} cy={y(o)} r={4} fill="none" stroke={stroke} strokeWidth={1.5} />
                   ))}
-                  <text x={cx} y={INNER_H + 18} textAnchor="middle" fill="var(--color-ink)" fontSize={12} fontWeight={500}>
-                    {row.label}
-                  </text>
-                  <text x={cx} y={INNER_H + 34} textAnchor="middle" fill="var(--color-muted)" fontSize={10}>
-                    +{row.gap_to_fastest_s.toFixed(2)}
-                  </text>
-                  <text x={cx} y={INNER_H + 48} textAnchor="middle" fill="var(--color-muted)" fontSize={10}>
-                    {s.compounds.length ? s.compounds.join('-') : 'N/A'}
-                  </text>
+
+                  {viewMode === 'drivers' ? (
+                    <>
+                      <foreignObject x={cx - AVATAR / 2} y={INNER_H + 8} width={AVATAR} height={AVATAR}>
+                        <div className="h-full w-full overflow-hidden rounded-full border border-border bg-surface">
+                          <div
+                            className="h-full w-full bg-no-repeat"
+                            style={{
+                              backgroundImage: `url(${driverPhoto(row.id)})`,
+                              backgroundSize: '220%',
+                              backgroundPosition: 'center top',
+                            }}
+                          />
+                        </div>
+                      </foreignObject>
+                      <text x={cx} y={INNER_H + AVATAR + 28} textAnchor="middle" fill="var(--color-ink)" fontSize={20} fontWeight={500}>
+                        {row.label}
+                      </text>
+                      <text x={cx} y={INNER_H + AVATAR + 50} textAnchor="middle" fill="var(--color-muted)" fontSize={18}>
+                        +{row.gap_to_fastest_s.toFixed(2)}
+                      </text>
+                      <text x={cx} y={INNER_H + AVATAR + 70} textAnchor="middle" fill="var(--color-muted)" fontSize={18}>
+                        {s.compounds.length ? s.compounds.join('-') : 'N/A'}
+                      </text>
+                    </>
+                  ) : (
+                    <>
+                      {logo ? (
+                        <image href={logo} x={cx - AVATAR / 2} y={INNER_H + 12} width={AVATAR} height={AVATAR * 0.7} preserveAspectRatio="xMidYMid meet" />
+                      ) : (
+                        <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-ink)" fontSize={20} fontWeight={500}>
+                          {row.label}
+                        </text>
+                      )}
+                      <text x={cx} y={INNER_H + 72} textAnchor="middle" fill="var(--color-muted)" fontSize={18}>
+                        +{row.gap_to_fastest_s.toFixed(2)}
+                      </text>
+                      <text x={cx} y={INNER_H + 92} textAnchor="middle" fill="var(--color-muted)" fontSize={18}>
+                        {s.compounds.length ? s.compounds.join('-') : 'N/A'}
+                      </text>
+                    </>
+                  )}
                 </g>
               )
             })}
