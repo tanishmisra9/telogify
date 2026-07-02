@@ -71,6 +71,9 @@ class Stint(SQLModel, table=True):
     lap_end: int | None = None
     avg_pace: float | None = None
     lap_times_json: list = Field(default_factory=list, sa_column=Column(JSON))
+    # Tyre age (laps on the current set) aligned index-for-index with lap_times_json,
+    # so degradation analysis can regress fuel-corrected time against actual tyre age.
+    tyre_ages_json: list = Field(default_factory=list, sa_column=Column(JSON))
 
 
 class SessionResult(SQLModel, table=True):
@@ -82,7 +85,37 @@ class SessionResult(SQLModel, table=True):
     driver: str
     constructor: str | None = None
     gap_to_leader: float | None = None
+    total_time_s: float | None = None  # winner's total race time; None for everyone else
+    laps: float | None = None
     status: str | None = None
+
+
+class SectorBest(SQLModel, table=True):
+    __tablename__ = "sector_best"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    driver: str = Field(index=True)
+    sector: int  # 1, 2, or 3
+    best_time_s: float
+
+
+class QualiCharacter(SQLModel, table=True):
+    __tablename__ = "quali_character"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    driver: str = Field(index=True)
+    constructor: str | None = None
+    lap_time_s: float | None = None
+    top_speed_kmh: float | None = None
+    min_speed_kmh: float | None = None
+    full_throttle_pct: float | None = None
+    # {corner_number (str): min_speed_kmh} on this lap, for every corner. The "fastest
+    # corner" shown in the car-character table is picked once (the corner where the
+    # compared field's speed is highest) so every team is compared through the same
+    # corner, not each team's own personal-best corner.
+    corner_speeds_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
 
 
 class Attribution(SQLModel, table=True):

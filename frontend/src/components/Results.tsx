@@ -1,34 +1,35 @@
-import { teamLogo } from '@/lib/assets'
+import { TeamRule } from '@/components/TeamMark'
 import type { ResultRow } from '@/lib/api'
 
-function gapLabel(r: ResultRow): string {
-  if (r.position === 1) return 'leader'
-  if (r.gap_to_leader != null) return `+${r.gap_to_leader.toFixed(1)}s`
-  return r.status ?? ''
-}
+const GRID = 'grid grid-cols-[2rem_5rem_1.6fr_1fr_0.6fr_1fr] items-center gap-x-6'
+const HEAD = 'border-b border-border pb-2 text-sm font-semibold text-ink'
 
 export function Results({ rows }: { rows: ResultRow[] }) {
   if (rows.length === 0) return <p className="text-sm text-muted">No results.</p>
+
   return (
-    <ol className="divide-y divide-border">
-      {rows.map((r) => {
-        const logo = teamLogo(r.constructor)
+    <ol className={GRID}>
+      <li className="contents" aria-hidden>
+        <span className={HEAD} />
+        <span className={HEAD}>Driver</span>
+        <span className={HEAD}>Team</span>
+        <span className={HEAD}>Tyres</span>
+        <span className={`${HEAD} text-right`}>Pts</span>
+        <span className={`${HEAD} text-right`}>Time</span>
+      </li>
+      {rows.map((r, i) => {
+        const b = i > 0 ? 'border-t border-border' : ''
         return (
-          <li key={`${r.position}-${r.driver}`} className="flex items-center gap-4 py-3">
-            <span className="num w-7 text-sm text-muted">{r.position ?? '–'}</span>
-            <span className="flex-1 font-medium">{r.driver}</span>
-            <span className="flex flex-1 items-center gap-2 text-sm text-muted">
-              {logo && (
-                <img
-                  src={logo}
-                  alt=""
-                  className="h-5 w-5 shrink-0 object-contain"
-                  onError={(e) => (e.currentTarget.style.display = 'none')}
-                />
-              )}
-              {r.constructor}
+          <li key={`${r.position}-${r.driver}`} className="contents">
+            <span className={`num py-3 text-sm text-muted ${b}`}>{r.position ?? '–'}</span>
+            <span className={`flex items-center gap-2 py-3 font-medium text-ink ${b}`}>
+              <TeamRule team={r.constructor} />
+              {r.driver}
             </span>
-            <span className="num text-sm text-muted">{gapLabel(r)}</span>
+            <span className={`py-3 text-sm text-ink ${b}`}>{r.constructor}</span>
+            <span className={`num py-3 text-sm tracking-wide text-ink ${b}`}>{r.strategy}</span>
+            <span className={`num py-3 text-right text-sm font-medium text-ink ${b}`}>{r.points > 0 ? r.points : ''}</span>
+            <span className={`num py-3 text-right text-sm text-ink ${b}`}>{r.gap_label}</span>
           </li>
         )
       })}

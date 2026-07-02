@@ -1,26 +1,48 @@
 @import "tailwindcss";
 
 @theme {
-  /* Color (OKLCH). Dark, restrained, single amber accent. */
-  --color-bg: oklch(0.16 0.006 260);
-  --color-surface: oklch(0.205 0.007 260);
-  --color-glass: oklch(0.24 0.008 260 / 55%);
-  --color-ink: oklch(0.965 0.004 250);
-  --color-muted: oklch(0.745 0.012 250);
-  --color-accent: oklch(0.81 0.14 78);
-  --color-accent-ink: oklch(0.22 0.03 80);
-  --color-border: oklch(0.99 0 0 / 8%);
+  /* Cream paper, warm near-black ink, one hot F1 red. Team colors carry the data viz.
+     Dark mode is a later pass; these tokens are the single source of truth. */
+  --color-bg: #fffdd0;                       /* cream */
+  --color-surface: #fffef0;                  /* lifted card paper */
+  --color-glass: #fffdd0cc;
+  --color-ink: oklch(0.205 0.012 60);       /* warm near-black */
+  --color-muted: oklch(0.468 0.012 60);     /* warm grey */
+  --color-accent: oklch(0.585 0.238 28);    /* F1 hot red ~ #E10600 */
+  --color-accent-ink: oklch(0.985 0.01 83); /* cream on red */
+  --color-border: oklch(0.205 0.012 60 / 15%);
 
-  /* Type: system sans (SF on Apple) + mono for telemetry numbers. */
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Type: Instrument Serif for display headers, Space Grotesk for body/UI,
+     mono for telemetry figures. Loaded in index.html. */
+  --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
 
-  --radius-panel: 16px;
+  --radius-panel: 2px;
+
+  /* Color of the hard printed-card offset (the signature brutalist move). Retinted
+     per theme so it reads as ink on paper by day and quiet depth at night. */
+  --color-shadow: oklch(0.205 0.012 60);
+}
+
+/* Night mode: same editorial system, warm espresso paper instead of cream. Overriding
+   the tokens flips every Tailwind utility, chart, and panel at once. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: oklch(0.192 0.009 55);        /* warm espresso, not cold black */
+  --color-surface: oklch(0.238 0.011 55);   /* lifted card */
+  --color-glass: oklch(0.192 0.009 55 / 74%);
+  --color-ink: oklch(0.938 0.009 82);       /* warm paper-white */
+  --color-muted: oklch(0.668 0.013 72);
+  --color-accent: oklch(0.64 0.232 28);     /* the red, nudged brighter to glow on dark */
+  --color-accent-ink: oklch(0.98 0.01 82);
+  --color-border: oklch(0.938 0.009 82 / 16%);
+  --color-shadow: oklch(0.085 0.006 55);    /* near-black: depth, not a bright bar */
 }
 
 @layer base {
   html {
-    color-scheme: dark;
+    color-scheme: light;
     background-color: var(--color-bg);
   }
   body {
@@ -31,21 +53,68 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* Faint paper grain to kill digital sterility. Fixed, cheap, non-interactive. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+  /* Display headers in Instrument Serif. It ships one weight; size carries the impact,
+     so never let the browser fake-bold it. */
   h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-synthesis-weight: none;
+    letter-spacing: -0.01em;
     text-wrap: balance;
-    letter-spacing: -0.02em;
   }
   p {
     text-wrap: pretty;
   }
+  ::selection {
+    background-color: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
 }
 
-/* Glass surface, used purposefully on insight panels and nav. */
+/* Editorial paper card: solid surface, crisp ink border, hard printed shadow, sharp corners.
+   Named `.glass` for legacy reuse across every panel/tooltip in the app. */
 .glass {
-  background-color: var(--color-glass);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  border: 1.5px solid var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-shadow);
+}
+
+/* Cards that should react to the cursor: lift and deepen the shadow on hover. */
+.lift {
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lift:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 var(--color-shadow);
+  }
+}
+
+/* Grain is a shade darker than paper by day; lift it a touch so texture survives at night. */
+:root[data-theme='dark'] body::before {
+  opacity: 0.06;
+}
+
+/* Uppercase mono kicker/label, letter-spaced. Editorial signposting. */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 }
 
 /* Emphasised telemetry figures read as data, not prose. */

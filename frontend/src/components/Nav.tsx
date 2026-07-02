@@ -1,19 +1,43 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import { Tooltip } from '@/components/Tooltip'
+
+const LINKS = [
+  { to: '/weekends', label: 'Weekends', hint: 'Browse analysed race weekends' },
+  { to: '/subscribe', label: 'Subscribe', hint: 'Get the weekly email digest' },
+]
 
 export function Nav() {
+  const { pathname } = useLocation()
   return (
-    <header className="sticky top-0 z-40 glass">
-      <nav className="mx-auto max-w-5xl flex items-center justify-between px-6 h-14">
-        <Link to="/" className="text-lg font-semibold tracking-tight">
-          Telo<span className="text-accent">gify</span>
-        </Link>
-        <div className="flex gap-6 text-sm text-muted">
-          <Link to="/" className="hover:text-ink transition-colors">
-            Weekends
+    <header className="sticky top-0 z-40 border-b-[1.5px] border-ink bg-glass backdrop-blur-md">
+      <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 h-16">
+        <div className="flex items-center gap-4">
+          <ThemeToggle />
+          <Link to="/" className="group flex items-baseline gap-2">
+            <span className="font-display text-3xl leading-none tracking-tight">
+              Telo<span className="text-accent">gify</span>
+            </span>
           </Link>
-          <Link to="/subscribe" className="hover:text-ink transition-colors">
-            Subscribe
-          </Link>
+        </div>
+        <div className="flex items-center gap-1">
+          {LINKS.map((l) => {
+            const active = pathname.startsWith(l.to)
+            return (
+              <Tooltip key={l.to} label={l.hint}>
+                <Link
+                  to={l.to}
+                  className={`kicker border px-3 py-2 transition-colors ${
+                    active
+                      ? 'border-ink bg-ink text-bg'
+                      : 'border-transparent text-muted hover:border-ink hover:text-ink'
+                  }`}
+                >
+                  {l.label}
+                </Link>
+              </Tooltip>
+            )
+          })}
         </div>
       </nav>
     </header>

@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react'
 
-// Wrap measurement-like tokens (12 km/h, 7 mph, 0.35 s, 95%, 330.5) so telemetry numbers
-// read as data. One capturing group, so split() alternates text / match.
-const NUM_RE = /(\d[\d.,]*(?:\s?(?:km\/h|mph|°C|%|s|km|m))?)/g
+// Wrap measurement-like tokens so the number AND its metric read as one red unit:
+// ordinals stay whole ("11th", "22nd"), and spelled-out or symbol units are kept intact
+// ("3.994 seconds", "329 km/h", "95%"), never split into "3.994 s" + "econds".
+// One capturing group, so split() alternates text / match. Longer units precede shorter
+// ones in the alternation so "seconds" wins over "s" and "km/h" over "km"/"m".
+const NUM_RE = /(\d[\d.,]*(?:st|nd|rd|th|\s?(?:seconds?|km\/h|mph|°C|%|km|m|s))?)/g
 
 export function emphasize(text: string): ReactNode[] {
   return text.split(NUM_RE).map((part, i) =>

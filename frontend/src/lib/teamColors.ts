@@ -25,6 +25,52 @@ export const TEAM_COLORS: Record<string, string> = {
   Cadillac: '#E8A33D',
 }
 
+// Short marks for the team chip. Falls back to the first three letters of the name.
+const TEAM_CODES: Record<string, string> = {
+  'Red Bull Racing': 'RBR',
+  Ferrari: 'SF',
+  Mercedes: 'MER',
+  McLaren: 'MCL',
+  'Aston Martin': 'AM',
+  Alpine: 'ALP',
+  Williams: 'WIL',
+  RB: 'RB',
+  AlphaTauri: 'AT',
+  'Scuderia AlphaTauri': 'AT',
+  'Kick Sauber': 'KS',
+  'Alfa Romeo': 'AR',
+  'Haas F1 Team': 'HAAS',
+  'Racing Bulls': 'RB',
+  'Toro Rosso': 'STR',
+  Renault: 'REN',
+  'Racing Point': 'RP',
+  'Force India': 'FI',
+  Sauber: 'SAU',
+  'Williams Racing': 'WIL',
+  Audi: 'AUD',
+  Cadillac: 'CAD',
+}
+
+export function teamCode(teamName: string | null | undefined): string {
+  if (!teamName) return '?'
+  return TEAM_CODES[teamName] ?? teamName.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase()
+}
+
+// Short, recognizable team names for the pace-chart axis. Only the officially-long names
+// need entries; anything absent falls back to the constructor string as-is.
+const TEAM_SHORT: Record<string, string> = {
+  'Red Bull Racing': 'Red Bull',
+  'Haas F1 Team': 'Haas',
+  'Williams Racing': 'Williams',
+  'Scuderia AlphaTauri': 'AlphaTauri',
+  'Kick Sauber': 'Sauber',
+}
+
+export function teamShortName(teamName: string | null | undefined): string {
+  if (!teamName) return 'Unknown'
+  return TEAM_SHORT[teamName] ?? teamName
+}
+
 const FALLBACK_COLOR = 'var(--color-muted)'
 
 export function resolveTeamColor(teamName: string | null): string {

@@ -12,14 +12,18 @@ from langgraph.graph import END, START, StateGraph
 from sqlmodel import Session
 
 from telogify.agent.graph import build_agent
+from telogify.agent.guardrails import flag_unsupported_claims
 from telogify.agent.insights import _content_text, extract_trace, parse_insights, persist_insights
 from telogify.analysis.attribution import store_attributions
 from telogify.analysis.candidates import compute_candidates
 from telogify.analysis.constructor_index import build_constructor_index
 from telogify.analysis.fingerprints import store_fingerprints
+from telogify.config import settings
 from telogify.db import engine
 from telogify.ingest.loader import load_weekend
+from telogify.ingest.quali_character import store_quali_character
 from telogify.ingest.results import store_results
+from telogify.ingest.sectors import store_sector_bests
 from telogify.ingest.stints import store_stints
 from telogify.ingest.straights import store_straights
 
@@ -35,9 +39,11 @@ def _ingest(state: PipelineState) -> dict:
     with Session(engine) as db:
         data = load_weekend(state["year"], state["round"], db)
         store_straights(data, db)
-        store_stints(data, db)
+        store_stints(data, db, fuel_effect=settings.fuel_effect_s_per_lap)
         store_results(data, db)
         store_fingerprints(data, db)
+        store_sector_bests(data, db)
+        store_quali_character(data, db)
         return {"weekend_id": data.weekend.id}
 
 
@@ -54,20 +60,56 @@ def _candidates(state: PipelineState) -> dict:
     return {}
 
 
+_MAX_INSIGHT_ATTEMPTS = 3
+
+
+def _flag_all(insights: list[dict]) -> dict[int, list[str]]:
+    """Flag each insight independently so feedback can name exactly which slot is bad."""
+    flagged = {}
+    for i, ins in enumerate(insights, start=1):
+        text = f"{ins.get('header', '')} {ins.get('explanation_web', '')} {ins.get('explanation_email', '')}"
+        phrases = flag_unsupported_claims(text)
+        if phrases:
+            flagged[i] = phrases
+    return flagged
+
+
 def _insights(state: PipelineState, agent_runner) -> dict:
-    messages = agent_runner(state["year"], state["round"])
-    final = _content_text(messages[-1].content)
-    insights = parse_insights(final)
-    trace = extract_trace(messages)
-    with Session(engine) as db:
-        rows = persist_insights(state["weekend_id"], insights, trace, db)
-    return {"insight_count": len(rows)}
+    """Generate the 3 insights, rejecting and re-prompting on any guardrail violation.
+    Nothing is persisted, and the pipeline fails loud, unless a clean set is produced within
+    _MAX_INSIGHT_ATTEMPTS: shipping a fabricated claim is worse than shipping nothing."""
+    feedback = None
+    flagged: dict[int, list[str]] = {}
+    for _attempt in range(1, _MAX_INSIGHT_ATTEMPTS + 1):
+        messages = agent_runner(state["year"], state["round"], feedback=feedback)
+        final = _content_text(messages[-1].content)
+        insights = parse_insights(final)
+        flagged = _flag_all(insights)
+        if not flagged:
+            trace = extract_trace(messages)
+            with Session(engine) as db:
+                rows = persist_insights(state["weekend_id"], insights, trace, db)
+            return {"insight_count": len(rows)}
+        feedback = (
+            "Your last set of 3 insights violated the rules above. Specifically, insight "
+            f"slot(s) {sorted(flagged)} used unsupported phrasing: {flagged}. Rewrite ALL 3 "
+            "insights from scratch, removing every one of those phrases and any claim like "
+            "them, while keeping every number grounded in tool returns. Output the JSON "
+            "array again, nothing else."
+        )
+    raise RuntimeError(
+        f"Insight agent kept producing unsupported claims after {_MAX_INSIGHT_ATTEMPTS} "
+        f"attempts for {state['year']} round {state['round']}: {flagged}"
+    )
 
 
-def _default_agent_runner(year: int, round: int) -> list:
+def _default_agent_runner(year: int, round: int, feedback: str | None = None) -> list:
     agent = build_agent(year, round)
+    task = f"Write the 3 insights for {year} round {round}."
+    if feedback:
+        task = f"{task}\n\n{feedback}"
     result = agent.invoke(
-        {"messages": [("user", f"Write the 3 insights for {year} round {round}.")]},
+        {"messages": [("user", task)]},
         config={"configurable": {"thread_id": f"agent-{year}-{round}"}},
     )
     return result["messages"]

@@ -24,7 +24,8 @@ PreCompute (deterministic, all sessions)
 
 - **Backend:** Python 3.12, FastAPI, LangGraph, SQLModel + Alembic, Postgres, Anthropic SDK
   (`claude-opus-4-7`), FastF1, Resend, pytest. Manual CLI trigger only (no scheduler).
-- **Frontend:** Vite + React + TypeScript + Tailwind v4 + Framer Motion + Recharts.
+- **Frontend:** Vite + React + TypeScript + Tailwind v4 + Framer Motion. Custom SVG charts (no
+  chart library). Vitest for unit tests.
 - **Infra:** Railway (backend + Postgres), Vercel (frontend).
 
 ## Backend setup
@@ -87,10 +88,12 @@ npm install
 cp .env.example .env     # set VITE_API_URL if the backend is not on localhost:8000
 npm run dev              # http://localhost:5173
 npm run build            # production build to dist/
+npm test                 # vitest unit tests (pure lib functions)
 ```
 
-Three surfaces: home (weekends list), race weekend page (3 insights + pace plots +
-finishing order), subscribe.
+Four routes: landing (`/`), weekends index (`/weekends`), race weekend page
+(`/weekends/:year/:round`: 3 insights + pace/degradation charts + finishing order), and
+subscribe (`/subscribe`).
 
 ## Deploy
 

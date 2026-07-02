@@ -5,7 +5,7 @@ Mine signals across all sessions, score each by robustness = normalized(|magnitu
 comparable), then correlate related single-session signals into stronger combined
 candidates before ranking. The agent only ever sees this ranked, robustness-sorted list.
 
-ponytail: four signal types cover the brief's required set. Add more types here, the
+ponytail: signal types cover the brief's required set. Add more types here, the
 scoring/correlation/ranking stays unchanged.
 """
 
@@ -17,9 +17,15 @@ from sqlmodel import Session as DBSession
 from sqlmodel import delete, select
 
 from telogify.analysis.attribution import _driver_constructor_map
+from telogify.analysis.degradation import fit_all_groups
+from telogify.analysis.quali_character import fastest_qualifier_per_constructor
+from telogify.analysis.race_pace import constructor_median_gaps
+from telogify.analysis.sectors import best_across_sessions
 from telogify.models import (
     Attribution,
     CandidateInsight,
+    QualiCharacter,
+    SectorBest,
     Session,
     SessionResult,
     StraightSegment,
@@ -28,6 +34,7 @@ from telogify.models import (
 
 POSITION_SWING_MIN = 2  # only notable grid-to-finish swings become signals
 REAL_STRAIGHT_KMH = 300.0  # a zone only counts as a real top-speed straight if the field tops this
+PRACTICE_SESSIONS = ("FP1", "FP2", "FP3")
 
 
 @dataclass
@@ -193,19 +200,26 @@ def _mine_race_pace(db, sessions, dc_map):
     race = next((s for s in sessions if s.session_type in ("R", "SPRINT")), None)
     if race is None:
         return []
-    best: dict[str, float] = {}
-    for st in db.exec(select(Stint).where(Stint.session_id == race.id)).all():
-        constructor = dc_map.get(st.driver)
-        if constructor is None or st.avg_pace is None:
-            continue
-        if constructor not in best or st.avg_pace < best[constructor]:
-            best[constructor] = st.avg_pace
-    if not best:
+
+    stints = db.exec(select(Stint).where(Stint.session_id == race.id)).all()
+    stint_dicts = [
+        {
+            "driver": st.driver,
+            "constructor": dc_map.get(st.driver),
+            "compound": st.compound,
+            "lap_times": st.lap_times_json or [],
+        }
+        for st in stints
+        if dc_map.get(st.driver)
+    ]
+
+    # Use the canonical median-gap metric so signal magnitudes match the chart.
+    deficits = constructor_median_gaps(stint_dicts)
+    if not deficits:
         return []
-    fastest = min(best.values())
+
     out = []
-    for constructor, pace in best.items():
-        deficit = pace - fastest
+    for constructor, deficit in deficits.items():
         if deficit <= 0:
             continue
         out.append(
@@ -220,7 +234,6 @@ def _mine_race_pace(db, sessions, dc_map):
                     {
                         "type": "race_pace",
                         "constructor": constructor,
-                        "best_pace_s": pace,
                         "deficit_s": deficit,
                     }
                 ],
@@ -273,6 +286,162 @@ def _mine_position_swings(db, sessions, dc_map):
     return out
 
 
+def _mine_sector_deltas(db, sessions, dc_map):
+    """Practice best-sector deficits, per constructor per sector, vs the fastest
+    constructor in that sector. Feeds the same candidate pool as corner/straight
+    deltas so a practice weakness can corroborate a race-pace or position signal."""
+    practice = [s for s in sessions if s.session_type in PRACTICE_SESSIONS]
+    if not practice:
+        return []
+
+    rows = [
+        {"driver": r.driver, "sector": r.sector, "best_time_s": r.best_time_s, "session_type": s.session_type}
+        for s in practice
+        for r in db.exec(select(SectorBest).where(SectorBest.session_id == s.id)).all()
+    ]
+    bests = best_across_sessions(rows)
+
+    by_sector: dict[int, dict[str, float]] = defaultdict(dict)
+    for b in bests:
+        constructor = dc_map.get(b.driver)
+        if constructor is None:
+            continue
+        cur = by_sector[b.sector].get(constructor)
+        if cur is None or b.best_time_s < cur:
+            by_sector[b.sector][constructor] = b.best_time_s
+
+    out = []
+    for sector, by_constructor in by_sector.items():
+        if len(by_constructor) < 2:
+            continue
+        fastest = min(by_constructor.values())
+        for constructor, best_time in by_constructor.items():
+            deficit = best_time - fastest
+            if deficit <= 0:
+                continue
+            out.append(
+                Signal(
+                    signal_type="sector_delta",
+                    category="sector",
+                    magnitude=deficit,
+                    confidence=1.0,
+                    subject=constructor,
+                    locus=f"sector:{sector}",
+                    session_type="practice",
+                    source_refs=[
+                        {
+                            "type": "sector_delta",
+                            "sector": sector,
+                            "constructor": constructor,
+                            "best_time_s": best_time,
+                            "deficit_s": deficit,
+                            "fastest_time_s": fastest,
+                        }
+                    ],
+                )
+            )
+    return out
+
+
+def _mine_quali_character(db, sessions):
+    """Qualifying top-speed deficit per constructor, from each team's fastest lap.
+    Complements straight_delta (which is corner-gap based) with a single-lap read
+    tied directly to the qualifying car-character block."""
+    session = next((s for s in sessions if s.session_type in ("Q", "SQ")), None)
+    if session is None:
+        return []
+
+    rows = db.exec(select(QualiCharacter).where(QualiCharacter.session_id == session.id)).all()
+    driver_rows = [
+        {
+            "constructor": r.constructor,
+            "driver": r.driver,
+            "lap_time_s": r.lap_time_s,
+            "top_speed_kmh": r.top_speed_kmh,
+        }
+        for r in rows
+        if r.constructor and r.lap_time_s is not None and r.top_speed_kmh is not None
+    ]
+    reps = fastest_qualifier_per_constructor(driver_rows)
+    if len(reps) < 2:
+        return []
+
+    fastest = max(r["top_speed_kmh"] for r in reps)
+    out = []
+    for r in reps:
+        deficit = fastest - r["top_speed_kmh"]
+        if deficit <= 0:
+            continue
+        out.append(
+            Signal(
+                signal_type="quali_top_speed_delta",
+                category="quali_character",
+                magnitude=deficit,
+                confidence=1.0,
+                subject=r["constructor"],
+                session_type=session.session_type,
+                source_refs=[
+                    {
+                        "type": "quali_top_speed_delta",
+                        "constructor": r["constructor"],
+                        "driver": r["driver"],
+                        "top_speed_kmh": r["top_speed_kmh"],
+                        "deficit_kmh": deficit,
+                        "fastest_top_speed_kmh": fastest,
+                    }
+                ],
+            )
+        )
+    return out
+
+
+def _mine_degradation(db, sessions, dc_map):
+    """Race tyre-degradation cost per constructor per compound, from fuel-corrected
+    lap time vs tyre age. Only positive (real wear) slopes produce a signal."""
+    race = next((s for s in sessions if s.session_type in ("R", "SPRINT")), None)
+    if race is None:
+        return []
+
+    stints = db.exec(select(Stint).where(Stint.session_id == race.id)).all()
+    points = []
+    for st in stints:
+        constructor = dc_map.get(st.driver)
+        if constructor is None:
+            continue
+        for age, t in zip(st.tyre_ages_json or [], st.lap_times_json or []):
+            if age is None:
+                continue
+            points.append({"constructor": constructor, "compound": st.compound, "tyre_age": age, "lap_time_s": t})
+
+    out = []
+    for fit in fit_all_groups(points):
+        if fit.slope_s_per_lap <= 0:
+            continue
+        out.append(
+            Signal(
+                signal_type="tyre_degradation",
+                category="degradation",
+                magnitude=fit.cost_at_reference_s,
+                confidence=1.0,
+                subject=fit.constructor,
+                locus=f"compound:{fit.compound}",
+                session_type=race.session_type,
+                source_refs=[
+                    {
+                        "type": "tyre_degradation",
+                        "constructor": fit.constructor,
+                        "compound": fit.compound,
+                        "slope_s_per_lap": fit.slope_s_per_lap,
+                        "cost_at_reference_s": fit.cost_at_reference_s,
+                        "n_laps": fit.n_laps,
+                        "flagged": fit.flagged,
+                    }
+                ],
+            )
+        )
+    return out
+
+
 def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
     sessions = db.exec(select(Session).where(Session.weekend_id == weekend_id)).all()
     dc_map = _driver_constructor_map(db, [s.id for s in sessions])
@@ -282,6 +451,9 @@ def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
         + _mine_straight_deltas(db, sessions, dc_map)
         + _mine_race_pace(db, sessions, dc_map)
         + _mine_position_swings(db, sessions, dc_map)
+        + _mine_sector_deltas(db, sessions, dc_map)
+        + _mine_quali_character(db, sessions)
+        + _mine_degradation(db, sessions, dc_map)
     )
     normalize_and_score(signals)
     ranked = rank(correlate(signals))

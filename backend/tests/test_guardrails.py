@@ -9,6 +9,19 @@ def test_flags_the_audited_fabrications():
     assert "this season" in flag_unsupported_claims("his fourth win this season")
 
 
+def test_flags_retirement_lap_numbers():
+    # These exact phrasings shipped in production (Barcelona round 7) despite the earlier
+    # substring-only blocklist, because they weren't literal matches.
+    assert "on lap 61" in flag_unsupported_claims("his race ended in retirement on lap 61")
+    assert "on lap 37" in flag_unsupported_claims(
+        "Fernando Alonso retired on lap 37 having managed a best stint average"
+    )
+    assert "after just five laps" in flag_unsupported_claims(
+        "Lance Stroll was out after just five laps"
+    )
+    assert "after 10 laps" in flag_unsupported_claims("he retired after 10 laps")
+
+
 def test_clean_prose_is_not_flagged():
     text = (
         "George Russell converted pole into a controlled win, finishing 1.6 seconds clear. "

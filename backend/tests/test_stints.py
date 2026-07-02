@@ -1,9 +1,16 @@
 from telogify.ingest.stints import summarize_stint
 
 
-def _lap(n, t, *, out=False, inn=False, acc=True, compound="MEDIUM"):
+def _lap(n, t, *, out=False, inn=False, acc=True, compound="MEDIUM", track_status="1", tyre_age=None):
     return dict(
-        lap_number=n, lap_time_s=t, compound=compound, is_outlap=out, is_inlap=inn, is_accurate=acc
+        lap_number=n,
+        lap_time_s=t,
+        compound=compound,
+        is_outlap=out,
+        is_inlap=inn,
+        is_accurate=acc,
+        track_status=track_status,
+        tyre_age=tyre_age,
     )
 
 
@@ -29,3 +36,63 @@ def test_summarize_stint_all_excluded_gives_none_pace():
     s = summarize_stint(1, [_lap(1, 100.0, out=True), _lap(2, 101.0, inn=True)])
     assert s.lap_times == []
     assert s.avg_pace is None
+
+
+def test_summarize_stint_excludes_sc_vsc_laps():
+    """Laps run under safety car (TrackStatus != "1") must be excluded from pace."""
+    laps = [
+        _lap(1, 90.0),                       # green, kept
+        _lap(2, 110.0, track_status="4"),    # safety car, excluded
+        _lap(3, 111.0, track_status="6"),    # VSC, excluded
+        _lap(4, 90.5),                       # green, kept
+        _lap(5, 90.2, track_status="7"),     # VSC ending, excluded
+        _lap(6, 91.0),                       # green, kept
+    ]
+    s = summarize_stint(1, laps)
+    assert s.lap_times == [90.0, 90.5, 91.0]
+    assert abs(s.avg_pace - 90.5) < 1e-9
+
+
+def test_summarize_stint_fuel_correction():
+    """Fuel correction reduces lap times; later laps get a smaller correction."""
+    # Race has 10 laps total; fuel_effect = 0.1 s/lap.
+    # Lap 8: raw=91.0 -> corrected = 91.0 - 0.1*(10-8) = 91.0 - 0.2 = 90.8
+    # Lap 9: raw=91.0 -> corrected = 91.0 - 0.1*(10-9) = 91.0 - 0.1 = 90.9
+    laps = [_lap(8, 91.0), _lap(9, 91.0)]
+    s = summarize_stint(1, laps, total_laps=10, fuel_effect=0.1)
+    assert abs(s.lap_times[0] - 90.8) < 1e-9
+    assert abs(s.lap_times[1] - 90.9) < 1e-9
+    assert abs(s.avg_pace - 90.85) < 1e-9
+
+
+def test_summarize_stint_no_fuel_correction_when_params_absent():
+    """Without total_laps/fuel_effect the raw times are stored unchanged."""
+    laps = [_lap(1, 90.0), _lap(2, 91.0)]
+    s = summarize_stint(1, laps)
+    assert s.lap_times == [90.0, 91.0]
+
+
+def test_summarize_stint_sc_lap_also_inaccurate_still_excluded():
+    """SC lap with is_accurate=False: excluded once by SC check, not double-counted."""
+    laps = [_lap(1, 90.0), _lap(2, 115.0, acc=False, track_status="4")]
+    s = summarize_stint(1, laps)
+    assert s.lap_times == [90.0]
+
+
+def test_summarize_stint_tyre_ages_aligned_with_lap_times():
+    """tyre_ages must stay index-for-index with lap_times, surviving the same exclusions."""
+    laps = [
+        _lap(1, 95.0, out=True, tyre_age=0),  # outlap, excluded
+        _lap(2, 90.0, tyre_age=1),
+        _lap(3, 200.0, acc=False, tyre_age=2),  # inaccurate, excluded
+        _lap(4, 90.5, tyre_age=3),
+    ]
+    s = summarize_stint(1, laps)
+    assert s.lap_times == [90.0, 90.5]
+    assert s.tyre_ages == [1, 3]
+
+
+def test_summarize_stint_tyre_age_missing_is_none():
+    laps = [_lap(1, 90.0)]  # tyre_age defaults to None
+    s = summarize_stint(1, laps)
+    assert s.tyre_ages == [None]

@@ -24,5 +24,6 @@ dist/
 .DS_Store
 *.log
 
-# Local agent guidance
+# Local agent state (CLAUDE.md is a local working doc, kept out of the repo)
+.claude/
 CLAUDE.md

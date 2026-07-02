@@ -30,6 +30,49 @@ def diagnose(year: int, round: int) -> None:
         typer.echo(run_diagnose(year, round, db))
 
 
+@app.command("list-insights")
+def list_insights(year: int | None = None) -> None:
+    """Print all persisted insights, grouped by race weekend."""
+    from sqlmodel import Session, select
+
+    from telogify.db import engine
+    from telogify.models import Insight, RaceWeekend
+
+    with Session(engine) as db:
+        query = select(RaceWeekend).order_by(RaceWeekend.year, RaceWeekend.round)
+        if year is not None:
+            query = query.where(RaceWeekend.year == year)
+        weekends = db.exec(query).all()
+
+        if not weekends:
+            typer.echo("No race weekends found.")
+            return
+
+        for weekend in weekends:
+            insights = db.exec(
+                select(Insight)
+                .where(Insight.weekend_id == weekend.id)
+                .order_by(Insight.slot)
+            ).all()
+
+            typer.echo("=" * 78)
+            typer.echo(
+                f"{weekend.year} Round {weekend.round}: {weekend.event_name} "
+                f"({weekend.circuit_name}, {weekend.country})"
+            )
+            typer.echo("=" * 78)
+
+            if not insights:
+                typer.echo("  (no insights persisted)\n")
+                continue
+
+            for insight in insights:
+                typer.echo(f"\n[{insight.slot}] {insight.header}")
+                typer.echo("-" * 78)
+                typer.echo(insight.explanation_web)
+            typer.echo("")
+
+
 @app.command("send-digest")
 def send_digest(year: int, round: int) -> None:
     """Email the 3 insights for a weekend via Resend."""

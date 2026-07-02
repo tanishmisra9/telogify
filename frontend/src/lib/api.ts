@@ -17,21 +17,125 @@ export interface InsightItem {
   explanation_web: string
 }
 
-export interface PaceStint {
-  driver: string
-  constructor: string | null
-  stint_number: number
-  compound: string | null
-  lap_start: number | null
-  lap_times: number[]
+export interface BoxStats {
+  mean: number
+  median: number
+  q1: number
+  q3: number
+  whisker_low: number
+  whisker_high: number
+  outliers: number[]
+  n_laps: number
+  compounds: string[]
+}
+
+export interface PaceRow {
+  id: string
+  label: string
+  team: string | null
+  gap_to_fastest_s: number
+  stats: BoxStats
+}
+
+export interface PaceData {
+  drivers: PaceRow[]
+  constructors: PaceRow[]
+  stop_counts: Record<string, number>
+  stop_count_spread: number
 }
 
 export interface ResultRow {
   position: number | null
   driver: string
   constructor: string | null
-  gap_to_leader: number | null
+  gap_label: string
+  points: number
+  strategy: string
+}
+
+export interface SessionInfo {
+  session_type: string
   status: string | null
+}
+
+export interface SectorDominanceRow {
+  sector: number
+  constructor: string | null
+  best_time_s: number
+  margin_s: number | null
+}
+
+export interface SectorBestRow {
+  driver: string
+  constructor: string | null
+  sector: number
+  best_time_s: number
+  session_type: string
+}
+
+export interface SectorsData {
+  indicative: boolean
+  drivers: SectorBestRow[]
+  dominance: SectorDominanceRow[]
+}
+
+export interface TopSpeedRow {
+  driver: string
+  constructor: string | null
+  max_speed_kmh: number
+  max_speed_mph: number
+  session_type: string
+}
+
+export interface TopSpeedsData {
+  indicative: boolean
+  drivers: TopSpeedRow[]
+}
+
+export type DragLabel = 'efficient, low drag' | 'draggy, high-downforce' | 'lacks efficiency' | 'balanced'
+
+export interface CarCharacterRow {
+  constructor: string
+  driver: string
+  lap_time_s: number
+  top_speed_kmh: number
+  min_speed_kmh: number
+  full_throttle_pct: number
+  fastest_corner_kmh: number | null
+  drag_label: DragLabel
+  is_top_speed_leader: boolean
+  is_corner_speed_leader: boolean
+  is_grip_leader: boolean
+}
+
+export interface QualiCharacterData {
+  session_type: string | null
+  rows: CarCharacterRow[]
+  fastest_corner_number: number | null
+  sector_dominance: SectorDominanceRow[]
+}
+
+export interface DegradationFit {
+  constructor: string
+  compound: string
+  slope_s_per_lap: number
+  intercept_s: number
+  cost_at_reference_s: number
+  n_laps: number
+  flagged: boolean
+}
+
+export interface DegradationPoint {
+  constructor: string
+  compound: string
+  tyre_age: number
+  lap_time_s: number
+}
+
+export interface DegradationData {
+  reference_age_laps: number | null
+  points: DegradationPoint[]
+  fits: DegradationFit[]
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

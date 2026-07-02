@@ -3,7 +3,8 @@
 Per (session, corner) each constructor's advantage is its min_speed minus the corner's
 field mean (km/h). Advantages are aggregated per speed class with a CONFIDENCE-WEIGHTED
 MEAN, so a team seen at more corners cannot score higher just for having more data
-points. Lap deficit (seconds) comes from best race-stint pace versus the field's best.
+points. Lap deficit (seconds) is the per-constructor median gap from race_pace.py, so
+it is identical to what the pace chart displays (green-flag, fuel-corrected laps).
 """
 
 from collections import defaultdict
@@ -19,6 +20,7 @@ from telogify.analysis.attribution import (
     classify_speed,
     driver_confidence,
 )
+from telogify.analysis.race_pace import constructor_median_gaps
 from telogify.models import ConstructorIndex, Session, Stint
 
 
@@ -61,30 +63,27 @@ def rank_constructors(overalls: dict[str, float | None]) -> dict[str, int]:
     return {constructor: i + 1 for i, (constructor, _) in enumerate(ranked)}
 
 
-def lap_deficits(best_pace: dict[str, float]) -> dict[str, float]:
-    """Per-constructor seconds behind the field's best race pace."""
-    if not best_pace:
-        return {}
-    fastest = min(best_pace.values())
-    return {c: pace - fastest for c, pace in best_pace.items()}
-
-
 # --- DB-side orchestration -------------------------------------------------
 
 
-def _race_best_pace(db: DBSession, sessions: list[Session], dc_map: dict[str, str]):
+def _race_stints_as_dicts(
+    db: DBSession, sessions: list[Session], dc_map: dict[str, str]
+) -> list[dict]:
+    """Fetch all race stints and return as plain dicts for race_pace functions."""
     race = next((s for s in sessions if s.session_type in ("R", "SPRINT")), None)
     if race is None:
-        return {}
+        return []
     stints = db.exec(select(Stint).where(Stint.session_id == race.id)).all()
-    best: dict[str, float] = {}
-    for st in stints:
-        constructor = dc_map.get(st.driver)
-        if constructor is None or st.avg_pace is None:
-            continue
-        if constructor not in best or st.avg_pace < best[constructor]:
-            best[constructor] = st.avg_pace
-    return best
+    return [
+        {
+            "driver": st.driver,
+            "constructor": dc_map.get(st.driver),
+            "compound": st.compound,
+            "lap_times": st.lap_times_json or [],
+        }
+        for st in stints
+        if dc_map.get(st.driver)
+    ]
 
 
 def build_constructor_index(weekend_id: int, db: DBSession) -> None:
@@ -101,17 +100,21 @@ def build_constructor_index(weekend_id: int, db: DBSession) -> None:
             if len(by_constructor) < 2:
                 continue  # need a field to measure advantage against
             metric = {c: mean(x.metric for x in ds) for c, ds in by_constructor.items()}
-            field = mean(metric.values())
-            speed_class = classify_speed(field)
+            field_mean = mean(metric.values())
+            speed_class = classify_speed(field_mean)
             for c, ds in by_constructor.items():
                 conf = driver_confidence(min(x.clean_laps for x in ds))
-                per_constructor[c].append(CornerScore(speed_class, metric[c] - field, conf))
+                per_constructor[c].append(CornerScore(speed_class, metric[c] - field_mean, conf))
 
     summaries = {c: summarize_constructor(scores) for c, scores in per_constructor.items()}
-    deficits = lap_deficits(_race_best_pace(db, sessions, dc_map))
+
+    # Lap deficit = canonical per-constructor median gap from race_pace (same metric
+    # the chart uses: green-flag, fuel-corrected laps, full-season median ranked).
+    stint_dicts = _race_stints_as_dicts(db, sessions, dc_map)
+    deficits = constructor_median_gaps(stint_dicts)
 
     # Rank by real race pace (smallest deficit first); the corner scores are kept only as
-    # supporting detail. A team with no race pace ranks last.
+    # supporting detail. A team with no race-lap data ranks last.
     constructors = set(summaries) | set(deficits)
     ordered = sorted(constructors, key=lambda c: (c not in deficits, deficits.get(c, 0.0)))
     ranks = {c: i + 1 for i, c in enumerate(ordered)}

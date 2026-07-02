@@ -1,10 +1,10 @@
 from telogify.analysis.constructor_index import (
     CornerScore,
-    lap_deficits,
     rank_constructors,
     summarize_constructor,
     weighted_mean,
 )
+from telogify.analysis.race_pace import constructor_median_gaps
 
 
 def test_weighted_mean_is_not_a_sum():
@@ -33,8 +33,14 @@ def test_rank_highest_advantage_first_unscored_last():
     assert ranks["Sauber"] == 3  # no score -> last, not buried by a sparsity bug
 
 
-def test_lap_deficits_relative_to_fastest():
-    deficits = lap_deficits({"McLaren": 90.0, "Ferrari": 90.3, "Williams": 91.1})
-    assert deficits["McLaren"] == 0.0
-    assert abs(deficits["Ferrari"] - 0.3) < 1e-9
-    assert abs(deficits["Williams"] - 1.1) < 1e-9
+def test_constructor_median_gaps_relative_to_fastest():
+    """constructor_median_gaps replaces lap_deficits as the canonical ranking metric."""
+    stints = [
+        {"driver": "VER", "constructor": "Red Bull", "compound": "MEDIUM", "lap_times": [90.0, 90.1, 90.2]},
+        {"driver": "LEC", "constructor": "Ferrari", "compound": "MEDIUM", "lap_times": [90.3, 90.4, 90.5]},
+        {"driver": "RUS", "constructor": "Mercedes", "compound": "HARD",   "lap_times": [91.0, 91.1, 91.2]},
+    ]
+    gaps = constructor_median_gaps(stints)
+    assert gaps["Red Bull"] == 0.0
+    assert abs(gaps["Ferrari"] - 0.3) < 1e-9
+    assert abs(gaps["Mercedes"] - 1.0) < 1e-9
