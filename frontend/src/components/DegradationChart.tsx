@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { motion, useReducedMotion } from 'framer-motion'
+import { m, useReducedMotion } from 'framer-motion'
 import { TeamMark } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
@@ -63,7 +63,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
   const xTicks = Array.from({ length: xTickCount }, (_, i) => Math.round((xMax * i) / (xTickCount - 1 || 1)))
 
   return (
-    <motion.div
+    <m.div
       className="glass w-full rounded-[--radius-panel] p-5"
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -144,6 +144,6 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         marks a team whose slope is well above the field for that compound. The cause is not asserted
         here, only the measured cost and, where the data supports it, the strategic consequence.
       </p>
-    </motion.div>
+    </m.div>
   )
 }

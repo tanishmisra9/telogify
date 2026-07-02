@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { motion, useReducedMotion } from 'framer-motion'
+import { m, useReducedMotion } from 'framer-motion'
 import { Tooltip } from '@/components/Tooltip'
 import { resolveTeamColor, teamShortName, teamColorWithAlpha } from '@/lib/teamColors'
 import type { PaceData, PaceRow } from '@/lib/api'
@@ -50,7 +50,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
   const hovered = rows.find((r) => r.id === hoveredId) ?? null
 
   return (
-    <motion.div
+    <m.div
       className="glass w-full rounded-[--radius-panel] p-5"
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -179,6 +179,6 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
           these gaps as an estimate.
         </p>
       )}
-    </motion.div>
+    </m.div>
   )
 }

@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from 'framer-motion'
+import { m, useReducedMotion } from 'framer-motion'
 import type { ReactNode } from 'react'
 import { blurFadeIn, spring } from '@/lib/motion'
 
@@ -15,13 +15,13 @@ export function BlurFade({
 }) {
   const reduce = useReducedMotion()
   return (
-    <motion.div
+    <m.div
       className={className}
       initial={reduce ? false : blurFadeIn.initial}
       animate={blurFadeIn.animate}
       transition={{ ...spring, delay: reduce ? 0 : delay }}
     >
       {children}
-    </motion.div>
+    </m.div>
   )
 }
