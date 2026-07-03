@@ -6,6 +6,7 @@ import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
 import { Results } from '@/components/Results'
 import { SectorBars } from '@/components/SectorBars'
+import { SessionOrder } from '@/components/SessionOrder'
 import { TopSpeedBars } from '@/components/TopSpeedBars'
 import {
   useApi,
@@ -16,12 +17,12 @@ import {
   type ResultRow,
   type SectorsData,
   type SessionInfo,
+  type SessionSummaryData,
   type TopSpeedsData,
   type WeekendSummary,
 } from '@/lib/api'
 
 const PRACTICE_CODES = ['FP1', 'FP2', 'FP3']
-const QUALI_CODES = ['Q', 'SQ']
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -48,20 +49,32 @@ export function WeekendPage() {
   const sessions = useApi<SessionInfo[]>(`${base}/sessions`)
   const sectors = useApi<SectorsData>(`${base}/sectors`)
   const topspeeds = useApi<TopSpeedsData>(`${base}/topspeeds`)
+  const sqSummary = useApi<SessionSummaryData>(`${base}/session-summary?session=SQ`)
   const qualiCharacter = useApi<QualiCharacterData>(`${base}/quali-character`)
+  const sprintPace = useApi<PaceData>(`${base}/pace?session=SPRINT`)
+  const sprintResults = useApi<ResultRow[]>(`${base}/results?session=SPRINT`)
   const pace = useApi<PaceData>(`${base}/pace`)
   const degradation = useApi<DegradationData>(`${base}/degradation`)
   const results = useApi<ResultRow[]>(`${base}/results`)
 
   const present = new Set(sessions.data?.map((s) => s.session_type) ?? [])
   const practiceHappened = PRACTICE_CODES.some((c) => present.has(c))
-  const qualiHappened = QUALI_CODES.some((c) => present.has(c))
+  const sqHappened = present.has('SQ')
+  const sprintHappened = present.has('SPRINT')
+  const qualiHappened = present.has('Q')
   const raceHappened = present.has('R')
   const sessionsLoaded = !sessions.loading
 
+  if (weekend.error || sessions.error) {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-16">
+        <p className="text-muted">API offline.</p>
+      </main>
+    )
+  }
+
   return (
     <main className="py-16">
-      {/* Narrower reading column: hero + the 3 insights. */}
       <div className="mx-auto max-w-5xl px-6">
         <BlurFade>
           <p className="kicker text-accent">
@@ -89,8 +102,6 @@ export function WeekendPage() {
         </section>
       </div>
 
-      {/* Wide column: every analysis block shares this same edge, so sections stay
-          aligned with each other as you scroll instead of jumping between widths. */}
       <div className="mx-auto max-w-[1312px] px-6">
         <section className="mt-20">
           <SectionTitle>Practice</SectionTitle>
@@ -106,12 +117,72 @@ export function WeekendPage() {
           )}
         </section>
 
+        {sqHappened && (
+          <section className="mt-20">
+            <SectionTitle>Sprint Qualifying</SectionTitle>
+            {!sessionsLoaded ? (
+              <p className="text-sm text-muted">Loading...</p>
+            ) : (
+              <div className="grid gap-6">
+                <BlurFade>
+                  {sqSummary.data?.sectors && <SectorBars data={sqSummary.data.sectors} />}
+                </BlurFade>
+                <BlurFade delay={0.06}>
+                  {sqSummary.data?.topspeeds && <TopSpeedBars data={sqSummary.data.topspeeds} />}
+                </BlurFade>
+                <BlurFade delay={0.1}>
+                  <div className="glass rounded-[--radius-panel] p-6">
+                    <h3 className="mb-4 font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+                      Sprint grid
+                    </h3>
+                    <SessionOrder rows={sqSummary.data?.order ?? []} />
+                  </div>
+                </BlurFade>
+              </div>
+            )}
+          </section>
+        )}
+
+        {sprintHappened && (
+          <section className="mt-20">
+            <SectionTitle>Sprint</SectionTitle>
+            {!sessionsLoaded ? (
+              <p className="text-sm text-muted">Loading...</p>
+            ) : (
+              <div className="grid gap-6">
+                <BlurFade>
+                  <PaceSpreadChart
+                    pace={
+                      sprintPace.data ?? {
+                        drivers: [],
+                        constructors: [],
+                        stop_counts: {},
+                        stop_count_spread: 0,
+                      }
+                    }
+                  />
+                </BlurFade>
+                <BlurFade delay={0.06}>
+                  <div className="glass rounded-[--radius-panel] p-6">
+                    <h3 className="mb-4 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
+                      Finishing order
+                    </h3>
+                    <Results rows={sprintResults.data ?? []} />
+                  </div>
+                </BlurFade>
+              </div>
+            )}
+          </section>
+        )}
+
         <section className="mt-20">
           <SectionTitle>Qualifying</SectionTitle>
           {!sessionsLoaded ? (
             <p className="text-sm text-muted">Loading...</p>
           ) : !qualiHappened ? (
-            <Upcoming>Qualifying hasn't run yet. The car-character comparison appears here once it has.</Upcoming>
+            <Upcoming>
+              Qualifying hasn't run yet. The car-character comparison appears here once it has.
+            </Upcoming>
           ) : (
             <BlurFade>{qualiCharacter.data && <QualiCharacterTable data={qualiCharacter.data} />}</BlurFade>
           )}
@@ -122,17 +193,23 @@ export function WeekendPage() {
           {!sessionsLoaded ? (
             <p className="text-sm text-muted">Loading...</p>
           ) : !raceHappened ? (
-            <Upcoming>Race day hasn't happened yet. Pace ranking, tyre degradation and the
-              finishing order appear here once it has.</Upcoming>
+            <Upcoming>
+              Race day hasn't happened yet. Pace ranking, tyre degradation and the finishing order appear here once
+              it has.
+            </Upcoming>
           ) : (
             <div className="grid gap-6">
               <BlurFade>
-                <PaceSpreadChart pace={pace.data ?? { drivers: [], constructors: [], stop_counts: {}, stop_count_spread: 0 }} />
+                <PaceSpreadChart
+                  pace={pace.data ?? { drivers: [], constructors: [], stop_counts: {}, stop_count_spread: 0 }}
+                />
               </BlurFade>
               <BlurFade delay={0.06}>{degradation.data && <DegradationChart data={degradation.data} />}</BlurFade>
               <BlurFade delay={0.1}>
                 <div className="glass rounded-[--radius-panel] p-6">
-                  <h2 className="mb-4 text-4xl font-semibold tracking-tight sm:text-5xl">Finishing order</h2>
+                  <h3 className="mb-4 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
+                    Finishing order
+                  </h3>
                   <Results rows={results.data ?? []} />
                 </div>
               </BlurFade>

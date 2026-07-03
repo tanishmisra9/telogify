@@ -17,6 +17,20 @@ export interface InsightItem {
   explanation_web: string
 }
 
+// Strongest insight of the most recent analysed weekend (landing live-insight block).
+export interface LatestInsight extends InsightItem {
+  year: number
+  round: number
+  event_name: string
+}
+
+// Next upcoming race for the landing countdown; null when the season is over / FastF1 is down.
+export interface NextRace {
+  event_name: string
+  round: number
+  date_utc: string
+}
+
 export interface BoxStats {
   mean: number
   median: number
@@ -51,6 +65,20 @@ export interface ResultRow {
   gap_label: string
   points: number
   strategy: string
+}
+
+export interface SessionOrderRow {
+  position: number | null
+  driver: string
+  constructor: string | null
+  gap_label: string
+}
+
+export interface SessionSummaryData {
+  session_type: string | null
+  sectors: SectorsData
+  topspeeds: TopSpeedsData
+  order: SessionOrderRow[]
 }
 
 export interface SessionInfo {
@@ -136,6 +164,41 @@ export interface DegradationData {
   reference_age_laps: number | null
   points: DegradationPoint[]
   fits: DegradationFit[]
+}
+
+export interface MetricAgg {
+  mean: number | null
+  spread: number | null
+  n: number
+}
+
+export interface TrendPoint {
+  round: number
+  value: number
+}
+
+export interface SeasonConstructorRow {
+  constructor: string
+  overall_rank: number | null
+  pace_gap: MetricAgg
+  quali_gap_pct: MetricAgg
+  top_speed_deficit_kmh: number | null
+  top_speed_deficit_mph: number | null
+  sector_dominance_count: number
+  tyre_deg_s_per_lap: number | null
+  trend: { pace: TrendPoint[]; quali: TrendPoint[] }
+  confidence: 'low' | 'med' | 'high'
+}
+
+export interface SeasonRound {
+  round: number
+  event_name: string
+}
+
+export interface SeasonSnapshot {
+  year: number
+  rounds: SeasonRound[]
+  constructors: SeasonConstructorRow[]
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
