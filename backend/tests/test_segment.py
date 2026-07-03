@@ -6,8 +6,6 @@ GOOD = dict(
     in_out_lap=False,
     track_status="1",
     rainfall=False,
-    track_temp=40.0,
-    median_track_temp=40.0,
 )
 
 
@@ -28,10 +26,8 @@ def test_excludes_in_out_inaccurate_deleted():
     assert not is_clean_lap(**{**GOOD, "deleted": True})
 
 
-def test_excludes_rain_and_temp_swing():
+def test_excludes_rain():
     assert not is_clean_lap(**{**GOOD, "rainfall": True})
-    assert not is_clean_lap(**{**GOOD, "track_temp": 50.0})  # 10C above median
-    assert is_clean_lap(**{**GOOD, "track_temp": 43.0})  # 3C within tolerance
 
 
 def test_corner_windows():

@@ -8,8 +8,6 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-# ponytail: track-temp deviation (C) that flags a non-representative lap. Tune knob.
-TEMP_SWING_C = 5.0
 # ponytail: half-width (m) of the per-corner distance window. Widen on long corners.
 CORNER_HALF_WINDOW_M = 75.0
 
@@ -27,27 +25,19 @@ def is_clean_lap(
     in_out_lap: bool,
     track_status: str,
     rainfall: bool,
-    track_temp: float | None,
-    median_track_temp: float | None,
 ) -> bool:
-    """A lap usable for telemetry comparison: green-flag, dry, in-rhythm, accurately timed."""
+    """A lap usable for telemetry comparison: green-flag, dry, in-rhythm, accurately timed.
+
+    No track-temp filter: temperature evolution is shared by every driver in a session, so it is
+    not a cross-driver comparability bias to correct, and a median +/-5C cut was demonstrably
+    dropping drivers' genuine fastest laps (e.g. Monaco Q: Stroll forced onto a lap 9.7s slower,
+    Bortoleto excluded entirely). Picking the fastest accurate/green/dry lap already yields a
+    representative lap.
+    """
     if not is_accurate or deleted or in_out_lap or rainfall:
         return False
     # TrackStatus '1' is all-clear for the whole lap; anything else means yellow/SC/VSC/red.
-    if str(track_status) != "1":
-        return False
-    if median_track_temp is not None and track_temp is not None:
-        if abs(track_temp - median_track_temp) > TEMP_SWING_C:
-            return False
-    return True
-
-
-def _f(value) -> float | None:
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return None if pd.isna(f) else f
+    return str(track_status) == "1"
 
 
 def select_clean_laps(session) -> "pd.DataFrame":
@@ -58,7 +48,6 @@ def select_clean_laps(session) -> "pd.DataFrame":
 
     weather = laps.get_weather_data().reset_index(drop=True)
     laps_reset = laps.reset_index(drop=True)
-    median_temp = _f(weather["TrackTemp"].median()) if "TrackTemp" in weather else None
 
     keep = []
     for i in range(len(laps_reset)):
@@ -72,8 +61,6 @@ def select_clean_laps(session) -> "pd.DataFrame":
                 in_out_lap=bool(in_out),
                 track_status=lap.get("TrackStatus", ""),
                 rainfall=bool(w.get("Rainfall", False)),
-                track_temp=_f(w.get("TrackTemp")),
-                median_track_temp=median_temp,
             )
         )
     return laps[pd.Series(keep, index=laps.index)]
