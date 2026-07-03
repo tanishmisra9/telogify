@@ -21,6 +21,7 @@ from telogify.analysis.attribution import (
     driver_confidence,
 )
 from telogify.analysis.race_pace import constructor_median_gaps
+from telogify.analysis.sessions import pick_session
 from telogify.models import ConstructorIndex, Session, Stint
 
 
@@ -70,7 +71,7 @@ def _race_stints_as_dicts(
     db: DBSession, sessions: list[Session], dc_map: dict[str, str]
 ) -> list[dict]:
     """Fetch all race stints and return as plain dicts for race_pace functions."""
-    race = next((s for s in sessions if s.session_type in ("R", "SPRINT")), None)
+    race = pick_session(sessions, ("R", "SPRINT"))
     if race is None:
         return []
     stints = db.exec(select(Stint).where(Stint.session_id == race.id)).all()

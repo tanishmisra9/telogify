@@ -1,9 +1,15 @@
 """Read endpoints for the weekend page (insights, pace, sectors, top speeds, qualifying
 car character, tyre degradation, finishing order, session progress), plus subscribe."""
 
+from datetime import datetime, timezone
+from functools import lru_cache
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
+
+from telogify.analysis.schedule import Event, pick_next_event
+from telogify.analysis.sessions import pick_session
 
 from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import REFERENCE_AGE_LAPS, fit_all_groups
@@ -19,6 +25,7 @@ from telogify.analysis.race_pace import (
     stop_count_spread,
 )
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
+from telogify.analysis.season import build_season_snapshot
 from telogify.ingest.results import (
     format_gap_label,
     format_total_time,
@@ -64,12 +71,17 @@ def _weekend(db: Session, year: int, round: int) -> RaceWeekend:
     return w
 
 
-def _race_session(db: Session, weekend_id: int) -> SessionRow | None:
+def _session_of(db: Session, weekend_id: int, session_type: str) -> SessionRow | None:
     return db.exec(
         select(SessionRow).where(
-            SessionRow.weekend_id == weekend_id, SessionRow.session_type == "R"
+            SessionRow.weekend_id == weekend_id, SessionRow.session_type == session_type
         )
     ).first()
+
+
+def _race_session(db: Session, weekend_id: int) -> SessionRow | None:
+    """Sunday race session (explicit R, not sprint)."""
+    return _session_of(db, weekend_id, "R")
 
 
 def _driver_constructor(db: Session, session_id: int) -> dict[str, str]:
@@ -107,6 +119,76 @@ def list_weekends(db: Session = Depends(get_session)):
         }
         for w in rows
     ]
+
+
+@router.get("/insights/latest")
+def latest_insight(db: Session = Depends(get_session)):
+    """Strongest insight (slot 1) of the most recent analysed weekend, for the landing page.
+    Returns null when no insights have been published yet."""
+    row = db.exec(
+        select(Insight, RaceWeekend)
+        .join(RaceWeekend, Insight.weekend_id == RaceWeekend.id)
+        .order_by(RaceWeekend.year.desc(), RaceWeekend.round.desc(), Insight.slot.asc())
+    ).first()
+    if row is None:
+        return None
+    ins, w = row
+    return {
+        "slot": ins.slot,
+        "header": ins.header,
+        "explanation_web": ins.explanation_web,
+        "year": w.year,
+        "round": w.round,
+        "event_name": w.event_name,
+    }
+
+
+@lru_cache(maxsize=4)
+def _schedule_events(year: int) -> tuple[Event, ...]:
+    """FastF1 season schedule mapped to Event rows (naive UTC dates). Cached per season;
+    returns () on any failure so the endpoint degrades to 'no countdown'. The pick of which
+    event is next is computed per-request against the current time, so caching the (stable)
+    schedule here is safe."""
+    try:
+        import fastf1
+        import pandas as pd
+
+        sched = fastf1.get_event_schedule(year, include_testing=False)
+    except Exception:
+        return ()
+
+    events: list[Event] = []
+    for _, r in sched.iterrows():
+        # Prefer the race-session start; fall back to the event date.
+        raw = r.get("Session5DateUtc")
+        if raw is None or pd.isna(raw):
+            raw = r.get("Session5Date")
+        if raw is None or pd.isna(raw):
+            raw = r.get("EventDate")
+        if raw is None or pd.isna(raw):
+            continue
+        dt = pd.Timestamp(raw).to_pydatetime()
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        events.append(
+            Event(round=int(r.get("RoundNumber") or 0), name=str(r.get("EventName") or ""), date=dt)
+        )
+    return tuple(events)
+
+
+@router.get("/next-race")
+def next_race():
+    """Next upcoming F1 event for the landing-page countdown. Reads FastF1's schedule live
+    (disk-cached by FastF1, and per-season in-process). Returns null when the season is over
+    and next year's schedule isn't out, or when FastF1 is unavailable, so the frontend simply
+    hides the countdown."""
+    now = datetime.utcnow()
+    ev = pick_next_event(list(_schedule_events(now.year)), now)
+    if ev is None:
+        ev = pick_next_event(list(_schedule_events(now.year + 1)), now)
+    if ev is None:
+        return None
+    return {"event_name": ev.name, "round": ev.round, "date_utc": ev.date.isoformat() + "Z"}
 
 
 @router.get("/weekends/{year}/{round}")
@@ -412,6 +494,17 @@ def weekend_results(year: int, round: int, db: Session = Depends(get_session)):
         }
         for r in rows
     ]
+
+
+@router.get("/season/{year}")
+def season_snapshot(year: int, db: Session = Depends(get_session)):
+    """Season-long rollup, one entry per constructor: overall rank (0.6 race / 0.4 quali),
+    per-metric season means with spread, round-by-round trend, and a thin-data confidence
+    flag. Every figure aggregates numbers already computed at the weekend level."""
+    snapshot = build_season_snapshot(year, db)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="no weekends for year")
+    return snapshot
 
 
 @router.post("/subscribe")
