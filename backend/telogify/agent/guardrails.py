@@ -49,6 +49,12 @@ _BLOCKLIST = [
     "row two",
     "second row",
     "third row",
+    # sprint-weekend fabrications (no season or double-win narrative)
+    "clean sweep",
+    "won the weekend",
+    "double win",
+    "won both",
+    "sprint double",
 ]
 
 _NUMBER_WORD = (
@@ -63,6 +69,8 @@ _REGEX_BLOCKLIST = [
     re.compile(rf"\bafter (?:just )?(?:{_NUMBER_WORD}) laps?\b"),
     re.compile(r"\bcompleted \d+ laps\b"),
     re.compile(r"\bretired after \d+\b"),
+    re.compile(r"\bpole to flag in the sprint\b"),
+    re.compile(r"\bled from pole in the sprint\b"),
 ]
 
 

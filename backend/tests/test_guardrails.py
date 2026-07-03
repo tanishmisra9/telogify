@@ -22,6 +22,15 @@ def test_flags_retirement_lap_numbers():
     assert "after 10 laps" in flag_unsupported_claims("he retired after 10 laps")
 
 
+def test_flags_sprint_weekend_fabrications():
+    assert "clean sweep" in flag_unsupported_claims("Verstappen took a clean sweep of the weekend")
+    assert "won the weekend" in flag_unsupported_claims("Norris won the weekend with pace to spare")
+    assert "double win" in flag_unsupported_claims("a double win for McLaren")
+    assert "pole to flag in the sprint" in flag_unsupported_claims(
+        "He led pole to flag in the sprint before finishing third in the race"
+    )
+
+
 def test_clean_prose_is_not_flagged():
     text = (
         "George Russell converted pole into a controlled win, finishing 1.6 seconds clear. "

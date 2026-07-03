@@ -189,14 +189,14 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
             )
 
     @tool
-    def get_stint_summary(driver: str) -> str:
-        """All race stints for a driver: stint number, compound, lap range, average pace (s)."""
+    def get_stint_summary(driver: str, session_type: str = "R") -> str:
+        """All stints for a driver in a session (R or SPRINT): stint number, compound, lap range, average pace (s)."""
         with sf() as db:
             wid = _weekend_id(db, year, round)
-            race_id = _session_id(db, wid, "R")
+            session_id = _session_id(db, wid, session_type)
             rows = db.exec(
                 select(Stint)
-                .where(Stint.session_id == race_id, Stint.driver == driver)
+                .where(Stint.session_id == session_id, Stint.driver == driver)
                 .order_by(Stint.stint_number)
             ).all()
             return json.dumps(
