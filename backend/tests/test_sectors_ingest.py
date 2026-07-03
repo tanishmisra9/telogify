@@ -17,6 +17,16 @@ def test_best_sectors_skips_missing_sector_times():
     assert best_sectors(rows) == []
 
 
+def test_best_sectors_excludes_deleted_laps():
+    # The deleted lap holds a faster sector 1 (track-limits), but must not win.
+    rows = [
+        {"driver": "VER", "sector1_s": 30.0, "sector2_s": None, "sector3_s": None},
+        {"driver": "VER", "sector1_s": 29.0, "sector2_s": None, "sector3_s": None, "deleted": True},
+    ]
+    out = {(b.driver, b.sector): b.best_time_s for b in best_sectors(rows)}
+    assert out[("VER", 1)] == 30.0
+
+
 def test_best_sectors_separates_drivers():
     rows = [
         {"driver": "VER", "sector1_s": 30.0, "sector2_s": None, "sector3_s": None},

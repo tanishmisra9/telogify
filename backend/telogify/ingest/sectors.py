@@ -2,6 +2,8 @@
 
 Each driver's best sector 1/2/3 time in a session, straight from FastF1's official
 `Sector1Time`/`Sector2Time`/`Sector3Time` lap columns (no telemetry projection needed).
+Steward-deleted laps are excluded: a track-limits deletion leaves an illegally fast sector
+that would otherwise win as the driver's best.
 Stored per session so the analysis layer can decide which sessions to combine (all
 practice sessions for the practice "best sectors" block, one Q/SQ session for the
 qualifying sector-dominance read) and can always say which session a best came from.
@@ -29,13 +31,18 @@ class DriverSectorBest:
 
 
 def best_sectors(rows: list[dict]) -> list[DriverSectorBest]:
-    """rows: dicts with driver, sector1_s, sector2_s, sector3_s (any may be None).
+    """rows: dicts with driver, sector1_s, sector2_s, sector3_s (any may be None), and an
+    optional `deleted` flag.
 
-    Returns each driver's best (minimum) time per sector, dropping sectors with no
-    valid time. One row per (driver, sector) that has at least one value.
+    Returns each driver's best (minimum) time per sector, dropping sectors with no valid
+    time. Steward-deleted laps are skipped: a lap deleted for track limits has an illegally
+    fast sector that would otherwise win as the "best". One row per (driver, sector) that has
+    at least one value.
     """
     best: dict[tuple[str, int], float] = {}
     for row in rows:
+        if row.get("deleted"):
+            continue
         driver = row["driver"]
         for sector, key in ((1, "sector1_s"), (2, "sector2_s"), (3, "sector3_s")):
             t = row.get(key)
@@ -66,6 +73,7 @@ def extract_sector_bests(session) -> list[DriverSectorBest]:
             "sector1_s": _sector_seconds(lap, "Sector1Time"),
             "sector2_s": _sector_seconds(lap, "Sector2Time"),
             "sector3_s": _sector_seconds(lap, "Sector3Time"),
+            "deleted": bool(pd.notna(getattr(lap, "Deleted", False)) and getattr(lap, "Deleted", False)),
         }
         for lap in laps.itertuples()
     ]
