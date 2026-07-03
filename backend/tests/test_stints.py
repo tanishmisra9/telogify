@@ -1,7 +1,7 @@
 from telogify.ingest.stints import summarize_stint
 
 
-def _lap(n, t, *, out=False, inn=False, acc=True, compound="MEDIUM", track_status="1", tyre_age=None):
+def _lap(n, t, *, out=False, inn=False, acc=True, deleted=False, compound="MEDIUM", track_status="1", tyre_age=None):
     return dict(
         lap_number=n,
         lap_time_s=t,
@@ -9,6 +9,7 @@ def _lap(n, t, *, out=False, inn=False, acc=True, compound="MEDIUM", track_statu
         is_outlap=out,
         is_inlap=inn,
         is_accurate=acc,
+        deleted=deleted,
         track_status=track_status,
         tyre_age=tyre_age,
     )
@@ -30,6 +31,18 @@ def test_summarize_stint_excludes_in_out_and_inaccurate():
     assert s.lap_start == 5 and s.lap_end == 10  # full range retained
     assert s.lap_times == [90.0, 90.5, 91.0]
     assert abs(s.avg_pace - 90.5) < 1e-9
+
+
+def test_summarize_stint_excludes_deleted_laps():
+    # A steward-deleted lap (track limits) is IsAccurate + green but illegally fast: dropped.
+    laps = [
+        _lap(1, 90.0),
+        _lap(2, 88.0, deleted=True),  # track-limits deletion, excluded despite fast time
+        _lap(3, 90.5),
+    ]
+    s = summarize_stint(1, laps)
+    assert s.lap_times == [90.0, 90.5]
+    assert abs(s.avg_pace - 90.25) < 1e-9
 
 
 def test_summarize_stint_all_excluded_gives_none_pace():

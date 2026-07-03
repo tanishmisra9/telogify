@@ -82,6 +82,37 @@ def test_insights_fails_loud_after_max_attempts(db_session, monkeypatch):
         pipeline._insights({"year": 2025, "round": 13, "weekend_id": 999}, runner)
 
 
+def test_regen_insights_recomputes_candidates_and_skips_ingest(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import RaceWeekend
+
+    wk = RaceWeekend(year=2025, round=14, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    called = []
+    monkeypatch.setattr(pipeline, "_weekend_id", lambda db, y, r: wk.id)
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: called.append(wid))
+    # ingest/analyze must NOT run
+    monkeypatch.setattr(pipeline, "_ingest", lambda s: called.append("ingest"))
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: called.append("analyze"))
+
+    state = pipeline.regen_insights(2025, 14, agent_runner=lambda y, r, feedback=None: _fake_messages(_GOOD_INSIGHTS))
+    assert state["insight_count"] == 3
+    assert called == [wk.id]  # candidates recomputed, ingest/analyze skipped
+
+
+def test_regen_insights_errors_without_ingested_weekend(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    monkeypatch.setattr(pipeline, "_weekend_id", lambda db, y, r: None)
+
+    with pytest.raises(RuntimeError, match="Run run-weekend first"):
+        pipeline.regen_insights(2025, 99, agent_runner=lambda *a, **k: None)
+
+
 def test_pipeline_runs_phases_in_order(monkeypatch):
     calls = []
     monkeypatch.setattr(pipeline, "_ingest", lambda s: calls.append("ingest") or {"weekend_id": 1})

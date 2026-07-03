@@ -25,7 +25,7 @@ const PRACTICE_CODES = ['FP1', 'FP2', 'FP3']
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-8 border-b-2 border-ink pb-3">
-      <h2 className="font-display text-5xl leading-[0.95] tracking-tight sm:text-7xl">{children}</h2>
+      <h2 className="font-display text-[2.7rem] leading-[0.95] tracking-tight sm:text-[4.05rem]">{children}</h2>
     </div>
   )
 }
@@ -75,7 +75,7 @@ export function WeekendPage() {
           <p className="kicker text-accent">
             {year} · Round {round}
           </p>
-          <h1 className="mt-3 font-display text-6xl leading-[0.95] tracking-tight sm:text-8xl">
+          <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
             {weekend.data?.event_name ?? 'Weekend'}
           </h1>
           {weekend.data && <p className="mt-3 text-lg text-muted">{weekend.data.circuit_name}</p>}
@@ -166,7 +166,7 @@ export function WeekendPage() {
               <BlurFade delay={0.06}>{degradation.data && <DegradationChart data={degradation.data} />}</BlurFade>
               <BlurFade delay={0.1}>
                 <div className="glass rounded-[--radius-panel] p-6">
-                  <h3 className="mb-4 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
+                  <h3 className="mb-4 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
                     Finishing order
                   </h3>
                   <Results rows={results.data ?? []} />

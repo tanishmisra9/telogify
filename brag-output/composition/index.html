@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Space+Grotesk:wght@300..700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #fffdd0;
+        --surface: #fffef0;
+        --ink: #241e16;        /* warm near-black */
+        --muted: #6e655a;
+        --accent: #e10600;     /* F1 hot red */
+        --shadow: #241e16;
+        --team: #1868db;       /* neutral team rule (not the accent red) */
+        --font-display: "Instrument Sans", "Space Grotesk", system-ui, sans-serif;
+        --font-sans: "Space Grotesk", system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1920px; height: 1080px; overflow: hidden;
+        background: var(--bg);
+        font-family: var(--font-sans);
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+
+      .fill { position: absolute; inset: 0; }
+      .center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+      /* Persistent cream paper + faint fractal grain (from the real app) */
+      #paper { background: var(--bg); }
+      #grain {
+        opacity: 0.05; pointer-events: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+
+      .kicker {
+        font-family: var(--font-mono); font-size: 22px;
+        letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent);
+      }
+      .display { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.012em; line-height: 1.04; }
+      .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+      .accent { color: var(--accent); }
+
+      /* ---- Scene 1 : hook ---- */
+      #s1 { padding: 0 120px; }
+      #s1 h1 { font-size: 168px; text-align: center; }
+      #s1-noise { display: inline-block; }
+      .s1-mark {
+        position: absolute; font-family: var(--font-mono); font-size: 26px;
+        color: var(--muted); opacity: 0.16; white-space: nowrap;
+      }
+
+      /* ---- Scene 2 : problem ---- */
+      #s2 { gap: 40px; }
+      #s2 .verdict { display: flex; align-items: center; gap: 28px; }
+      #s2 .rule { width: 12px; height: 118px; background: var(--team); }
+      #s2 .pos { font-family: var(--font-display); font-weight: 600; font-size: 128px; line-height: 1; }
+      #s2 .who { font-family: var(--font-mono); font-size: 24px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--muted); }
+      #s2 .over { font-family: var(--font-display); font-weight: 500; font-size: 72px; text-align: center; }
+
+      /* ---- Scene 3 : insight card ---- */
+      #s3 { padding: 0 140px; }
+      .card {
+        width: 100%; max-width: 1360px; background: var(--surface);
+        border: 1.5px solid var(--ink); box-shadow: 12px 12px 0 var(--shadow);
+        border-radius: 2px; padding: 64px 72px;
+        display: flex; gap: 48px; align-items: flex-start;
+      }
+      .card .slot { font-family: var(--font-display); font-weight: 600; font-size: 132px; line-height: 0.9; color: var(--accent); }
+      .card .body { flex: 1; min-width: 0; }
+      .card h2 { font-family: var(--font-display); font-weight: 600; font-size: 62px; line-height: 1.04; letter-spacing: -0.01em; }
+      .card p { margin-top: 28px; font-size: 34px; line-height: 1.5; color: var(--ink); }
+      .card .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+
+      /* ---- Scene 4 : proof / trace ---- */
+      #s4 { gap: 6px; }
+      #s4 .chip {
+        font-family: var(--font-mono); font-size: 40px; font-weight: 500; color: var(--accent);
+        border: 1.5px solid var(--ink); background: var(--surface);
+        box-shadow: 5px 5px 0 var(--shadow); padding: 10px 22px; border-radius: 2px;
+      }
+      #s4 .trace { display: block; width: 2px; height: 150px; background: var(--ink); transform-origin: top center; margin: 22px 0; }
+      #s4 .row {
+        font-family: var(--font-mono); font-size: 30px; color: var(--muted);
+        border: 1.5px solid var(--ink); background: var(--surface); padding: 14px 26px; border-radius: 2px;
+        letter-spacing: 0.02em;
+      }
+      #s4 .row b { color: var(--ink); font-weight: 600; }
+      #s4 .proof { margin-top: 54px; font-family: var(--font-display); font-weight: 500; font-size: 58px; text-align: center; line-height: 1.12; }
+      #s4 .proof .est { color: var(--muted); }
+
+      /* ---- Scene 5 : differentiator ---- */
+      #s5 h1 { font-family: var(--font-display); font-weight: 500; font-size: 132px; text-align: center; letter-spacing: -0.012em; }
+
+      /* ---- Scene 6 : outro ---- */
+      #s6 { gap: 34px; }
+      #s6 .tag { font-family: var(--font-display); font-weight: 500; font-size: 42px; color: var(--muted); text-align: center; max-width: 1100px; }
+      #s6 .mark { font-family: var(--font-display); font-weight: 600; font-size: 176px; letter-spacing: -0.02em; }
+      #s6 .ctas { display: flex; gap: 28px; margin-top: 18px; }
+      #s6 .btn {
+        font-family: var(--font-display); font-weight: 500; font-size: 40px;
+        border: 1.5px solid var(--ink); box-shadow: 5px 5px 0 var(--shadow);
+        padding: 14px 40px; border-radius: 2px;
+      }
+      #s6 .btn.primary { background: var(--accent); color: #fffdf3; }
+      #s6 .btn.ghost { background: var(--surface); color: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="20"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Persistent paper + grain (full-bleed children, never on the root itself) -->
+      <div id="paper" class="fill clip" data-start="0" data-duration="20" data-track-index="0"></div>
+      <div id="grain" class="fill clip" data-start="0" data-duration="20" data-track-index="1"></div>
+
+      <!-- Scene 1 : hook -->
+      <section id="s1" class="fill center clip" data-start="0" data-duration="3.4" data-track-index="2">
+        <span class="s1-mark" style="left:14%;top:20%">0.041</span>
+        <span class="s1-mark" style="left:78%;top:16%">+12</span>
+        <span class="s1-mark" style="left:26%;top:70%">1:14.238</span>
+        <span class="s1-mark" style="left:66%;top:74%">329</span>
+        <span class="s1-mark" style="left:9%;top:48%">&#916;0.3</span>
+        <span class="s1-mark" style="left:85%;top:52%">P11</span>
+        <span class="s1-mark" style="left:40%;top:12%">-0.7</span>
+        <span class="s1-mark" style="left:55%;top:86%">DRS</span>
+        <span class="s1-mark" style="left:20%;top:34%">312</span>
+        <span class="s1-mark" style="left:72%;top:38%">1.994s</span>
+        <span class="s1-mark" style="left:33%;top:88%">stint 2</span>
+        <span class="s1-mark" style="left:88%;top:82%">+0.18</span>
+        <span class="s1-mark" style="left:6%;top:74%">lap 34</span>
+        <span class="s1-mark" style="left:48%;top:26%">95%</span>
+        <h1 class="display">Every weekend,<br />cut the <span id="s1-noise" class="accent">noise</span>.</h1>
+      </section>
+
+      <!-- Scene 2 : problem framing -->
+      <section id="s2" class="fill center clip" data-start="3" data-duration="3.4" data-track-index="3">
+        <span class="kicker">Latest verdict</span>
+        <div class="verdict">
+          <span class="pos">P1</span>
+          <span class="rule"></span>
+          <span class="who">Race winner</span>
+        </div>
+        <p class="over">The result tells you who won.</p>
+      </section>
+
+      <!-- Scene 3 : insight card (centerpiece) -->
+      <section id="s3" class="fill center clip" data-start="6" data-duration="5.4" data-track-index="4">
+        <div class="card">
+          <span class="slot">01</span>
+          <div class="body">
+            <h2>The straight-line deficit cost the podium, not the driver.</h2>
+            <p>
+              Ferrari were <span id="s3-n1" class="num">12 km/h</span> down through the DRS zones,
+              then gave up another <span id="s3-n2" class="num">0.3 seconds a lap</span> to
+              degradation on the hard tyre.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 4 : proof / trace -->
+      <section id="s4" class="fill center clip" data-start="11" data-duration="3.9" data-track-index="5">
+        <span class="chip mono">12 km/h</span>
+        <span class="trace"></span>
+        <span class="row">DRS zone 3 &middot; <b>312</b> vs <b>324 km/h</b> &middot; lap 34</span>
+        <p class="proof">Every figure traced to official timing data.<br /><span class="est">Nothing estimated.</span></p>
+      </section>
+
+      <!-- Scene 5 : differentiator -->
+      <section id="s5" class="fill center clip" data-start="14.5" data-duration="3" data-track-index="6">
+        <h1><span class="accent">Zero</span> fabricated numbers.</h1>
+      </section>
+
+      <!-- Scene 6 : outro -->
+      <section id="s6" class="fill center clip" data-start="17" data-duration="3" data-track-index="7">
+        <p class="tag">The result tells you who won. The number tells you why.</p>
+        <span class="mark">Telogify</span>
+        <div class="ctas">
+          <span class="btn primary">Browse</span>
+          <span class="btn ghost">Subscribe</span>
+        </div>
+      </section>
+
+      <!-- Audio (direct children of root; framework owns playback) -->
+      <audio id="a-music"     data-start="0"    data-duration="20"  data-track-index="10" data-volume="0.26" src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"></audio>
+      <audio id="a-noise"     data-start="0.95" data-duration="0.6" data-track-index="11" data-volume="0.5"  src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="a-cardland"  data-start="6.52" data-duration="0.7" data-track-index="12" data-volume="0.62" src="assets/sfx/impact/impactWood_light_001.ogg"></audio>
+      <audio id="a-num1"      data-start="8.19" data-duration="0.5" data-track-index="13" data-volume="0.45" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="a-num2"      data-start="8.74" data-duration="0.5" data-track-index="14" data-volume="0.45" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="a-trace"     data-start="12.2" data-duration="0.5" data-track-index="15" data-volume="0.4"  src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="a-zero"      data-start="15.0" data-duration="0.6" data-track-index="16" data-volume="0.5"  src="assets/sfx/impact/impactSoft_medium_001.ogg"></audio>
+      <audio id="a-wordmark"  data-start="17.47" data-duration="1.2" data-track-index="17" data-volume="0.5" src="assets/sfx/interface/bong_001.ogg"></audio>
+      <audio id="a-btn1"      data-start="18.02" data-duration="0.6" data-track-index="18" data-volume="0.4" src="assets/sfx/impact/impactWood_light_001.ogg"></audio>
+      <audio id="a-btn2"      data-start="18.56" data-duration="0.6" data-track-index="19" data-volume="0.4" src="assets/sfx/impact/impactWood_light_001.ogg"></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const OUT = { opacity: 0, duration: 0.3, ease: "power2.in" };
+      const RED = "#e10600";
+
+      // ---- Scene 1 : hook (0 - 3.4) ----
+      tl.fromTo("#s1", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 0);
+      tl.from("#s1 h1", { yPercent: 22, opacity: 0, duration: 0.6, ease: "power3.out" }, 0.15);
+      // the noise clears as the line settles
+      tl.to(".s1-mark", { opacity: 0, y: -16, duration: 0.9, stagger: { each: 0.02 }, ease: "power2.out" }, 0.35);
+      // "noise" reddens on a beat
+      tl.set("#s1-noise", { color: RED }, 0.98); // beat-grid: 1.09
+      tl.fromTo("#s1-noise", { scale: 1 }, { scale: 1.07, duration: 0.16, yoyo: true, repeat: 1, ease: "power2.out" }, 0.9);
+      tl.to("#s1", OUT, 3.1);
+
+      // ---- Scene 2 : problem (3.0 - 6.4) ----
+      tl.fromTo("#s2", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 3.0);
+      tl.from("#s2 .kicker", { y: -12, opacity: 0, duration: 0.4, ease: "power3.out" }, 3.35);
+      tl.from("#s2 .verdict", { y: 26, opacity: 0, duration: 0.5, ease: "power3.out" }, 3.55);
+      tl.from("#s2 .rule", { scaleY: 0, transformOrigin: "top center", duration: 0.45, ease: "power3.out" }, 3.7);
+      tl.from("#s2 .over", { y: 22, opacity: 0, duration: 0.5, ease: "power3.out" }, 3.9);
+      tl.to("#s2", OUT, 6.1);
+
+      // ---- Scene 3 : insight card (6.0 - 11.4) ----
+      tl.fromTo("#s3", { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, 6.0);
+      // beat-locked: 6.56 — the card lands with its hard offset shadow
+      tl.from(".card", { y: 72, opacity: 0, scale: 0.975, transformOrigin: "center", duration: 0.55, ease: "power3.out" }, 6.56);
+      tl.from(".card .slot", { x: -22, opacity: 0, duration: 0.45, ease: "power3.out" }, 6.72);
+      tl.from(".card h2", { y: 18, opacity: 0, duration: 0.5, ease: "power3.out" }, 6.86);
+      tl.from(".card p", { opacity: 0, duration: 0.5, ease: "power2.out" }, 7.15);
+      // beat-grid: number ticks at 8.19 then strong beat 8.74
+      tl.set("#s3-n1", { color: RED }, 8.19);
+      tl.fromTo("#s3-n1", { scale: 1 }, { scale: 1.08, duration: 0.16, yoyo: true, repeat: 1, ease: "power2.out" }, 8.11);
+      tl.set("#s3-n2", { color: RED }, 8.74);
+      tl.fromTo("#s3-n2", { scale: 1 }, { scale: 1.08, duration: 0.16, yoyo: true, repeat: 1, ease: "power2.out" }, 8.66);
+      tl.to("#s3", OUT, 11.1);
+
+      // ---- Scene 4 : proof / trace (11.0 - 14.9) ----
+      tl.fromTo("#s4", { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, 11.0);
+      tl.from("#s4 .chip", { y: -14, opacity: 0, duration: 0.45, ease: "power3.out" }, 11.4);
+      tl.from("#s4 .trace", { scaleY: 0, duration: 0.5, ease: "power2.inOut" }, 12.2); // draw the trace
+      tl.from("#s4 .row", { y: 14, opacity: 0, duration: 0.5, ease: "power3.out" }, 12.75);
+      tl.from("#s4 .proof", { y: 18, opacity: 0, duration: 0.55, ease: "power3.out" }, 11.55);
+      tl.to("#s4", OUT, 14.6);
+
+      // ---- Scene 5 : differentiator (14.5 - 17.5) ----
+      tl.fromTo("#s5", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 14.5);
+      tl.from("#s5 h1", { y: 26, opacity: 0, duration: 0.55, ease: "power3.out" }, 15.0);
+      tl.to("#s5", OUT, 17.2);
+
+      // ---- Scene 6 : outro (17.0 - 20.0) ----
+      tl.fromTo("#s6", { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, 17.0);
+      tl.from("#s6 .tag", { opacity: 0, y: 14, duration: 0.5, ease: "power2.out" }, 17.1);
+      // beat-locked: 17.47 (strongest cue in window) — the wordmark lands
+      tl.from("#s6 .mark", { y: 32, opacity: 0, scale: 0.965, transformOrigin: "center", duration: 0.55, ease: "power3.out" }, 17.47);
+      // beat-grid: buttons set in on 18.02 and 18.56
+      tl.from("#s6 .btn.primary", { y: 18, opacity: 0, duration: 0.4, ease: "power3.out" }, 18.02);
+      tl.from("#s6 .btn.ghost", { y: 18, opacity: 0, duration: 0.4, ease: "power3.out" }, 18.56);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

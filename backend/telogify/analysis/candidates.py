@@ -2,8 +2,10 @@
 
 Mine signals across all sessions, score each by robustness = normalized(|magnitude|)
 * confidence (normalized PER signal type so a corner delta and a straight delta are
-comparable), then correlate related single-session signals into stronger combined
-candidates before ranking. The agent only ever sees this ranked, robustness-sorted list.
+comparable), discount findings that are readable straight from the results table, then
+fuse every constructor's signals that span multiple data channels into one cross-channel
+candidate that outranks any single-channel signal. The agent only ever sees this ranked,
+robustness-sorted list.
 
 ponytail: signal types cover the brief's required set. Add more types here, the
 scoring/correlation/ranking stays unchanged.
@@ -20,12 +22,14 @@ from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import fit_all_groups
 from telogify.analysis.quali_character import fastest_qualifier_per_constructor
 from telogify.analysis.race_pace import constructor_median_gaps
+from telogify.analysis.season import build_season_snapshot
 from telogify.analysis.sectors import best_across_sessions
 from telogify.analysis.sessions import pick_session
 from telogify.models import (
     Attribution,
     CandidateInsight,
     QualiCharacter,
+    RaceWeekend,
     SectorBest,
     Session,
     SessionResult,
@@ -36,6 +40,15 @@ from telogify.models import (
 POSITION_SWING_MIN = 2  # only notable grid-to-finish swings become signals
 REAL_STRAIGHT_KMH = 300.0  # a zone only counts as a real top-speed straight if the field tops this
 PRACTICE_SESSIONS = ("FP1", "FP2", "FP3")
+# Findings fully readable from the finishing/grid table (position swings) are obvious to
+# anyone who watched the race; halve their standalone score so they only reach the top by
+# fusing with a telemetry channel that explains them (see correlate).
+OBVIOUS_CATEGORIES = {"result"}
+OBVIOUSNESS_DISCOUNT = 0.5
+# A team that finished exactly where its season-long pace says it should has no story worth
+# telling ("backmarker is slow"); damp all its signals toward this floor. Over- and
+# under-deliverers (finished far from their expected order) keep near-full strength.
+EXPECTATION_FLOOR = 0.15
 
 
 @dataclass
@@ -54,8 +67,28 @@ class Signal:
 # --- pure scoring / correlation / ranking ----------------------------------
 
 
-def normalize_and_score(signals: list[Signal]) -> list[Signal]:
-    """Set robustness = (|magnitude| / max|magnitude| within type) * confidence."""
+def expectation_factors(
+    expected_rank: dict[str, int], actual_rank: dict[str, int]
+) -> dict[str, float]:
+    """Per-constructor damping factor in [EXPECTATION_FLOOR, 1.0] from how far a team's actual
+    finishing order sits from where its season pace ranks it. |delta| alone captures every
+    genre: a big gap either way (over- or under-delivery) stays near 1.0; finishing to
+    expectation lands at the floor. A team missing from either ordering is left out (the
+    caller treats an absent subject as neutral 1.0)."""
+    common = set(expected_rank) & set(actual_rank)
+    span = max(len(actual_rank) - 1, 1)  # widest possible |delta| across the ranked field
+    out: dict[str, float] = {}
+    for c in common:
+        delta = abs(expected_rank[c] - actual_rank[c])
+        out[c] = EXPECTATION_FLOOR + (1 - EXPECTATION_FLOOR) * min(1.0, delta / span)
+    return out
+
+
+def normalize_and_score(
+    signals: list[Signal], expectation_factor: dict[str, float] | None = None
+) -> list[Signal]:
+    """Set robustness = (|magnitude| / max|magnitude| within type) * confidence, discounted for
+    obvious findings and damped by each subject's expectation factor (absent subject -> 1.0)."""
     max_abs: dict[str, float] = defaultdict(float)
     for s in signals:
         max_abs[s.signal_type] = max(max_abs[s.signal_type], abs(s.magnitude))
@@ -63,6 +96,10 @@ def normalize_and_score(signals: list[Signal]) -> list[Signal]:
         peak = max_abs[s.signal_type]
         norm = abs(s.magnitude) / peak if peak > 0 else 0.0
         s.robustness = norm * s.confidence
+        if s.category in OBVIOUS_CATEGORIES:
+            s.robustness *= OBVIOUSNESS_DISCOUNT
+        if expectation_factor is not None:
+            s.robustness *= expectation_factor.get(s.subject, 1.0)
     return signals
 
 
@@ -85,22 +122,28 @@ def _merge(parts: list[Signal]) -> Signal:
 
 
 def correlate(signals: list[Signal]) -> list[Signal]:
-    """Merge a constructor's straight-line deficit with its race position loss."""
+    """Fuse every constructor's signals that span 2+ data channels into one cross-channel
+    candidate: a finding built from several channels (e.g. a qualifying top-speed deficit
+    AND a sector weakness AND a race position lost) sums the robustness of its strongest
+    signal per channel, so the more channels point the same way the higher it ranks. This
+    is the cross-channel bonus, and it is also how an obvious position swing earns a top
+    slot: only by pairing with a telemetry channel that explains it. Single-channel
+    subjects pass through unchanged."""
     by_subject: dict[str, list[Signal]] = defaultdict(list)
     for s in signals:
         by_subject[s.subject].append(s)
 
-    merged_parts: set[int] = set()
     out: list[Signal] = []
     for group in by_subject.values():
-        straights = [s for s in group if s.signal_type == "straight_delta"]
-        swings = [s for s in group if s.signal_type == "position_swing"]
-        if straights and swings:
-            parts = [max(straights, key=lambda s: s.robustness), max(swings, key=lambda s: s.robustness)]
-            out.append(_merge(parts))
-            merged_parts.update(id(p) for p in parts)
-
-    out.extend(s for s in signals if id(s) not in merged_parts)
+        best_per_channel: dict[str, Signal] = {}
+        for s in group:
+            cur = best_per_channel.get(s.category)
+            if cur is None or s.robustness > cur.robustness:
+                best_per_channel[s.category] = s
+        if len(best_per_channel) >= 2:
+            out.append(_merge(list(best_per_channel.values())))
+        else:
+            out.extend(group)  # one channel only: nothing to cross-reference
     return out
 
 
@@ -540,6 +583,39 @@ def _mine_sprint_vs_race_pace(db, sessions, dc_map) -> list[Signal]:
     return out
 
 
+def _expected_ranks(weekend_id: int, db: DBSession) -> dict[str, int]:
+    """Constructor -> season pace+quali rank (1 = best car), from the season snapshot."""
+    weekend = db.get(RaceWeekend, weekend_id)
+    if weekend is None:
+        return {}
+    # ponytail: snapshot spans every ingested round of the year, so re-running an early round
+    # with later rounds present leaks their pace into "expected"; add a max_round arg if backfilling.
+    snapshot = build_season_snapshot(weekend.year, db)
+    if snapshot is None:
+        return {}
+    return {
+        r["constructor"]: r["overall_rank"]
+        for r in snapshot["constructors"]
+        if r.get("overall_rank") is not None
+    }
+
+
+def _actual_ranks(sessions: list[Session], db: DBSession) -> dict[str, int]:
+    """Constructor -> this weekend's finishing rank (1 = best), by each team's best race finish."""
+    race = pick_session(sessions, ("R",))
+    if race is None:
+        return {}
+    best: dict[str, int] = {}
+    for r in db.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all():
+        if r.position is None or r.constructor is None:
+            continue
+        cur = best.get(r.constructor)
+        if cur is None or r.position < cur:
+            best[r.constructor] = r.position
+    ordered = sorted(best, key=lambda c: best[c])
+    return {c: i + 1 for i, c in enumerate(ordered)}
+
+
 def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
     sessions = db.exec(select(Session).where(Session.weekend_id == weekend_id)).all()
     dc_map = _driver_constructor_map(db, [s.id for s in sessions])
@@ -554,7 +630,10 @@ def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
         + _mine_degradation(db, sessions, dc_map)
         + _mine_sprint_vs_race_pace(db, sessions, dc_map)
     )
-    normalize_and_score(signals)
+    factors = expectation_factors(
+        _expected_ranks(weekend_id, db), _actual_ranks(sessions, db)
+    )
+    normalize_and_score(signals, factors)
     ranked = rank(correlate(signals))
 
     db.exec(delete(CandidateInsight).where(CandidateInsight.weekend_id == weekend_id))

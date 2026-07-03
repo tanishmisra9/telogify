@@ -12,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from sqlmodel import Session
 
 from telogify.agent.graph import build_agent
+from telogify.agent.tools import _weekend_id
 from telogify.agent.guardrails import flag_unsupported_claims
 from telogify.agent.insights import _content_text, extract_trace, parse_insights, persist_insights
 from telogify.analysis.attribution import store_attributions
@@ -135,3 +136,18 @@ def run_weekend(year: int, round: int, agent_runner=None) -> PipelineState:
         {"year": year, "round": round},
         config={"configurable": {"thread_id": f"weekend-{year}-{round}"}},
     )
+
+
+def regen_insights(year: int, round: int, agent_runner=None) -> dict:
+    """Regenerate only the 3 insights from already-ingested data: recompute candidates (so a
+    scoring change shows) and re-run the agent. Skips FastF1 ingest and analysis, whose inputs
+    haven't changed, so there is no re-download and no cost beyond the agent itself."""
+    runner = agent_runner or _default_agent_runner
+    with Session(engine) as db:
+        weekend_id = _weekend_id(db, year, round)
+        if weekend_id is None:
+            raise RuntimeError(
+                f"No ingested weekend for {year} round {round}. Run run-weekend first."
+            )
+        compute_candidates(weekend_id, db)
+    return _insights({"year": year, "round": round, "weekend_id": weekend_id}, runner)

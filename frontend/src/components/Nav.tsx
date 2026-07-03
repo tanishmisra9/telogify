@@ -4,6 +4,7 @@ import { Tooltip } from '@/components/Tooltip'
 
 const LINKS = [
   { to: '/weekends', label: 'Weekends', hint: 'Browse analysed race weekends' },
+  { to: '/season', label: 'Season', hint: 'Season-long constructor competitiveness' },
   { to: '/subscribe', label: 'Subscribe', hint: 'Get the weekly email digest' },
 ]
 
@@ -11,7 +12,7 @@ export function Nav() {
   const { pathname } = useLocation()
   return (
     <header className="sticky top-0 z-40 border-b-[1.5px] border-ink bg-glass backdrop-blur-md">
-      <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 h-16">
+      <nav className="mx-auto flex max-w-6xl flex-col items-start gap-2 px-6 py-3 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:py-0">
         <div className="flex items-center gap-4">
           <ThemeToggle />
           <Link to="/" className="group flex items-baseline gap-2">

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
 import { Tooltip } from '@/components/Tooltip'
+import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teamShortName, teamColorWithAlpha } from '@/lib/teamColors'
 import type { PaceData, PaceRow } from '@/lib/api'
 
@@ -57,7 +58,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
       transition={{ type: 'spring', stiffness: 120, damping: 20 }}
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-4xl font-semibold tracking-tight sm:text-5xl">Pace spread</h2>
+        <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Pace spread</h2>
         <div className="inline-flex rounded-full border border-border bg-surface/60 p-0.5" role="group" aria-label="Chart view">
           {(['drivers', 'constructors'] as const).map((mode) => (
             <Tooltip key={mode} label={mode === 'drivers' ? 'Pace per driver' : 'Pace per team'}>
@@ -152,15 +153,15 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
             {hovered && (
               <foreignObject x={Math.min(INNER_W - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100))} y={4} width={200} height={132} className="pointer-events-none">
                 <div className="glass rounded-xl px-3 py-2 text-xs text-ink">
-                  <div className="font-medium">{hovered.label}</div>
+                  <div className="font-medium">{driverName(hovered.label)}</div>
                   {hovered.team && hovered.team !== hovered.label && (
                     <div className="mt-1 text-muted">{hovered.team}</div>
                   )}
                   <div className="mt-2 space-y-0.5 text-muted">
-                    <div>Mean: {hovered.stats.mean.toFixed(3)}s</div>
-                    <div>Median: {hovered.stats.median.toFixed(3)}s</div>
-                    <div>Q1-Q3: {hovered.stats.q1.toFixed(3)}-{hovered.stats.q3.toFixed(3)}s</div>
-                    <div>{hovered.stats.n_laps} laps of data</div>
+                    <div><span className="font-semibold text-ink">Mean</span> {hovered.stats.mean.toFixed(3)}s</div>
+                    <div><span className="font-semibold text-ink">Median</span> {hovered.stats.median.toFixed(3)}s</div>
+                    <div><span className="font-semibold text-ink">Q1-Q3</span> {hovered.stats.q1.toFixed(3)}-{hovered.stats.q3.toFixed(3)}s</div>
+                    <div><span className="font-semibold text-ink">{hovered.stats.n_laps}</span> laps of data</div>
                   </div>
                 </div>
               </foreignObject>

@@ -1,0 +1,15 @@
+I built an F1 analyst that's architecturally incapable of making a number up.
+
+A deterministic backend computes every figure into a database. The agent only retrieves exact values, and a hard guardrail blocks it from inventing any claim. So every number it prints traces back to official timing data. Nothing estimated. Zero hallucinated stats.
+
+The result tells you who won. The number tells you why.
+
+Telogify.
+
+---
+Alt (short, for X):
+An F1 analyst that can't lie. Every figure it prints traces back to official timing data, zero hallucinated stats. The result tells you who won. Telogify tells you why.
+
+---
+Alt (LinkedIn):
+Most AI sports tools confidently make things up. Telogify can't. The numbers are computed deterministically into a database; the agent only retrieves exact values and is hard-gated against fabrication. Every insight is three plain-language reads where every figure is traceable to official timing data. Built for F1 race weekends. The result tells you who won. The number tells you why.

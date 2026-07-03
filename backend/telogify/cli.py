@@ -18,6 +18,17 @@ def run_weekend(year: int, round: int) -> None:
     typer.echo(f"Done: persisted {state.get('insight_count', 0)} insights.")
 
 
+@app.command("regen-insights")
+def regen_insights(year: int, round: int) -> None:
+    """Regenerate only the 3 insights from already-ingested data: recomputes candidates and
+    re-runs the agent, skipping FastF1 ingest. Use after changing scoring or prompts."""
+    from telogify.pipeline import regen_insights as run
+
+    typer.echo(f"Regenerating insights for {year} round {round}...")
+    state = run(year, round)
+    typer.echo(f"Done: persisted {state.get('insight_count', 0)} insights.")
+
+
 @app.command("diagnose")
 def diagnose(year: int, round: int) -> None:
     """Print per-constructor clean-lap counts and mean attribution confidence."""

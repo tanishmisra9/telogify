@@ -38,7 +38,7 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
 
   return (
     <div className="glass rounded-[--radius-panel] p-6">
-      <h2 className="text-4xl font-semibold tracking-tight sm:text-5xl">Car character</h2>
+      <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Car character</h2>
 
       <ul className="mt-4 grid gap-2 border-b border-border pb-6 sm:grid-cols-2">
         {summary.map((line, i) => {

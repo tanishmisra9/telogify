@@ -70,7 +70,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
       transition={spring}
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-4xl font-semibold tracking-tight sm:text-5xl">Tyre degradation</h2>
+        <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Tyre degradation</h2>
         <div className="inline-flex rounded-full border border-border bg-surface/60 p-0.5" role="group" aria-label="Compound">
           {compounds.map((c) => (
             <Tooltip key={c} label={`${c.toLowerCase()} tyre degradation`}>

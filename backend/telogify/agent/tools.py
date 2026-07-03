@@ -52,9 +52,11 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
 
     @tool
     def get_candidate_insights(n: int = 10) -> str:
-        """Return the top n pre-computed candidate findings for this weekend, ranked by
-        statistical robustness, highest first. Always call this first, then pick the three
-        most robust to write up."""
+        """Return the top n pre-computed candidate findings for this weekend, ranked highest
+        first. The ranking favors teams that beat or fell short of where their car's season-long
+        pace level should have put them (over- and under-delivery), not just the biggest raw
+        gaps, and rewards findings that combine channels. Always call this first, then pick the
+        three strongest to write up."""
         with sf() as db:
             wid = _weekend_id(db, year, round)
             rows = db.exec(

@@ -1,11 +1,14 @@
 import { Link } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
+import { Countdown } from '@/components/Countdown'
+import { Insight } from '@/components/Insight'
 import { Tooltip } from '@/components/Tooltip'
+import { useApi, type LatestInsight } from '@/lib/api'
 
 const STEPS = [
   {
     title: 'Ingest',
-    body: 'A full FastF1 race weekend goes in: every lap, telemetry trace, tyre stint, sector, and result.',
+    body: 'A full race weekend goes in: every lap, telemetry trace, tyre stint, sector, and result.',
   },
   {
     title: 'Measure',
@@ -13,7 +16,7 @@ const STEPS = [
   },
   {
     title: 'Read',
-    body: 'An agent retrieves the exact values and writes three plain-language insights. Every figure traces back to the data, nothing invented.',
+    body: 'An agent writes three plain-language insights, every figure traced back to the data.',
   },
 ]
 
@@ -40,31 +43,49 @@ function CTAs() {
   )
 }
 
+// The proof: the strongest insight from the most recent weekend, in the exact component and
+// voice the weekend page uses. Renders nothing until it has real data, so it never ships broken.
+function LiveInsight() {
+  const { data, loading } = useApi<LatestInsight>('/insights/latest')
+  if (loading || !data) return null
+  // No BlurFade here: this content mounts only after the fetch resolves, and BlurFade's
+  // mount reveal is unreliable for content that appears after an async gate (it can stay at
+  // opacity 0). The data-load itself is the reveal.
+  return (
+    <section className="mt-24 sm:mt-32">
+      <p className="kicker text-accent">Latest verdict · {data.event_name}</p>
+      <div className="mt-4">
+        <Insight item={data} showSlot={false} />
+      </div>
+      <p className="mt-3 text-sm text-muted">
+        Every figure traced to official timing data. Nothing estimated.
+      </p>
+    </section>
+  )
+}
+
 export function Landing() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-20 sm:py-28">
       <section>
         <BlurFade>
-          <h1 className="font-display text-7xl leading-[1.04] tracking-tight sm:text-[9rem]">
+          <h1 className="font-display text-6xl leading-[1.04] tracking-tight sm:text-8xl xl:text-[9rem]">
             Every weekend,
             <br />
-            read like a <span className="italic text-accent">verdict</span>.
+            cut the <span className="text-accent">noise</span>.
           </h1>
         </BlurFade>
 
-        <BlurFade delay={0.08}>
-          <p className="mt-8 max-w-2xl text-xl leading-relaxed text-muted">
-            Three telemetry-grounded insights per race weekend, every number traced back to the
-            data.
-          </p>
-        </BlurFade>
-
-        <BlurFade delay={0.14}>
+        <BlurFade delay={0.1}>
           <div className="mt-10">
             <CTAs />
           </div>
         </BlurFade>
       </section>
+
+      <LiveInsight />
+
+      <Countdown />
 
       <section className="mt-28 sm:mt-40">
         <BlurFade>
@@ -88,6 +109,14 @@ export function Landing() {
             </BlurFade>
           ))}
         </div>
+      </section>
+
+      <section className="mt-28 sm:mt-36">
+        <BlurFade>
+          <p className="font-display text-4xl leading-tight tracking-tight text-ink sm:text-5xl">
+            The result tells you who won. The number tells you why.
+          </p>
+        </BlurFade>
       </section>
     </main>
   )

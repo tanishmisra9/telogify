@@ -17,7 +17,7 @@ export function TopSpeedBars({ data }: { data: TopSpeedsData }) {
 
   return (
     <div className="glass rounded-[--radius-panel] p-6">
-      <h2 className="text-4xl font-semibold tracking-tight sm:text-5xl">Top speeds (km/h)</h2>
+      <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Top speeds (km/h)</h2>
       <div className="mt-5">
         <BarChart rows={bars} formatValue={(v) => v.toFixed(0)} domainMin={domainMin} />
       </div>

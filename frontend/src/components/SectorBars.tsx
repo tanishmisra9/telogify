@@ -15,7 +15,7 @@ function SectorChart({ sector, rows }: { sector: number; rows: SectorBestRow[] }
 
   return (
     <div>
-      <h3 className="mb-2 text-2xl font-semibold text-ink">Sector {sector}</h3>
+      <h3 className="mb-2 text-[1.35rem] font-semibold text-ink">Sector {sector}</h3>
       <BarChart rows={bars} formatValue={(v) => v.toFixed(3)} />
     </div>
   )
@@ -28,7 +28,7 @@ export function SectorBars({ data }: { data: SectorsData }) {
 
   return (
     <div className="glass rounded-[--radius-panel] p-6">
-      <h2 className="text-4xl font-semibold tracking-tight sm:text-5xl">Best sectors</h2>
+      <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Best sectors</h2>
       <div className="mt-5 grid gap-8">
         {[1, 2, 3].map((sector) => (
           <SectorChart key={sector} sector={sector} rows={data.drivers} />

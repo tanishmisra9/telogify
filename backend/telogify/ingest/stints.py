@@ -2,7 +2,8 @@
 
 A stint is the run of laps between pit stops on one compound (FastF1 tags each lap
 with `Stint` and `Compound`). `lap_times` and `avg_pace` use representative laps only:
-out/in laps, inaccurate laps, and non-green-flag laps (safety car / VSC) are dropped.
+out/in laps, inaccurate laps, steward-deleted laps (track limits), and non-green-flag
+laps (safety car / VSC) are dropped.
 For race / sprint sessions each kept lap is fuel-corrected to an empty-tank reference:
 
     corrected = raw - fuel_effect * (total_laps - lap_number)
@@ -68,6 +69,10 @@ def summarize_stint(
             continue
         if not lap["is_accurate"]:
             continue
+        if lap.get("deleted"):
+            # Time deleted by stewards (usually track limits): illegally fast, not our pace.
+            # IsAccurate does not catch this; it only checks timing sync (per FastF1 docs).
+            continue
         if lap.get("track_status", "1") not in GREEN_FLAG:
             continue
         t = lap["lap_time_s"]
@@ -117,6 +122,7 @@ def extract_stints(
                         "is_outlap": pd.notna(r.PitOutTime),
                         "is_inlap": pd.notna(r.PitInTime),
                         "is_accurate": bool(r.IsAccurate),
+                        "deleted": bool(pd.notna(getattr(r, "Deleted", False)) and getattr(r, "Deleted", False)),
                         "track_status": track_status,
                         "tyre_age": float(r.TyreLife) if pd.notna(getattr(r, "TyreLife", None)) else None,
                     }

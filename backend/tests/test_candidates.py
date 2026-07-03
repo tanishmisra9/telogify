@@ -1,13 +1,22 @@
 from telogify.analysis.candidates import (
+    EXPECTATION_FLOOR,
+    OBVIOUSNESS_DISCOUNT,
     Signal,
     correlate,
+    expectation_factors,
     normalize_and_score,
     rank,
 )
 
 
-def _sig(stype, mag, conf, subject):
-    return Signal(signal_type=stype, category=stype, magnitude=mag, confidence=conf, subject=subject)
+def _sig(stype, mag, conf, subject, category=None):
+    return Signal(
+        signal_type=stype,
+        category=category or stype,
+        magnitude=mag,
+        confidence=conf,
+        subject=subject,
+    )
 
 
 def test_robustness_normalized_per_signal_type():
@@ -47,6 +56,59 @@ def test_no_correlation_without_both_signal_types():
     normalize_and_score([straight])
     merged = correlate([straight])
     assert len(merged) == 1 and merged[0].signal_type == "straight_delta"
+
+
+def test_results_table_finding_is_discounted():
+    # a lone position swing (readable from the results table) is halved; a telemetry
+    # finding of equal raw strength keeps its full score and outranks it.
+    swing = _sig("position_swing", 4.0, 1.0, "Haas", category="result")
+    telemetry = _sig("straight_delta", 20.0, 1.0, "Sauber")
+    normalize_and_score([swing, telemetry])
+    assert swing.robustness == OBVIOUSNESS_DISCOUNT  # 1.0 * 0.5
+    assert telemetry.robustness == 1.0
+
+
+def test_more_channels_outrank_fewer():
+    # a three-channel structural read beats a two-channel one for a different team.
+    three = [
+        _sig("quali_top_speed_delta", 10.0, 1.0, "Ferrari", category="quali_character"),
+        _sig("sector_delta", 0.3, 1.0, "Ferrari", category="sector"),
+        _sig("tyre_degradation", 1.2, 1.0, "Ferrari", category="degradation"),
+    ]
+    two = [
+        _sig("quali_top_speed_delta", 10.0, 1.0, "Alpine", category="quali_character"),
+        _sig("sector_delta", 0.3, 1.0, "Alpine", category="sector"),
+    ]
+    signals = three + two
+    normalize_and_score(signals)
+    ranked = [s for s in rank(correlate(signals)) if s.signal_type == "cross_session"]
+    # both subjects merged into cross-channel candidates; the three-channel read ranks first
+    assert [s.subject for s in ranked] == ["Ferrari", "Alpine"]
+    assert ranked[0].robustness > ranked[1].robustness
+
+
+def test_expectation_factors_reward_over_and_under_delivery():
+    # expected order (season pace) vs actual finish for a 6-team field.
+    expected = {"Front": 1, "Mid": 4, "Over": 6, "AsExpected": 5, "Absent": 3}
+    actual = {"Front": 5, "Mid": 4, "Over": 1, "AsExpected": 5}  # ranks 1..4 among finishers
+    f = expectation_factors(expected, actual)
+    # overdeliverer (6 -> 1) and front-team underdeliverer (1 -> 5) both near the top
+    assert f["Over"] > 0.8 and f["Front"] > 0.8
+    # finished right where its pace ranks it -> damped to the floor
+    assert f["AsExpected"] == EXPECTATION_FLOOR
+    # a team in only one ordering gets no factor (caller treats it as neutral)
+    assert "Absent" not in f
+
+
+def test_expectation_factor_damps_as_expected_below_overdeliverer():
+    as_expected = _sig("straight_delta", 20.0, 1.0, "Backmarker")  # biggest raw gap
+    over = _sig("straight_delta", 10.0, 1.0, "Haas")  # half the raw gap
+    signals = [as_expected, over]
+    normalize_and_score(signals, {"Backmarker": EXPECTATION_FLOOR, "Haas": 1.0})
+    assert over.robustness > as_expected.robustness  # story beats raw magnitude
+    # no map -> unchanged, magnitude wins (guards the default path)
+    normalize_and_score(signals)
+    assert as_expected.robustness > over.robustness
 
 
 def test_rank_is_robustness_descending():
