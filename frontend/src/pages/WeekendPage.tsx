@@ -6,7 +6,6 @@ import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
 import { Results } from '@/components/Results'
 import { SectorBars } from '@/components/SectorBars'
-import { SessionOrder } from '@/components/SessionOrder'
 import { TopSpeedBars } from '@/components/TopSpeedBars'
 import {
   useApi,
@@ -17,7 +16,6 @@ import {
   type ResultRow,
   type SectorsData,
   type SessionInfo,
-  type SessionSummaryData,
   type TopSpeedsData,
   type WeekendSummary,
 } from '@/lib/api'
@@ -49,17 +47,14 @@ export function WeekendPage() {
   const sessions = useApi<SessionInfo[]>(`${base}/sessions`)
   const sectors = useApi<SectorsData>(`${base}/sectors`)
   const topspeeds = useApi<TopSpeedsData>(`${base}/topspeeds`)
-  const sqSummary = useApi<SessionSummaryData>(`${base}/session-summary?session=SQ`)
   const qualiCharacter = useApi<QualiCharacterData>(`${base}/quali-character`)
   const sprintPace = useApi<PaceData>(`${base}/pace?session=SPRINT`)
-  const sprintResults = useApi<ResultRow[]>(`${base}/results?session=SPRINT`)
   const pace = useApi<PaceData>(`${base}/pace`)
   const degradation = useApi<DegradationData>(`${base}/degradation`)
   const results = useApi<ResultRow[]>(`${base}/results`)
 
   const present = new Set(sessions.data?.map((s) => s.session_type) ?? [])
-  const practiceHappened = PRACTICE_CODES.some((c) => present.has(c))
-  const sqHappened = present.has('SQ')
+  const practiceHappened = PRACTICE_CODES.some((c) => present.has(c)) || present.has('SQ')
   const sprintHappened = present.has('SPRINT')
   const qualiHappened = present.has('Q')
   const raceHappened = present.has('R')
@@ -117,60 +112,24 @@ export function WeekendPage() {
           )}
         </section>
 
-        {sqHappened && (
-          <section className="mt-20">
-            <SectionTitle>Sprint Qualifying</SectionTitle>
-            {!sessionsLoaded ? (
-              <p className="text-sm text-muted">Loading...</p>
-            ) : (
-              <div className="grid gap-6">
-                <BlurFade>
-                  {sqSummary.data?.sectors && <SectorBars data={sqSummary.data.sectors} />}
-                </BlurFade>
-                <BlurFade delay={0.06}>
-                  {sqSummary.data?.topspeeds && <TopSpeedBars data={sqSummary.data.topspeeds} />}
-                </BlurFade>
-                <BlurFade delay={0.1}>
-                  <div className="glass rounded-[--radius-panel] p-6">
-                    <h3 className="mb-4 font-display text-3xl font-semibold tracking-tight sm:text-4xl">
-                      Sprint grid
-                    </h3>
-                    <SessionOrder rows={sqSummary.data?.order ?? []} />
-                  </div>
-                </BlurFade>
-              </div>
-            )}
-          </section>
-        )}
-
         {sprintHappened && (
           <section className="mt-20">
             <SectionTitle>Sprint</SectionTitle>
             {!sessionsLoaded ? (
               <p className="text-sm text-muted">Loading...</p>
             ) : (
-              <div className="grid gap-6">
-                <BlurFade>
-                  <PaceSpreadChart
-                    pace={
-                      sprintPace.data ?? {
-                        drivers: [],
-                        constructors: [],
-                        stop_counts: {},
-                        stop_count_spread: 0,
-                      }
+              <BlurFade>
+                <PaceSpreadChart
+                  pace={
+                    sprintPace.data ?? {
+                      drivers: [],
+                      constructors: [],
+                      stop_counts: {},
+                      stop_count_spread: 0,
                     }
-                  />
-                </BlurFade>
-                <BlurFade delay={0.06}>
-                  <div className="glass rounded-[--radius-panel] p-6">
-                    <h3 className="mb-4 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-                      Finishing order
-                    </h3>
-                    <Results rows={sprintResults.data ?? []} />
-                  </div>
-                </BlurFade>
-              </div>
+                  }
+                />
+              </BlurFade>
             )}
           </section>
         )}

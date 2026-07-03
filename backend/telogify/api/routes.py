@@ -50,6 +50,7 @@ router = APIRouter()
 # sessions absent from a weekend are simply skipped, never shown as blanks or errors.
 SESSION_ORDER = ["FP1", "FP2", "FP3", "SQ", "SPRINT", "Q", "R"]
 PRACTICE_SESSIONS = ("FP1", "FP2", "FP3")
+INDICATIVE_SESSIONS = ("FP1", "FP2", "FP3", "SQ")
 # Car character compares the front of the field, not the whole grid: "leader" labels
 # (best top speed, best downforce, ...) are computed relative to this set, so trimming
 # happens before labeling, not after.
@@ -278,11 +279,10 @@ def weekend_pace(
 
 @router.get("/weekends/{year}/{round}/sectors")
 def weekend_sectors(year: int, round: int, db: Session = Depends(get_session)):
-    """Best sector 1/2/3 across all practice sessions, per driver, tagged with which
-    session each best came from. Practice-only: indicative, since fuel loads and engine
-    modes vary run to run."""
+    """Best sector 1/2/3 across practice and sprint qualifying, per driver, tagged with which
+    session each best came from. Indicative only: fuel loads and engine modes vary run to run."""
     w = _weekend(db, year, round)
-    sessions = [s for s in _weekend_sessions(db, w.id) if s.session_type in PRACTICE_SESSIONS]
+    sessions = [s for s in _weekend_sessions(db, w.id) if s.session_type in INDICATIVE_SESSIONS]
     if not sessions:
         return {"indicative": True, "drivers": [], "dominance": []}
 
@@ -319,10 +319,10 @@ def weekend_sectors(year: int, round: int, db: Session = Depends(get_session)):
 
 @router.get("/weekends/{year}/{round}/topspeeds")
 def weekend_topspeeds(year: int, round: int, db: Session = Depends(get_session)):
-    """Each driver's highest top speed across all practice sessions, km/h and mph, tagged
-    with which session it came from. Practice-only: indicative."""
+    """Each driver's highest top speed across practice and sprint qualifying, km/h and mph,
+    tagged with which session it came from. Indicative only."""
     w = _weekend(db, year, round)
-    sessions = [s for s in _weekend_sessions(db, w.id) if s.session_type in PRACTICE_SESSIONS]
+    sessions = [s for s in _weekend_sessions(db, w.id) if s.session_type in INDICATIVE_SESSIONS]
     if not sessions:
         return {"indicative": True, "drivers": []}
 

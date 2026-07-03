@@ -67,20 +67,6 @@ export interface ResultRow {
   strategy: string
 }
 
-export interface SessionOrderRow {
-  position: number | null
-  driver: string
-  constructor: string | null
-  gap_label: string
-}
-
-export interface SessionSummaryData {
-  session_type: string | null
-  sectors: SectorsData
-  topspeeds: TopSpeedsData
-  order: SessionOrderRow[]
-}
-
 export interface SessionInfo {
   session_type: string
   status: string | null
