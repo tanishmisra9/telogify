@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from telogify.api.main import app
 from telogify.db import get_session
@@ -108,6 +108,41 @@ def test_insights(client):
     assert [i["header"] for i in r.json()] == ["H1"]
 
 
+def test_latest_insight_picks_recent_weekend_slot1(client, test_engine):
+    # Fixture seeds 2025 R11 (H1). Add a newer weekend with two insights; latest = its slot 1.
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2026, round=2, circuit_name="X", country="Y", event_name="New GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        db.add(Insight(weekend_id=wk.id, slot=2, header="secondary", explanation_web="w2", explanation_email="e2", source_tool_calls_json=[]))
+        db.add(Insight(weekend_id=wk.id, slot=1, header="primary", explanation_web="w1", explanation_email="e1", source_tool_calls_json=[]))
+        db.commit()
+    body = client.get("/insights/latest").json()
+    assert body["event_name"] == "New GP"
+    assert body["slot"] == 1
+    assert body["header"] == "primary"
+
+
+def test_next_race_picks_soonest_future(client, monkeypatch):
+    from datetime import datetime, timedelta
+
+    from telogify.analysis.schedule import Event
+    from telogify.api import routes
+
+    now = datetime.utcnow()
+    events = (
+        Event(round=1, name="Past GP", date=now - timedelta(days=30)),
+        Event(round=9, name="Silverstone", date=now + timedelta(days=10)),
+        Event(round=10, name="Hungaroring", date=now + timedelta(days=30)),
+    )
+    monkeypatch.setattr(routes, "_schedule_events", lambda year: events if year == now.year else ())
+    body = client.get("/next-race").json()
+    assert body["event_name"] == "Silverstone"
+    assert body["round"] == 9
+    assert body["date_utc"].endswith("Z")
+
+
 def test_pace(client):
     data = client.get("/weekends/2025/11/pace").json()
     # New shape: drivers + constructors lists of precomputed distributions, plus
@@ -184,6 +219,42 @@ def test_results(client):
     assert rows[0]["gap_label"] == "leader"
     assert rows[1]["gap_label"] == "+2.5s"
     assert rows[2]["gap_label"] == "+3 Laps"
+    assert rows[0]["points"] == 25
+
+
+def test_sprint_session_endpoints(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(
+            select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)
+        ).first()
+        sq = SessionRow(weekend_id=wk.id, session_type="SQ", status="loaded")
+        sprint = SessionRow(weekend_id=wk.id, session_type="SPRINT", status="loaded")
+        db.add(sq)
+        db.add(sprint)
+        db.commit()
+        db.refresh(sq)
+        db.refresh(sprint)
+
+        db.add(SectorBest(session_id=sq.id, driver="NOR", sector=1, best_time_s=29.0))
+        db.add(StraightSegment(session_id=sq.id, driver="NOR", drs_zone_id=0, max_speed_kmh=330.0, trap_speed_kmh=328.0))
+        db.add(SessionResult(session_id=sq.id, position=1, driver="NOR", constructor="McLaren", gap_to_leader=0.0, laps=None, status="Finished"))
+        db.add(SessionResult(session_id=sprint.id, position=1, driver="VER", constructor="Red Bull", gap_to_leader=0.0, laps=19.0, status="Finished"))
+        db.add(Stint(
+            session_id=sprint.id, driver="VER", stint_number=1, compound="MEDIUM", lap_start=1, lap_end=19,
+            avg_pace=90.0, lap_times_json=[90.0, 90.1, 90.2, 90.3, 90.4, 90.5], tyre_ages_json=[1, 2, 3, 4, 5, 6],
+        ))
+        db.commit()
+
+    sprint_rows = client.get("/weekends/2025/11/results?session=SPRINT").json()
+    assert sprint_rows[0]["driver"] == "VER"
+    assert sprint_rows[0]["points"] == 8
+
+    summary = client.get("/weekends/2025/11/session-summary?session=SQ").json()
+    assert summary["session_type"] == "SQ"
+    assert summary["order"][0]["driver"] == "NOR"
+    assert summary["sectors"]["drivers"][0]["best_time_s"] == 29.0
+
+    assert client.get("/weekends/2025/11/pace?session=SPRINT").json()["drivers"][0]["id"] == "VER"
 
 
 def test_subscribe_and_dedupe(client, test_engine):

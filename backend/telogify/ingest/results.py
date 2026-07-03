@@ -34,12 +34,23 @@ class ResultRow:
 # removed for 2025+, so for the seasons this app targets points are a pure function
 # of position. (Sprints use a different scale, but this table serves the race panel.)
 _RACE_POINTS = {1: 25, 2: 18, 3: 15, 4: 12, 5: 10, 6: 8, 7: 6, 8: 4, 9: 2, 10: 1}
+_SPRINT_POINTS = {1: 8, 2: 7, 3: 6, 4: 5, 5: 4, 6: 3, 7: 2, 8: 1}
 
 _COMPOUND_LETTER = {"SOFT": "S", "MEDIUM": "M", "HARD": "H", "INTERMEDIATE": "I", "WET": "W"}
 
 
 def race_points(position: int | None) -> int:
     return _RACE_POINTS.get(position, 0) if position else 0
+
+
+def sprint_points(position: int | None) -> int:
+    return _SPRINT_POINTS.get(position, 0) if position else 0
+
+
+def points_for_session(session_type: str, position: int | None) -> int:
+    if session_type == "SPRINT":
+        return sprint_points(position)
+    return race_points(position)
 
 
 def compound_letter(compound: str | None) -> str:

@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from telogify.analysis.schedule import Event, pick_next_event
-from telogify.analysis.sessions import pick_session
 
 from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import REFERENCE_AGE_LAPS, fit_all_groups
@@ -29,7 +28,7 @@ from telogify.analysis.season import build_season_snapshot
 from telogify.ingest.results import (
     format_gap_label,
     format_total_time,
-    race_points,
+    points_for_session,
     strategy_string,
 )
 from telogify.db import get_session
@@ -247,11 +246,13 @@ def _pace_row_to_dict(row) -> dict:
 
 
 @router.get("/weekends/{year}/{round}/pace")
-def weekend_pace(year: int, round: int, db: Session = Depends(get_session)):
+def weekend_pace(
+    year: int, round: int, session: str = "R", db: Session = Depends(get_session)
+):
     w = _weekend(db, year, round)
-    race = _race_session(db, w.id)
+    race = _session_of(db, w.id, session)
     if race is None:
-        return {"drivers": [], "constructors": []}
+        return {"drivers": [], "constructors": [], "stop_counts": {}, "stop_count_spread": 0}
     dc = _driver_constructor(db, race.id)
     stints = db.exec(select(Stint).where(Stint.session_id == race.id)).all()
     stint_dicts = [
@@ -357,7 +358,7 @@ def weekend_quali_character(year: int, round: int, db: Session = Depends(get_ses
     field being compared, not diluted by the whole grid."""
     w = _weekend(db, year, round)
     sessions = _weekend_sessions(db, w.id)
-    session = _session_by_type(sessions, "Q") or _session_by_type(sessions, "SQ")
+    session = _session_by_type(sessions, "Q")
     if session is None:
         return {"session_type": None, "rows": [], "fastest_corner_number": None, "sector_dominance": []}
 
@@ -413,11 +414,13 @@ def weekend_quali_character(year: int, round: int, db: Session = Depends(get_ses
 
 
 @router.get("/weekends/{year}/{round}/degradation")
-def weekend_degradation(year: int, round: int, db: Session = Depends(get_session)):
+def weekend_degradation(
+    year: int, round: int, session: str = "R", db: Session = Depends(get_session)
+):
     """Fuel-corrected lap time vs tyre age, per team and compound: the slope is the
     degradation rate, the cost is what that slope adds up to by a reference tyre age."""
     w = _weekend(db, year, round)
-    race = _race_session(db, w.id)
+    race = _session_of(db, w.id, session)
     if race is None:
         return {"fits": [], "points": [], "reference_age_laps": None}
 
@@ -458,9 +461,11 @@ def weekend_degradation(year: int, round: int, db: Session = Depends(get_session
 
 
 @router.get("/weekends/{year}/{round}/results")
-def weekend_results(year: int, round: int, db: Session = Depends(get_session)):
+def weekend_results(
+    year: int, round: int, session: str = "R", db: Session = Depends(get_session)
+):
     w = _weekend(db, year, round)
-    race = _race_session(db, w.id)
+    race = _session_of(db, w.id, session)
     if race is None:
         return []
     rows = db.exec(
@@ -489,11 +494,112 @@ def weekend_results(year: int, round: int, db: Session = Depends(get_session)):
             "driver": r.driver,
             "constructor": r.constructor,
             "gap_label": gap_or_time(r),
-            "points": race_points(r.position),
+            "points": points_for_session(race.session_type, r.position),
             "strategy": strategy_string(compounds_by_driver.get(r.driver, [])),
         }
         for r in rows
     ]
+
+
+def _session_sectors_payload(db: Session, session: SessionRow, dc: dict[str, str]) -> dict:
+    rows = [
+        {"driver": r.driver, "sector": r.sector, "best_time_s": r.best_time_s, "session_type": session.session_type}
+        for r in db.exec(select(SectorBest).where(SectorBest.session_id == session.id)).all()
+    ]
+    bests = best_across_sessions(rows)
+    dominance = sector_dominance(
+        [
+            {"driver": b.driver, "sector": b.sector, "best_time_s": b.best_time_s, "constructor": dc.get(b.driver)}
+            for b in bests
+        ]
+    )
+    return {
+        "indicative": session.session_type in PRACTICE_SESSIONS or session.session_type == "SQ",
+        "drivers": [
+            {
+                "driver": b.driver,
+                "constructor": dc.get(b.driver),
+                "sector": b.sector,
+                "best_time_s": b.best_time_s,
+                "session_type": b.session_type,
+            }
+            for b in bests
+        ],
+        "dominance": [
+            {"sector": d.sector, "constructor": d.constructor, "best_time_s": d.best_time_s, "margin_s": d.margin_s}
+            for d in dominance
+        ],
+    }
+
+
+def _session_topspeeds_payload(db: Session, session: SessionRow, dc: dict[str, str]) -> dict:
+    rows = [
+        {"driver": r.driver, "session_type": session.session_type, "max_speed_kmh": r.max_speed_kmh}
+        for r in db.exec(select(StraightSegment).where(StraightSegment.session_id == session.id)).all()
+        if r.max_speed_kmh is not None
+    ]
+    bests = sorted(best_top_speeds(rows), key=lambda r: r["max_speed_kmh"], reverse=True)
+    return {
+        "indicative": session.session_type in PRACTICE_SESSIONS or session.session_type == "SQ",
+        "drivers": [
+            {
+                "driver": b["driver"],
+                "constructor": dc.get(b["driver"]),
+                "max_speed_kmh": b["max_speed_kmh"],
+                "max_speed_mph": b["max_speed_kmh"] * 0.621371,
+                "session_type": b["session_type"],
+            }
+            for b in bests
+        ],
+    }
+
+
+def _session_order_payload(db: Session, session: SessionRow) -> list[dict]:
+    rows = db.exec(
+        select(SessionResult)
+        .where(SessionResult.session_id == session.id)
+        .order_by(SessionResult.position)
+    ).all()
+    leader_laps = next((r.laps for r in rows if r.position == 1), None)
+
+    def gap_or_time(r: SessionResult) -> str:
+        if r.position == 1 and r.total_time_s is not None:
+            return format_total_time(r.total_time_s) or "leader"
+        return format_gap_label(r.position, r.gap_to_leader, r.laps, leader_laps, r.status)
+
+    return [
+        {
+            "position": r.position,
+            "driver": r.driver,
+            "constructor": r.constructor,
+            "gap_label": gap_or_time(r),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/weekends/{year}/{round}/session-summary")
+def weekend_session_summary(
+    year: int, round: int, session: str, db: Session = Depends(get_session)
+):
+    """Light per-session read for sprint qualifying: sectors, top speeds, classification."""
+    w = _weekend(db, year, round)
+    ses = _session_of(db, w.id, session)
+    if ses is None:
+        return {
+            "session_type": None,
+            "sectors": {"indicative": True, "drivers": [], "dominance": []},
+            "topspeeds": {"indicative": True, "drivers": []},
+            "order": [],
+        }
+
+    dc = _driver_constructor(db, ses.id)
+    return {
+        "session_type": ses.session_type,
+        "sectors": _session_sectors_payload(db, ses, dc),
+        "topspeeds": _session_topspeeds_payload(db, ses, dc),
+        "order": _session_order_payload(db, ses),
+    }
 
 
 @router.get("/season/{year}")

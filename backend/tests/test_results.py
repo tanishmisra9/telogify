@@ -5,7 +5,9 @@ from telogify.ingest.results import (
     format_total_time,
     is_lapped,
     laps_down,
+    points_for_session,
     race_points,
+    sprint_points,
     strategy_string,
 )
 
@@ -15,6 +17,19 @@ def test_race_points_by_position():
     assert race_points(10) == 1
     assert race_points(11) == 0
     assert race_points(None) == 0
+
+
+def test_sprint_points_by_position():
+    assert sprint_points(1) == 8
+    assert sprint_points(8) == 1
+    assert sprint_points(9) == 0
+    assert sprint_points(None) == 0
+
+
+def test_points_for_session():
+    assert points_for_session("R", 1) == 25
+    assert points_for_session("SPRINT", 1) == 8
+    assert points_for_session("Q", 1) == 25
 
 
 def test_compound_letter():
