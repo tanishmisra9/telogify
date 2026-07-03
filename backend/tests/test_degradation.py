@@ -1,6 +1,11 @@
 import pytest
 
-from telogify.analysis.degradation import fit_all_groups, fit_group, least_squares_fit
+from telogify.analysis.degradation import (
+    fit_all_groups,
+    fit_group,
+    least_squares_fit,
+    theil_sen_fit,
+)
 
 
 def test_least_squares_fit_recovers_known_line():
@@ -9,6 +14,31 @@ def test_least_squares_fit_recovers_known_line():
     slope, intercept = least_squares_fit(xs, ys)
     assert abs(slope - 0.1) < 1e-9
     assert abs(intercept - 90.0) < 1e-9
+
+
+def test_theil_sen_recovers_known_line():
+    xs = [0, 1, 2, 3, 4]
+    ys = [90.0 + 0.1 * x for x in xs]
+    slope, intercept = theil_sen_fit(xs, ys)
+    assert abs(slope - 0.1) < 1e-9
+    assert abs(intercept - 90.0) < 1e-9
+
+
+def test_theil_sen_none_below_two_points_or_no_distinct_x():
+    assert theil_sen_fit([1.0], [90.0]) is None
+    assert theil_sen_fit([5.0, 5.0, 5.0], [90.0, 91.0, 92.0]) is None
+
+
+def test_theil_sen_resists_outlier_lap_that_drags_ols():
+    # A clean 0.10 s/lap ramp with one traffic-ruined lap (+3s at age 3).
+    xs = [0, 1, 2, 3, 4, 5, 6, 7]
+    ys = [90.0 + 0.1 * x for x in xs]
+    ys[3] += 6.0  # one lock-up / off-track lap
+    ts_slope, _ = theil_sen_fit(xs, ys)
+    ols_slope, _ = least_squares_fit(xs, ys)
+    # Theil-Sen stays near the true 0.10; OLS is dragged well off it.
+    assert abs(ts_slope - 0.1) < 0.02
+    assert abs(ols_slope - 0.1) > 0.05
 
 
 def test_least_squares_fit_none_below_two_points():

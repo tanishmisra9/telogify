@@ -3,8 +3,10 @@
 The signal is the slope, not absolute pace: how many seconds a lap a team loses for every
 extra lap on that tyre. Fuel correction happens upstream (ingest/stints.py); this module
 only regresses already fuel-corrected times against tyre age, so the slope is not
-contaminated by the lightening fuel load. A least-squares fit is enough (few points, one
-slope per team-compound); no numpy dependency needed.
+contaminated by the lightening fuel load. The slope is estimated with the Theil-Sen
+estimator (median of pairwise slopes), not ordinary least squares: race stints are small,
+heavy-tailed samples where one traffic-compromised or lock-up lap would dominate an OLS fit
+(OLS breakdown point 0 vs Theil-Sen ~29%). Both are pure Python, no numpy dependency.
 
 Only the what (slope, cumulative cost) and the strategic consequence (stop count) are
 computed here. A physical cause (e.g. rear-tyre heat) is never asserted; the caller may
@@ -34,8 +36,9 @@ class DegradationFit:
 
 
 def least_squares_fit(xs: list[float], ys: list[float]) -> tuple[float, float] | None:
-    """(slope, intercept) of ys regressed on xs, or None with fewer than 2 points or no
-    variance in xs (can't fit a line through a single tyre age)."""
+    """(slope, intercept) of ys regressed on xs by OLS, or None with fewer than 2 points or no
+    variance in xs (can't fit a line through a single tyre age). Kept as a reference/comparison;
+    fit_group uses the outlier-robust theil_sen_fit instead."""
     n = len(xs)
     if n < 2:
         return None
@@ -47,6 +50,27 @@ def least_squares_fit(xs: list[float], ys: list[float]) -> tuple[float, float] |
     cov_xy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
     slope = cov_xy / var_x
     intercept = mean_y - slope * mean_x
+    return slope, intercept
+
+
+def theil_sen_fit(xs: list[float], ys: list[float]) -> tuple[float, float] | None:
+    """(slope, intercept) via the Theil-Sen estimator: slope = median of the slopes of every
+    pair of points with distinct x; intercept = median(y - slope*x). Robust to outlier laps
+    (breakdown point ~29% vs 0 for OLS). None with fewer than 2 points or no distinct-x pair.
+    O(n^2) in the number of laps, which is fine at stint scale (tens of laps)."""
+    n = len(xs)
+    if n < 2:
+        return None
+    slopes = [
+        (ys[j] - ys[i]) / (xs[j] - xs[i])
+        for i in range(n)
+        for j in range(i + 1, n)
+        if xs[j] != xs[i]
+    ]
+    if not slopes:
+        return None
+    slope = median(slopes)
+    intercept = median([y - slope * x for x, y in zip(xs, ys)])
     return slope, intercept
 
 
@@ -64,7 +88,7 @@ def fit_group(
     """
     if len(ages) < min_laps:
         return None
-    fit = least_squares_fit(ages, times)
+    fit = theil_sen_fit(ages, times)
     if fit is None:
         return None
     slope, intercept = fit
