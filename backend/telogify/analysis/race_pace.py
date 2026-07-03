@@ -13,6 +13,14 @@ from dataclasses import dataclass, field
 from statistics import mean
 
 
+# A car's "pace ceiling": a low quantile of its lap distribution, i.e. the pace it shows when
+# pushing rather than managing. Ranking still uses the median (empirically the best single
+# anchor across 2026: it ranks the race winner fastest in 7/8 races, only Monaco fails, and no
+# lower quantile fixes Monaco without breaking Miami/Spain). The ceiling is a complementary
+# read: a comfortable winner who cruised shows a ceiling well below its median.
+PACE_CEILING_QUANTILE = 0.10
+
+
 @dataclass
 class BoxStats:
     mean: float
@@ -24,6 +32,7 @@ class BoxStats:
     outliers: list[float]
     n_laps: int
     compounds: list[str]
+    pace_ceiling: float
 
 
 @dataclass
@@ -74,6 +83,7 @@ def box_stats(values: list[float], compounds: list[str]) -> BoxStats:
         outliers=outliers,
         n_laps=len(s),
         compounds=compounds,
+        pace_ceiling=_quantile(s, PACE_CEILING_QUANTILE),
     )
 
 

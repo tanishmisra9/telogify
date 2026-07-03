@@ -242,6 +242,7 @@ def _pace_row_to_dict(row) -> dict:
             "outliers": s.outliers,
             "n_laps": s.n_laps,
             "compounds": s.compounds,
+            "pace_ceiling": s.pace_ceiling,
         },
     }
 

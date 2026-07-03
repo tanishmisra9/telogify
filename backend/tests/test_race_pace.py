@@ -41,6 +41,15 @@ def test_box_stats_symmetric_distribution():
     assert s.q3 == 4.0
     assert s.outliers == []
     assert s.compounds == ["M"]
+    assert abs(s.pace_ceiling - 1.4) < 1e-9  # q10 of [1..5]: fast-end pace ceiling
+
+
+def test_box_stats_pace_ceiling_is_at_or_below_median():
+    # A "cruising" distribution (many slow management laps, a few fast) has a ceiling well
+    # under the median; ranking uses the median, the ceiling exposes the true pace.
+    vals = [90.0] * 8 + [85.0, 85.5]  # 8 cruise laps, 2 push laps
+    s = box_stats(vals, ["M"])
+    assert s.pace_ceiling < s.median
 
 
 def test_box_stats_outliers_detected():

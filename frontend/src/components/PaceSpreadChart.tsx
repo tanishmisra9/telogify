@@ -117,6 +117,8 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                   <rect x={cx - bw / 2} y={boxTop} width={bw} height={boxH} fill={fill} stroke={stroke} strokeWidth={1.25} rx={3} />
                   <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.median)} y2={y(s.median)} stroke={stroke} strokeWidth={3} />
                   <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.mean)} y2={y(s.mean)} stroke={stroke} strokeWidth={2} strokeDasharray="5 4" />
+                  {/* Pace ceiling (fast-end quantile): the pace the car showed when pushing. */}
+                  <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.pace_ceiling)} y2={y(s.pace_ceiling)} stroke={stroke} strokeWidth={1.5} strokeDasharray="1 3" opacity={0.9} />
                   {s.outliers.map((o, oi) => (
                     <circle key={`${row.id}-o-${oi}`} cx={cx} cy={y(o)} r={4} fill="none" stroke={stroke} strokeWidth={1.5} />
                   ))}
@@ -151,7 +153,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
             })}
 
             {hovered && (
-              <foreignObject x={Math.min(INNER_W - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100))} y={4} width={200} height={132} className="pointer-events-none">
+              <foreignObject x={Math.min(INNER_W - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100))} y={4} width={200} height={150} className="pointer-events-none">
                 <div className="glass rounded-xl px-3 py-2 text-xs text-ink">
                   <div className="font-medium">{driverName(hovered.label)}</div>
                   {hovered.team && hovered.team !== hovered.label && (
@@ -161,6 +163,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                     <div><span className="font-semibold text-ink">Mean</span> {hovered.stats.mean.toFixed(3)}s</div>
                     <div><span className="font-semibold text-ink">Median</span> {hovered.stats.median.toFixed(3)}s</div>
                     <div><span className="font-semibold text-ink">Q1-Q3</span> {hovered.stats.q1.toFixed(3)}-{hovered.stats.q3.toFixed(3)}s</div>
+                    <div><span className="font-semibold text-ink">Ceiling</span> {hovered.stats.pace_ceiling.toFixed(3)}s</div>
                     <div><span className="font-semibold text-ink">{hovered.stats.n_laps}</span> laps of data</div>
                   </div>
                 </div>
@@ -170,9 +173,9 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
         </svg>
       )}
 
-      <p className="mt-4 whitespace-nowrap text-center text-sm text-muted">
-        Dashed line mean, solid line median, box is the middle 50 percent of laps, whiskers cover
-        99.3 percent, dots are outliers.
+      <p className="mt-4 text-center text-sm text-muted">
+        Solid line median, dashed line mean, dotted line pace ceiling (fastest tenth of laps), box
+        is the middle 50 percent of laps, whiskers cover 99.3 percent, dots are outliers.
       </p>
       {pace.stop_count_spread >= 2 && (
         <p className="mt-2 text-center text-sm text-muted">

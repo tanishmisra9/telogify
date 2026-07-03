@@ -41,6 +41,7 @@ export interface BoxStats {
   outliers: number[]
   n_laps: number
   compounds: string[]
+  pace_ceiling: number
 }
 
 export interface PaceRow {
