@@ -484,7 +484,7 @@ def _mine_degradation_for_session(
         for age, t in zip(st.tyre_ages_json or [], st.lap_times_json or []):
             if age is None:
                 continue
-            points.append({"constructor": constructor, "compound": st.compound, "tyre_age": age, "lap_time_s": t})
+            points.append({"constructor": constructor, "driver": st.driver, "compound": st.compound, "tyre_age": age, "lap_time_s": t})
 
     out = []
     for fit in fit_all_groups(points):

@@ -79,6 +79,30 @@ def test_fit_all_groups_flags_slope_far_above_field_median():
     assert fits["McLaren"].flagged is False
 
 
+def test_fit_all_groups_per_driver_avoids_intercept_pooling_bias():
+    # Two teammates, same true slope 0.10 s/lap, but different pace baselines AND different age
+    # ranges: driver A ages 0-9 (~90s), driver B ages 10-19 offset +1.5s. Pooling both into one
+    # regression fits a steeper line through the offset jump; per-driver aggregation recovers 0.10.
+    rows = []
+    for age in range(10):
+        rows.append({"constructor": "X", "driver": "A", "compound": "MEDIUM", "tyre_age": age, "lap_time_s": 90.0 + 0.10 * age})
+    for age in range(10, 20):
+        rows.append({"constructor": "X", "driver": "B", "compound": "MEDIUM", "tyre_age": age, "lap_time_s": 91.5 + 0.10 * age})
+    fit = fit_all_groups(rows)[0]
+    assert abs(fit.slope_s_per_lap - 0.10) < 1e-6  # per-driver median, not the inflated pooled slope
+    assert fit.n_laps == 20  # both drivers' laps still counted
+
+
+def test_fit_all_groups_without_driver_still_pools_as_one_unit():
+    # Rows lacking a driver key behave as before: one unit per (constructor, compound).
+    rows = [
+        {"constructor": "Y", "compound": "SOFT", "tyre_age": a, "lap_time_s": 90.0 + 0.05 * a}
+        for a in range(8)
+    ]
+    fits = fit_all_groups(rows)
+    assert len(fits) == 1 and abs(fits[0].slope_s_per_lap - 0.05) < 1e-9
+
+
 def test_fit_all_groups_ignores_rows_missing_age_or_time():
     rows = [
         {"constructor": "A", "compound": "SOFT", "tyre_age": None, "lap_time_s": 90.0},

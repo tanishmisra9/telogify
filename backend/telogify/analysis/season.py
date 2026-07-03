@@ -139,7 +139,7 @@ def _weekend_metrics(db: DBSession, dc_map: dict[str, str], sessions: list[Sessi
         out["pace_gap"] = constructor_median_gaps(stint_dicts)
 
         deg_points = [
-            {"constructor": dc_map[st.driver], "compound": st.compound, "tyre_age": age, "lap_time_s": t}
+            {"constructor": dc_map[st.driver], "driver": st.driver, "compound": st.compound, "tyre_age": age, "lap_time_s": t}
             for st in stints
             if dc_map.get(st.driver)
             for age, t in zip(st.tyre_ages_json or [], st.lap_times_json or [])

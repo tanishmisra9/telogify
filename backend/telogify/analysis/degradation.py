@@ -103,25 +103,45 @@ def fit_group(
 
 
 def fit_all_groups(rows: list[dict], *, reference_age: int = REFERENCE_AGE_LAPS) -> list[DegradationFit]:
-    """rows: dicts with constructor, compound, tyre_age, lap_time_s (one row per kept lap).
+    """rows: dicts with constructor, compound, tyre_age, lap_time_s, and optionally driver
+    (one row per kept lap).
 
-    Fits one slope per (constructor, compound), then flags any fit whose slope is at
-    least FLAG_MULTIPLIER times that compound's field-median slope (positive slopes only;
-    a flat or negative slope means no real wear signal to compare against).
+    Fits a slope per (constructor, compound, driver) unit, then takes the median of a team's
+    per-driver slopes as its degradation for that compound. Pooling both drivers' laps into one
+    regression conflates their different baseline paces (intercepts): when teammates run
+    different stint lengths it can fabricate, or even sign-flip, a slope (e.g. Alpine Monaco HARD
+    read +0.16 s/lap pooled vs +0.01 per-driver). Rows without a driver fall back to one unit per
+    (constructor, compound), preserving the old behaviour. Then flags any team-compound whose
+    slope is at least FLAG_MULTIPLIER times that compound's field-median slope (positive only).
     """
-    grouped: dict[tuple[str, str], tuple[list[float], list[float]]] = defaultdict(lambda: ([], []))
+    grouped: dict[tuple[str, str, str], tuple[list[float], list[float]]] = defaultdict(lambda: ([], []))
     for r in rows:
         if r.get("tyre_age") is None or r.get("lap_time_s") is None:
             continue
-        ages, times = grouped[(r["constructor"], r["compound"])]
+        ages, times = grouped[(r["constructor"], r["compound"], r.get("driver") or "")]
         ages.append(r["tyre_age"])
         times.append(r["lap_time_s"])
 
-    fits = []
-    for (constructor, compound), (ages, times) in grouped.items():
+    # Fit each driver-compound, then aggregate a team's per-driver slopes by their median.
+    per_team: dict[tuple[str, str], list[DegradationFit]] = defaultdict(list)
+    for (constructor, compound, _driver), (ages, times) in grouped.items():
         fit = fit_group(constructor, compound, ages, times, reference_age=reference_age)
         if fit is not None:
-            fits.append(fit)
+            per_team[(constructor, compound)].append(fit)
+
+    fits = []
+    for (constructor, compound), unit_fits in per_team.items():
+        slope = median(f.slope_s_per_lap for f in unit_fits)
+        fits.append(
+            DegradationFit(
+                constructor=constructor,
+                compound=compound,
+                slope_s_per_lap=slope,
+                intercept_s=median(f.intercept_s for f in unit_fits),
+                cost_at_reference_s=slope * reference_age,
+                n_laps=sum(f.n_laps for f in unit_fits),
+            )
+        )
 
     by_compound: dict[str, list[float]] = defaultdict(list)
     for fit in fits:
