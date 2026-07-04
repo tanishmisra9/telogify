@@ -32,6 +32,9 @@ from telogify.ingest.segment import corner_windows, get_corners
 from telogify.models import QualiCharacter, Session
 
 FULL_THROTTLE_PCT = 99.0  # throttle reading (0-100) counted as "full throttle"
+# FastF1: valid throttle is 0-100; the value 104 signals an error / unavailable sample (car
+# stationary in the pits or on the grid). Exclude anything above 100 so it can't be miscounted.
+MAX_VALID_THROTTLE = 100.0
 
 
 def is_representative_lap(
@@ -81,10 +84,12 @@ class LapCharacter:
 
 
 def full_throttle_fraction(throttle: list[float], threshold: float = FULL_THROTTLE_PCT) -> float:
-    if not throttle:
+    # drop error samples (throttle > 100, e.g. FastF1's 104) entirely, not just from the numerator
+    valid = [t for t in throttle if t <= MAX_VALID_THROTTLE]
+    if not valid:
         return 0.0
-    at_full = sum(1 for t in throttle if t >= threshold)
-    return at_full / len(throttle)
+    at_full = sum(1 for t in valid if t >= threshold)
+    return at_full / len(valid)
 
 
 def _min_in_window(distance: list[float], speed: list[float], lo: float, hi: float) -> float | None:

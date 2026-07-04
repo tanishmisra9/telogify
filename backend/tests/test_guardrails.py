@@ -43,6 +43,14 @@ def test_flags_setup_inference_from_telemetry():
     assert "wing change" in flag_unsupported_claims("a clear wing change from qualifying to the race")
 
 
+def test_flags_drs_mentions():
+    # DRS channel semantics are unreliable (FastF1), so any DRS claim is unsupported.
+    assert flag_unsupported_claims("Verstappen used DRS to close the gap")
+    assert flag_unsupported_claims("fastest through the second DRS zone")
+    # "address" contains no standalone drs; must not false-fire
+    assert flag_unsupported_claims("Hamilton set the fastest final sector") == []
+
+
 def test_clean_prose_is_not_flagged():
     text = (
         "George Russell converted pole into a controlled win, finishing 1.6 seconds clear. "

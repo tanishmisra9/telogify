@@ -117,6 +117,9 @@ _REGEX_BLOCKLIST = [
         r"\b(?:3[1-9]|[4-9]\d|\d{3})(?:\.\d+)? km/h(?: \([^)]*\))? "
         r"(?:slower|faster|quicker|down|more|shy|off|behind|adrift|gap|deficit)\b"
     ),
+    # DRS state is not reliably known (FastF1: channel semantics "need more research"), so any
+    # DRS mention is unsupported. Straights are described plainly, never as "DRS zones".
+    re.compile(r"\bdrs\b", re.IGNORECASE),
 ]
 
 
