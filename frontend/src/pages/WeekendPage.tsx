@@ -5,7 +5,9 @@ import { Insight } from '@/components/Insight'
 import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
 import { Results } from '@/components/Results'
+import { SectionTitle } from '@/components/SectionTitle'
 import { SectorBars } from '@/components/SectorBars'
+import { Skeleton, SkeletonCard } from '@/components/Skeleton'
 import { TopSpeedBars } from '@/components/TopSpeedBars'
 import {
   useApi,
@@ -22,19 +24,21 @@ import {
 
 const PRACTICE_CODES = ['FP1', 'FP2', 'FP3']
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-8 border-b-2 border-ink pb-3">
-      <h2 className="font-display text-[2.7rem] leading-[0.95] tracking-tight sm:text-[4.05rem]">{children}</h2>
-    </div>
-  )
-}
-
 function Upcoming({ children }: { children: React.ReactNode }) {
   return (
     <p className="rounded-[--radius-panel] border border-dashed border-border p-6 text-sm text-muted">
       {children}
     </p>
+  )
+}
+
+// Reserve the practice block's footprint so the page doesn't grow when the two charts land.
+function PracticeSkeleton() {
+  return (
+    <div className="grid gap-6">
+      <SkeletonCard className="min-h-[560px]" />
+      <SkeletonCard className="min-h-[300px]" />
+    </div>
   )
 }
 
@@ -62,120 +66,154 @@ export function WeekendPage() {
 
   if (weekend.error || sessions.error) {
     return (
-      <main className="mx-auto max-w-5xl px-6 py-16">
+      <main className="mx-auto max-w-[1312px] px-6 py-16">
         <p className="text-muted">API offline.</p>
       </main>
     )
   }
 
   return (
-    <main className="py-16">
-      <div className="mx-auto max-w-5xl px-6">
-        <BlurFade>
-          <p className="kicker text-accent">
-            {year} · Round {round}
-          </p>
-          <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
-            {weekend.data?.event_name ?? 'Weekend'}
-          </h1>
-          {weekend.data && <p className="mt-3 text-lg text-muted">{weekend.data.circuit_name}</p>}
-        </BlurFade>
+    <main className="mx-auto max-w-[1312px] px-6 py-16">
+      <BlurFade>
+        <p className="kicker text-accent">
+          {year} · Round {round}
+        </p>
+        {weekend.data ? (
+          <>
+            <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
+              {weekend.data.event_name}
+            </h1>
+            <p className="mt-3 text-lg text-muted">{weekend.data.circuit_name}</p>
+          </>
+        ) : (
+          <>
+            <Skeleton className="mt-3 h-14 w-2/3 sm:h-20" />
+            <Skeleton className="mt-3 h-6 w-40" />
+          </>
+        )}
+      </BlurFade>
 
-        <section className="mt-16">
-          <SectionTitle>Your three insights</SectionTitle>
-          {insights.loading && <p className="text-muted">Loading insights...</p>}
-          {insights.data && insights.data.length === 0 && (
-            <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
-          )}
-          <div className="grid gap-4">
-            {insights.data?.map((item, i) => (
+      <section className="mt-16">
+        <SectionTitle>Your three insights</SectionTitle>
+        {insights.loading ? (
+          <div className="grid max-w-5xl gap-4">
+            {[0, 1, 2].map((i) => (
+              <SkeletonCard key={i} className="min-h-[150px]" />
+            ))}
+          </div>
+        ) : !insights.data || insights.data.length === 0 ? (
+          <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
+        ) : (
+          <div className="grid max-w-5xl gap-4">
+            {insights.data.map((item, i) => (
               <BlurFade key={item.slot} delay={0.06 * i}>
                 <Insight item={item} />
               </BlurFade>
             ))}
           </div>
-        </section>
-      </div>
-
-      <div className="mx-auto max-w-[1312px] px-6">
-        <section className="mt-20">
-          <SectionTitle>Practice</SectionTitle>
-          {!sessionsLoaded ? (
-            <p className="text-sm text-muted">Loading...</p>
-          ) : !practiceHappened ? (
-            <Upcoming>Practice hasn't run yet. Best sectors and top speeds appear here once it has.</Upcoming>
-          ) : (
-            <div className="grid gap-6">
-              <BlurFade>{sectors.data && <SectorBars data={sectors.data} />}</BlurFade>
-              <BlurFade delay={0.06}>{topspeeds.data && <TopSpeedBars data={topspeeds.data} />}</BlurFade>
-            </div>
-          )}
-        </section>
-
-        {sprintHappened && (
-          <section className="mt-20">
-            <SectionTitle>Sprint</SectionTitle>
-            {!sessionsLoaded ? (
-              <p className="text-sm text-muted">Loading...</p>
-            ) : (
-              <BlurFade>
-                <PaceSpreadChart
-                  pace={
-                    sprintPace.data ?? {
-                      drivers: [],
-                      constructors: [],
-                      stop_counts: {},
-                      stop_count_spread: 0,
-                    }
-                  }
-                />
-              </BlurFade>
-            )}
-          </section>
         )}
+      </section>
 
+      <section className="mt-20">
+        <SectionTitle>Practice</SectionTitle>
+        {!sessionsLoaded ? (
+          <PracticeSkeleton />
+        ) : !practiceHappened ? (
+          <Upcoming>Practice hasn't run yet. Best sectors and top speeds appear here once it has.</Upcoming>
+        ) : (
+          <div className="grid gap-6">
+            {sectors.data ? (
+              <BlurFade>
+                <SectorBars data={sectors.data} />
+              </BlurFade>
+            ) : (
+              <SkeletonCard className="min-h-[560px]" />
+            )}
+            {topspeeds.data ? (
+              <BlurFade delay={0.06}>
+                <TopSpeedBars data={topspeeds.data} />
+              </BlurFade>
+            ) : (
+              <SkeletonCard className="min-h-[300px]" />
+            )}
+          </div>
+        )}
+      </section>
+
+      {sprintHappened && (
         <section className="mt-20">
-          <SectionTitle>Qualifying</SectionTitle>
-          {!sessionsLoaded ? (
-            <p className="text-sm text-muted">Loading...</p>
-          ) : !qualiHappened ? (
-            <Upcoming>
-              Qualifying hasn't run yet. The car-character comparison appears here once it has.
-            </Upcoming>
+          <SectionTitle>Sprint</SectionTitle>
+          {sprintPace.data ? (
+            <BlurFade>
+              <PaceSpreadChart pace={sprintPace.data} />
+            </BlurFade>
           ) : (
-            <BlurFade>{qualiCharacter.data && <QualiCharacterTable data={qualiCharacter.data} />}</BlurFade>
+            <SkeletonCard className="min-h-[600px]" />
           )}
         </section>
+      )}
 
-        <section className="mt-20">
-          <SectionTitle>Race</SectionTitle>
-          {!sessionsLoaded ? (
-            <p className="text-sm text-muted">Loading...</p>
-          ) : !raceHappened ? (
-            <Upcoming>
-              Race day hasn't happened yet. Pace ranking, tyre degradation and the finishing order appear here once
-              it has.
-            </Upcoming>
-          ) : (
-            <div className="grid gap-6">
+      <section className="mt-20">
+        <SectionTitle>Qualifying</SectionTitle>
+        {!sessionsLoaded ? (
+          <SkeletonCard className="min-h-[520px]" />
+        ) : !qualiHappened ? (
+          <Upcoming>
+            Qualifying hasn't run yet. The car-character comparison appears here once it has.
+          </Upcoming>
+        ) : qualiCharacter.data ? (
+          <BlurFade>
+            <QualiCharacterTable data={qualiCharacter.data} />
+          </BlurFade>
+        ) : (
+          <SkeletonCard className="min-h-[520px]" />
+        )}
+      </section>
+
+      <section className="mt-20">
+        <SectionTitle>Race</SectionTitle>
+        {!sessionsLoaded ? (
+          <div className="grid gap-6">
+            <SkeletonCard className="min-h-[600px]" />
+            <SkeletonCard className="min-h-[540px]" />
+            <SkeletonCard className="min-h-[400px]" />
+          </div>
+        ) : !raceHappened ? (
+          <Upcoming>
+            Race day hasn't happened yet. Pace ranking, tyre degradation and the finishing order appear here once
+            it has.
+          </Upcoming>
+        ) : (
+          <div className="grid gap-6">
+            {pace.data ? (
               <BlurFade>
-                <PaceSpreadChart
-                  pace={pace.data ?? { drivers: [], constructors: [], stop_counts: {}, stop_count_spread: 0 }}
-                />
+                <PaceSpreadChart pace={pace.data} />
               </BlurFade>
-              <BlurFade delay={0.06}>{degradation.data && <DegradationChart data={degradation.data} />}</BlurFade>
+            ) : (
+              <SkeletonCard className="min-h-[600px]" />
+            )}
+            {degradation.data ? (
+              <BlurFade delay={0.06}>
+                <DegradationChart data={degradation.data} />
+              </BlurFade>
+            ) : (
+              <SkeletonCard className="min-h-[540px]" />
+            )}
+            {results.data ? (
               <BlurFade delay={0.1}>
-                <div className="glass rounded-[--radius-panel] p-6">
-                  <h3 className="mb-4 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
+                <div className="glass mx-auto w-full max-w-4xl rounded-[--radius-panel] p-6 sm:p-8">
+                  <h3 className="mb-6 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
                     Finishing order
                   </h3>
-                  <Results rows={results.data ?? []} />
+                  <Results rows={results.data} />
                 </div>
               </BlurFade>
-            </div>
-          )}
-        </section>
-      </div>
+            ) : (
+              <SkeletonCard className="mx-auto min-h-[400px] w-full max-w-4xl" />
+            )}
+          </div>
+        )}
+      </section>
     </main>
   )
 }

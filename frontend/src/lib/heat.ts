@@ -15,7 +15,7 @@ export function rankAsc(values: (number | null)[]): number[] {
   return rankDesc(values.map((v) => (v == null ? null : -v)))
 }
 
-export function heatBg(rank: number, total: number, opacityMax = 0.32): string {
+export function heatBg(rank: number, total: number, opacityMax = 0.5): string {
   if (total <= 1) return 'transparent'
   const t = 1 - (rank - 1) / (total - 1)
   const pct = Math.round(t * opacityMax * 100)

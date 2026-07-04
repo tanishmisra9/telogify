@@ -10,11 +10,12 @@ const MARGIN = { top: 16, right: 16, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
-type Metric = 'pace' | 'quali'
-const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualifying' }
+type Metric = 'pace' | 'quali' | 'cumulative'
+const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualifying', cumulative: 'Cumulative' }
 const UNIT: Record<Metric, (v: number) => string> = {
-  pace: (v) => `${v.toFixed(1)}s`,
-  quali: (v) => `${v.toFixed(1)}%`,
+  pace: (v) => `+${v.toFixed(1)}s`,
+  quali: (v) => `${(100 + v).toFixed(1)}%`,
+  cumulative: (v) => v.toFixed(2),
 }
 
 // One line per constructor: gap to the round's fastest team, round by round. Lower is
@@ -50,10 +51,9 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
       animate={{ opacity: 1, y: 0 }}
       transition={spring}
     >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">Gap by round</h2>
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
         <div className="inline-flex rounded-full border border-border bg-surface/60 p-0.5" role="group" aria-label="Metric">
-          {(['pace', 'quali'] as Metric[]).map((mkey) => (
+          {(['pace', 'quali', 'cumulative'] as Metric[]).map((mkey) => (
             <button
               key={mkey}
               type="button"

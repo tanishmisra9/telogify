@@ -1,7 +1,7 @@
 import { TeamRule } from '@/components/TeamMark'
 import type { ResultRow } from '@/lib/api'
 
-const GRID = 'grid grid-cols-[2rem_5rem_1.6fr_1fr_0.6fr_1fr] items-center gap-x-6'
+const GRID = 'grid grid-cols-[2rem_4.5rem_1fr_6.5rem_2.5rem_6rem] items-center gap-x-4'
 const HEAD = 'border-b border-border pb-2 text-sm font-semibold text-ink'
 
 export function Results({ rows }: { rows: ResultRow[] }) {

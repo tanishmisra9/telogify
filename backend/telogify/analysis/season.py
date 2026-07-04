@@ -206,6 +206,7 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
     sector_totals: dict[str, int] = defaultdict(int)
     pace_trend: dict[str, list] = defaultdict(list)
     quali_trend: dict[str, list] = defaultdict(list)
+    cumulative_trend: dict[str, list] = defaultdict(list)
     rounds_with_data: dict[str, set] = defaultdict(set)
     rounds_meta: list[dict] = []
 
@@ -229,6 +230,12 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
             deg_vals[c].extend(v)  # (compound, slope, n_laps) per fit; reduced on a reference compound below
         for c, v in m["sector_dominance_count"].items():
             sector_totals[c] += v
+
+        # Combined competitiveness this round: the SAME 0.6/0.4 normalized blend that drives
+        # the overall ranking, computed per round. overall_ranking's score is exactly
+        # RACE_WEIGHT*norm(pace) + QUALI_WEIGHT*norm(quali) (one-metric fallback included).
+        for c, sc in overall_ranking(m["pace_gap"], m["quali_gap_pct"]).items():
+            cumulative_trend[c].append({"round": w.round, "value": sc["score"]})
 
     constructors = set().union(pace_vals, quali_vals, top_speed_vals, deg_vals, sector_totals)
     total_rounds = len(weekends)
@@ -256,7 +263,7 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
                 "top_speed_deficit_mph": ts["mean"] * _KMH_TO_MPH if ts["mean"] is not None else None,
                 "sector_dominance_count": sector_totals.get(c, 0),
                 "tyre_deg_s_per_lap": _tyre_deg_on_ref(deg_vals[c], ref_compound),
-                "trend": {"pace": pace_trend.get(c, []), "quali": quali_trend.get(c, [])},
+                "trend": {"pace": pace_trend.get(c, []), "quali": quali_trend.get(c, []), "cumulative": cumulative_trend.get(c, [])},
                 "confidence": confidence(len(rounds_with_data.get(c, set())), total_rounds),
             }
         )

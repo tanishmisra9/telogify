@@ -173,7 +173,7 @@ export interface SeasonConstructorRow {
   top_speed_deficit_mph: number | null
   sector_dominance_count: number
   tyre_deg_s_per_lap: number | null
-  trend: { pace: TrendPoint[]; quali: TrendPoint[] }
+  trend: { pace: TrendPoint[]; quali: TrendPoint[]; cumulative: TrendPoint[] }
   confidence: 'low' | 'med' | 'high'
 }
 

@@ -1,18 +1,11 @@
 import { Navigate, useParams } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
+import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
 import { heatBg, rankAsc } from '@/lib/heat'
-import { seasonSummary } from '@/lib/seasonSummary'
+import { seasonSummary, type Trait } from '@/lib/seasonSummary'
 import { useApi, type SeasonConstructorRow, type SeasonSnapshot, type WeekendSummary } from '@/lib/api'
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-8 border-b-2 border-ink pb-3">
-      <h2 className="font-display text-5xl leading-[0.95] tracking-tight sm:text-7xl">{children}</h2>
-    </div>
-  )
-}
 
 const CONF_LABEL: Record<string, string> = { low: 'low data', med: 'partial data' }
 
@@ -47,8 +40,8 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
 
   // One bare delta per column (no sign, no unit-doubling): the leader reads "leader", the rest
   // their gap to it. Pace shows race pace only; the 60/40 blend still drives the order + shading.
-  const paceCells = gapCells(rows.map((r) => r.pace_gap.mean), (d) => d.toFixed(3))
-  const topCells = gapCells(rows.map((r) => r.top_speed_deficit_kmh), (d) => `${Math.round(d)} km/h`)
+  const paceCells = gapCells(rows.map((r) => r.pace_gap.mean), (d) => `+${d.toFixed(3)}s`)
+  const topCells = gapCells(rows.map((r) => r.top_speed_deficit_kmh), (d) => `-${Math.round(d)} km/h`)
   const degCells = gapCells(rows.map((r) => r.tyre_deg_s_per_lap), (d) => `${d.toFixed(3)}s/lap`)
 
   const cell = (rank: number) => ({ backgroundColor: heatBg(rank, n) })
@@ -88,47 +81,60 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   )
 }
 
-function SummaryCards({ rows }: { rows: SeasonConstructorRow[] }) {
+// A traded pair per team: what the car does best in the field, and where it falls short. Plain
+// typographic rows (no colored blocks), aligned to the ranking table's rhythm. A small up mark in
+// the accent flags the strength, a down mark in muted flags the shortfall.
+const FORM_GRID = 'grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-[1.1fr_1.4fr_1.4fr]'
+
+function TraitCell({ trait, kind }: { trait: Trait | null; kind: 'up' | 'down' }) {
+  if (!trait) return <span className="hidden text-sm text-muted sm:block">–</span>
+  const mark = kind === 'up' ? '▲' : '▼'
+  const markColor = kind === 'up' ? 'text-accent' : 'text-muted'
+  return (
+    <span className="flex items-baseline gap-2 text-sm">
+      <span className={`text-[0.7em] ${markColor}`} aria-hidden>
+        {mark}
+      </span>
+      <span className="text-ink">
+        {trait.text}
+        {trait.detail && <span className="num ml-1.5 text-muted">{trait.detail}</span>}
+      </span>
+    </span>
+  )
+}
+
+function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
   const summary = seasonSummary(rows)
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {rows.map((r, i) => {
-        const s = summary[r.constructor]
-        return (
-          <BlurFade key={r.constructor} delay={0.04 * i}>
-            <div className="glass h-full rounded-[--radius-panel] p-5">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 font-display text-2xl tracking-tight">
-                  <TeamRule team={r.constructor} className="h-6" />
-                  {r.constructor}
-                </span>
-                <span className="num text-sm text-muted">{r.overall_rank ? `#${r.overall_rank}` : ''}</span>
-              </div>
-              <ConfidenceChip confidence={r.confidence} />
-              {s.strengths.length > 0 && (
-                <>
-                  <p className="kicker mt-3 text-accent">Strengths</p>
-                  <ul className="mt-1 grid gap-1 text-sm text-ink">
-                    {s.strengths.map((x) => (
-                      <li key={x}>{x}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              {s.weaknesses.length > 0 && (
-                <>
-                  <p className="kicker mt-3 text-muted">Weaknesses</p>
-                  <ul className="mt-1 grid gap-1 text-sm text-muted">
-                    {s.weaknesses.map((x) => (
-                      <li key={x}>{x}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-          </BlurFade>
-        )
-      })}
+    <div className="glass rounded-[--radius-panel] p-6">
+      <ul className={FORM_GRID}>
+        <li className="contents" aria-hidden>
+          <span className={`${HEAD} hidden sm:block`}>Team</span>
+          <span className={`${HEAD} hidden sm:block`}>Strength</span>
+          <span className={`${HEAD} hidden sm:block`}>Weakness</span>
+        </li>
+        {rows.map((r) => {
+          const s = summary[r.constructor]
+          return (
+            <li
+              key={r.constructor}
+              className="contents [&>*]:border-border sm:[&>*]:border-t sm:[&>*]:py-3.5"
+            >
+              <span className="flex items-center gap-2 pt-5 font-medium text-ink sm:pt-3.5">
+                <TeamRule team={r.constructor} />
+                {r.constructor}
+                <ConfidenceChip confidence={r.confidence} />
+              </span>
+              <span className="pt-1.5 sm:pt-3.5">
+                <TraitCell trait={s.strength} kind="up" />
+              </span>
+              <span className="pb-1 pt-1.5 sm:pt-3.5">
+                <TraitCell trait={s.weakness} kind="down" />
+              </span>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
@@ -138,54 +144,59 @@ function SeasonView({ year }: { year: number }) {
   const rows = season.data?.constructors ?? []
 
   return (
-    <main className="py-16">
-      <div className="mx-auto max-w-5xl px-6">
-        <BlurFade>
-          <p className="kicker text-accent">{year} season</p>
-          <h1 className="mt-3 font-display text-6xl leading-[0.95] tracking-tight sm:text-8xl">Season Snapshot</h1>
-          <p className="mt-3 max-w-2xl text-lg text-muted">
-            Every team's season so far, rolled up from the weekend pages. Weighted 60% race pace, 40% qualifying.
-          </p>
-        </BlurFade>
-      </div>
+    <main className="mx-auto max-w-[1312px] px-6 py-16">
+      <BlurFade>
+        <p className="kicker text-accent">{year} season</p>
+        <h1 className="mt-3 font-display text-6xl leading-[0.95] tracking-tight sm:text-8xl">Season Snapshot</h1>
+        <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
+          Every team's season so far, rolled up from the weekend pages. The ranking blends race pace and
+          one-lap qualifying pace (weighted 60/40); the Gap by round chart tracks how each car's deficit
+          shifted from race to race.
+        </p>
+      </BlurFade>
 
-      <div className="mx-auto max-w-[1312px] px-6">
-        <section className="mt-16">
-          <SectionTitle>Ranking</SectionTitle>
-          {season.loading && <p className="text-sm text-muted">Loading...</p>}
-          {season.error && <p className="text-sm text-muted">No season data for {year}.</p>}
-          {rows.length > 0 && (
-            <BlurFade>
-              <div className="glass rounded-[--radius-panel] p-6">
-                <RankingTable rows={rows} />
-                <p className="mt-4 text-xs text-muted">
-                  Each column is anchored to the season's best team: the leader shows "leader" and every other
-                  team its gap to that leader. Pace is the 60/40 race and qualifying blend that drives the
-                  order. Tyre wear is measured on the compound the field ran most, so it reflects the car and
-                  not its tyre choice. Cells shade toward the accent as a team ranks higher on that metric. A
-                  "partial data" or "low data" tag marks a team seen in too few rounds to read at full confidence.
-                </p>
-              </div>
-            </BlurFade>
-          )}
-        </section>
-
+      <section className="mt-16">
+        <SectionTitle>Ranking</SectionTitle>
+        {season.loading && <p className="text-sm text-muted">Loading...</p>}
+        {season.error && <p className="text-sm text-muted">No season data for {year}.</p>}
         {rows.length > 0 && (
-          <>
-            <section className="mt-20">
-              <SectionTitle>Trend</SectionTitle>
-              <BlurFade>
-                <SeasonTrendChart rows={rows} rounds={season.data!.rounds} />
-              </BlurFade>
-            </section>
-
-            <section className="mt-20">
-              <SectionTitle>Strengths and weaknesses</SectionTitle>
-              <SummaryCards rows={rows} />
-            </section>
-          </>
+          <BlurFade>
+            <div className="glass rounded-[--radius-panel] p-6">
+              <RankingTable rows={rows} />
+              <p className="mt-4 text-xs text-muted">
+                Each column is anchored to the season's best team: the leader shows "leader" and every other
+                team its gap to that leader. Pace is the 60/40 race and qualifying blend that drives the
+                order. Tyre wear is measured on the compound the field ran most, so it reflects the car and
+                not its tyre choice. Cells shade toward the accent as a team ranks higher on that metric. A
+                "partial data" or "low data" tag marks a team seen in too few rounds to read at full confidence.
+              </p>
+            </div>
+          </BlurFade>
         )}
-      </div>
+      </section>
+
+      {rows.length > 0 && (
+        <>
+          <section className="mt-20">
+            <SectionTitle>Gap by round</SectionTitle>
+            <BlurFade>
+              <SeasonTrendChart rows={rows} rounds={season.data!.rounds} />
+            </BlurFade>
+          </section>
+
+          <section className="mt-20">
+            <SectionTitle>Where each car wins and loses</SectionTitle>
+            <BlurFade>
+              <FormGuide rows={rows} />
+            </BlurFade>
+            <p className="mt-4 text-xs text-muted">
+              One traded pair per car: its strongest area in the field and its weakest, each ranked against
+              every other team with the real season-average figure. Even a front-runner shows where it gives
+              a little away.
+            </p>
+          </section>
+        </>
+      )}
     </main>
   )
 }

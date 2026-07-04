@@ -173,12 +173,12 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
         </svg>
       )}
 
-      <p className="mt-4 text-center text-sm text-muted">
+      <p className="mt-4 text-xs text-muted">
         Solid line median, dashed line mean, dotted line pace ceiling (fastest tenth of laps), box
         is the middle 50 percent of laps, whiskers cover 99.3 percent, dots are outliers.
       </p>
       {pace.stop_count_spread >= 2 && (
-        <p className="mt-2 text-center text-sm text-muted">
+        <p className="mt-2 text-xs text-muted">
           Pit-equated: stop counts vary by up to {pace.stop_count_spread} across the field, so treat
           these gaps as an estimate.
         </p>

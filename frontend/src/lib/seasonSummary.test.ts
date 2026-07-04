@@ -6,6 +6,7 @@ function agg(mean: number | null, spread = 0, n = 8) {
   return { mean, spread, n }
 }
 
+// equal on everything except what a test overrides, so only the overridden metrics have spread
 function row(over: Partial<SeasonConstructorRow>): SeasonConstructorRow {
   return {
     constructor: 'Team',
@@ -14,52 +15,55 @@ function row(over: Partial<SeasonConstructorRow>): SeasonConstructorRow {
     quali_gap_pct: agg(0.5),
     top_speed_deficit_kmh: 3,
     top_speed_deficit_mph: 1.9,
-    sector_dominance_count: 0,
+    sector_dominance_count: 5,
     tyre_deg_s_per_lap: 0.05,
-    trend: { pace: [], quali: [] },
+    trend: { pace: [], quali: [], cumulative: [] },
     confidence: 'high',
     ...over,
   }
 }
 
 describe('seasonSummary', () => {
-  it('gives the pace leader the benchmark strength and the laggard the weakness', () => {
-    const rows = [
-      row({ constructor: 'Fast', pace_gap: agg(0) }),
-      row({ constructor: 'Slow', pace_gap: agg(1.2) }),
-    ]
+  // Only pace and top-speed carry spread; every other metric is equal across teams (no spread),
+  // so strengths/weaknesses come from those two channels.
+  const rows = [
+    row({ constructor: 'Fast', pace_gap: agg(0), top_speed_deficit_kmh: 10 }),
+    row({ constructor: 'Mid', pace_gap: agg(0.5), top_speed_deficit_kmh: 5 }),
+    row({ constructor: 'Slow', pace_gap: agg(1.2), top_speed_deficit_kmh: 0 }),
+  ]
+
+  it('gives the pace leader the benchmark strength', () => {
     const s = seasonSummary(rows)
-    expect(s['Fast'].strengths.some((x) => x.includes('race-pace benchmark'))).toBe(true)
-    expect(s['Slow'].weaknesses.some((x) => x.includes('Slowest race pace'))).toBe(true)
-    expect(s['Slow'].weaknesses.some((x) => x.includes('1.200s'))).toBe(true)
+    expect(s['Fast'].strength?.text).toBe('Sets the race-pace benchmark')
   })
 
-  it('fills the real straight-line deficit number for the slowest team', () => {
-    const rows = [
-      row({ constructor: 'Quick', top_speed_deficit_kmh: 0 }),
-      row({ constructor: 'Draggy', top_speed_deficit_kmh: 12 }),
-    ]
+  it('makes the pace leader with the worst top speed own that as its weakness', () => {
     const s = seasonSummary(rows)
-    expect(s['Quick'].strengths).toContain('Quickest in a straight line')
-    expect(s['Draggy'].weaknesses).toContain('Down 12 km/h in a straight line')
+    expect(s['Fast'].weakness?.text).toBe('Slowest in a straight line')
+    expect(s['Fast'].weakness?.detail).toBe('-10 km/h')
   })
 
-  it('does not emit a weakness for a low sector-dominance count', () => {
-    const rows = [
-      row({ constructor: 'A', sector_dominance_count: 10 }),
-      row({ constructor: 'B', sector_dominance_count: 0 }),
-    ]
+  it('gives every team both a strength and a weakness', () => {
     const s = seasonSummary(rows)
-    expect(s['A'].strengths.some((x) => x.includes('Led 10 qualifying sectors'))).toBe(true)
-    // B trails on sectors but that is not stated as a weakness
-    expect(s['B'].weaknesses.every((x) => !x.includes('sector'))).toBe(true)
+    for (const team of ['Fast', 'Mid', 'Slow']) {
+      expect(s[team].strength).not.toBeNull()
+    }
+    // the two teams that lead/trail distinct channels both get a weakness
+    expect(s['Slow'].strength?.text).toBe('Fastest in a straight line')
+    expect(s['Slow'].weakness?.text).toBe('Slowest race pace in the field')
   })
 
-  it('falls back to a neutral line for a team that neither leads nor trails anything', () => {
-    // Three identical teams -> no metric has a distinct leader/laggard.
-    const rows = [row({ constructor: 'A' }), row({ constructor: 'B' }), row({ constructor: 'C' })]
+  it('phrases a non-leader strength with its ordinal position', () => {
     const s = seasonSummary(rows)
-    expect(s['A'].strengths).toEqual(['Solid midfield runner with no standout trait this season'])
-    expect(s['A'].weaknesses).toEqual([])
+    // Mid is 2nd on both channels; its strength reads as a 2nd-place trait, not a benchmark
+    expect(s['Mid'].strength?.text).toMatch(/2nd-/)
+  })
+
+  it('ignores metrics with no spread across the field', () => {
+    // all teams identical -> nobody has a distinguishing trait
+    const flat = [row({ constructor: 'A' }), row({ constructor: 'B' }), row({ constructor: 'C' })]
+    const s = seasonSummary(flat)
+    expect(s['A'].strength).toBeNull()
+    expect(s['A'].weakness).toBeNull()
   })
 })
