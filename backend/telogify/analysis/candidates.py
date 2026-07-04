@@ -39,6 +39,12 @@ from telogify.models import (
 
 POSITION_SWING_MIN = 2  # only notable grid-to-finish swings become signals
 REAL_STRAIGHT_KMH = 300.0  # a zone only counts as a real top-speed straight if the field tops this
+# Single-corner and single-straight cross-team deltas above these are almost always a
+# segmentation/alignment artifact (a corner window that sampled the wrong corner, or a
+# 'straight' segment that caught a braking zone), not a real car difference. Drop them so a
+# bogus 99 km/h corner gap or 67 km/h straight deficit never reaches the agent.
+MAX_CORNER_DELTA_KMH = 25.0
+MAX_STRAIGHT_DEFICIT_KMH = 30.0
 PRACTICE_SESSIONS = ("FP1", "FP2", "FP3")
 # Findings fully readable from the finishing/grid table (position swings) are obvious to
 # anyone who watched the race; halve their standalone score so they only reach the top by
@@ -162,6 +168,8 @@ def _mine_corner_deltas(db, sessions):
     ).all():
         if attr.delta_s is None or attr.confidence is None:
             continue
+        if abs(attr.delta_s) > MAX_CORNER_DELTA_KMH:
+            continue  # implausible single-corner min-speed gap => misaligned corner window
         # delta_s = metric(a) - metric(b); the slower constructor (deficit) is the subject.
         slower = attr.constructor_b if attr.delta_s > 0 else attr.constructor_a
         out.append(
@@ -215,6 +223,8 @@ def _mine_straight_deltas(db, sessions, dc_map):
                 deficit = fastest - speed
                 if deficit <= 0:
                     continue
+                if deficit > MAX_STRAIGHT_DEFICIT_KMH:
+                    continue  # implausible straight-line deficit => segment wasn't a clean straight
                 out.append(
                     Signal(
                         signal_type="straight_delta",
@@ -222,13 +232,13 @@ def _mine_straight_deltas(db, sessions, dc_map):
                         magnitude=deficit,
                         confidence=1.0,
                         subject=constructor,
-                        locus=f"zone:{zone}",
+                        locus=f"straight:{zone}",
                         session_type=session.session_type,
                         source_refs=[
                             {
                                 "type": "straight_delta",
                                 "session_type": session.session_type,
-                                "drs_zone": zone,
+                                "straight_number": zone,
                                 "constructor": constructor,
                                 "deficit_kmh": deficit,
                                 "fastest_constructor": leader,

@@ -55,6 +55,16 @@ _BLOCKLIST = [
     "double win",
     "won both",
     "sprint double",
+    # setup inferred from telemetry we never see (no wing level, no Saturday->Sunday car swap);
+    # a single noisy speed segment must not become a "two different cars" story
+    "wing swap",
+    "wing-level swap",
+    "wing level swap",
+    "wing change",
+    "changed its wing",
+    "two completely different cars",
+    "two different cars",
+    "completely different car across",
 ]
 
 _NUMBER_WORD = (

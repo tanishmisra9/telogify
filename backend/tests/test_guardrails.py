@@ -31,6 +31,18 @@ def test_flags_sprint_weekend_fabrications():
     )
 
 
+def test_flags_setup_inference_from_telemetry():
+    # The exact Austrian-GP (round 8) Cadillac overreach: a "two different cars / wing swap"
+    # story built on one noisy speed segment, inferring setup we never see.
+    assert "two completely different cars" in flag_unsupported_claims(
+        "Cadillac ran two completely different cars across the weekend on the straights"
+    )
+    assert "wing-level swap" in flag_unsupported_claims(
+        "the wing-level swap between Saturday and Sunday is one of the biggest in the field"
+    )
+    assert "wing change" in flag_unsupported_claims("a clear wing change from qualifying to the race")
+
+
 def test_clean_prose_is_not_flagged():
     text = (
         "George Russell converted pole into a controlled win, finishing 1.6 seconds clear. "
