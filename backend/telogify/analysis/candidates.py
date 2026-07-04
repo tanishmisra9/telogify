@@ -422,6 +422,7 @@ def _mine_quali_character_for_session(db, session: Session) -> list[Signal]:
             "driver": r.driver,
             "lap_time_s": r.lap_time_s,
             "top_speed_kmh": r.top_speed_kmh,
+            "min_speed_kmh": r.min_speed_kmh,
         }
         for r in rows
         if r.constructor and r.lap_time_s is not None and r.top_speed_kmh is not None
@@ -457,6 +458,38 @@ def _mine_quali_character_for_session(db, session: Session) -> list[Signal]:
                 ],
             )
         )
+
+    # Mechanical-grip read: deficit in the slowest-corner minimum speed vs the field's best. A
+    # distinct quali channel from top speed, so a car strong in a straight but weak in the slow
+    # stuff (or the reverse) can surface as the non-obvious finding.
+    grip_reps = [r for r in reps if r.get("min_speed_kmh") is not None]
+    if len(grip_reps) >= 2:
+        best_grip = max(r["min_speed_kmh"] for r in grip_reps)
+        for r in grip_reps:
+            deficit = best_grip - r["min_speed_kmh"]
+            if deficit <= 0:
+                continue
+            out.append(
+                Signal(
+                    signal_type="quali_grip_delta",
+                    category="quali_character",
+                    magnitude=deficit,
+                    confidence=1.0,
+                    subject=r["constructor"],
+                    session_type=session.session_type,
+                    source_refs=[
+                        {
+                            "type": "quali_grip_delta",
+                            "constructor": r["constructor"],
+                            "driver": r["driver"],
+                            "min_speed_kmh": r["min_speed_kmh"],
+                            "deficit_kmh": deficit,
+                            "best_min_speed_kmh": best_grip,
+                            "session_type": session.session_type,
+                        }
+                    ],
+                )
+            )
     return out
 
 

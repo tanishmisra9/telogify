@@ -104,12 +104,26 @@ export function WeekendPage() {
         ) : !insights.data || insights.data.length === 0 ? (
           <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
         ) : (
-          <div className="grid max-w-5xl gap-4">
-            {insights.data.map((item, i) => (
-              <BlurFade key={item.slot} delay={0.06 * i}>
-                <Insight item={item} />
-              </BlurFade>
-            ))}
+          <div className="max-w-5xl">
+            <div className="grid gap-4">
+              {insights.data.map((item, i) => (
+                <BlurFade key={item.slot} delay={0.06 * i}>
+                  <Insight item={item} />
+                </BlurFade>
+              ))}
+            </div>
+            <BlurFade delay={0.06 * insights.data.length + 0.06}>
+              <div className="mt-6 rounded-[--radius-panel] border border-border p-6">
+                <p className="kicker text-accent">How these are made</p>
+                <p className="mt-3 text-sm leading-relaxed text-muted">
+                  Every figure above is read from official timing and car telemetry, then computed into a
+                  database by deterministic analysis, with nothing estimated. An agent then picks the three
+                  findings you could not get from the timing screen, favouring a weakness in one area
+                  (qualifying, straight-line speed, tyre wear, corner grip) that explains an outcome in another.
+                  Each number is traceable back to the exact data it came from.
+                </p>
+              </div>
+            </BlurFade>
           </div>
         )}
       </section>
