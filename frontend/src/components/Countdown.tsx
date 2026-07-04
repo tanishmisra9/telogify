@@ -13,8 +13,8 @@ function parts(target: number) {
   ] as const
 }
 
-// A race-timing readout, not a hero-metric: real schedule data in the mono tabular figures
-// the rest of the app uses for telemetry. Self-hides when there's no next race (season over
+// The landing-page centerpiece: the next race as a bold paper panel, the schedule ticking in the
+// same mono figures the app uses for telemetry. Self-hides when there's no next race (season over
 // or FastF1 unavailable), so the section never ships broken.
 export function Countdown() {
   const { data } = useApi<NextRace>('/next-race')
@@ -29,22 +29,41 @@ export function Countdown() {
 
   if (!data || target == null) return null
 
+  const place = [data.location, data.country].filter(Boolean).join(', ')
+  const raceDate = new Date(data.date_utc).toLocaleDateString(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+
   return (
-    <div className="mt-24 border-t-2 border-ink pt-5 sm:mt-32">
-      <p className="font-display text-2xl tracking-tight">
-        <span className="text-muted">Next race</span>
-        <span className="ml-4 text-ink">{data.event_name}</span>
-      </p>
-      <div className="mt-5 grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:gap-x-8 sm:gap-y-4">
-        {parts(target).map(([label, value]) => (
-          <div key={label} className="min-w-0 sm:flex sm:items-baseline sm:gap-2">
-            <span className="num block text-4xl leading-none tracking-tight text-ink sm:inline sm:text-8xl">
-              {pad(value)}
-            </span>
-            <span className="mt-1 block text-xs text-muted sm:mt-0 sm:inline sm:text-sm">{label}</span>
-          </div>
-        ))}
+    <section className="mt-24 sm:mt-32">
+      <div className="glass rounded-[--radius-panel] p-8 sm:p-12">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+          <p className="kicker text-accent">Next race · Round {data.round}</p>
+          <p className="num text-sm text-muted">
+            {raceDate}
+            {place ? ` · ${place}` : ''}
+          </p>
+        </div>
+
+        <h2 className="mt-4 font-display text-5xl leading-[0.95] tracking-tight sm:text-7xl xl:text-8xl">
+          {data.event_name}
+        </h2>
+
+        <div className="mt-10 grid grid-cols-4 gap-4 sm:gap-6">
+          {parts(target).map(([label, value]) => (
+            <div key={label} className="border-t-2 border-ink pt-3">
+              <span className="num block text-5xl leading-none tracking-tight text-ink tabular-nums sm:text-7xl xl:text-8xl">
+                {pad(value)}
+              </span>
+              <span className="mt-2 block text-xs uppercase tracking-[0.2em] text-muted sm:text-sm">
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+    </section>
   )
 }

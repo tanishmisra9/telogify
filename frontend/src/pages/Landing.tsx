@@ -57,9 +57,7 @@ function LiveInsight() {
       <div className="mt-4">
         <Insight item={data} showSlot={false} />
       </div>
-      <p className="mt-3 text-sm text-muted">
-        Every figure traced to official timing data. Nothing estimated.
-      </p>
+      <p className="mt-3 text-xs text-muted">Every figure traced to official timing data. Nothing estimated.</p>
     </section>
   )
 }
@@ -76,16 +74,22 @@ export function Landing() {
           </h1>
         </BlurFade>
 
-        <BlurFade delay={0.1}>
+        <BlurFade delay={0.08}>
           <div className="mt-10">
             <CTAs />
           </div>
         </BlurFade>
+
+        <BlurFade delay={0.14}>
+          <p className="mt-10 max-w-2xl font-display text-3xl leading-tight tracking-tight text-ink sm:text-4xl">
+            The result tells you who won. The number tells you why.
+          </p>
+        </BlurFade>
       </section>
 
-      <LiveInsight />
-
       <Countdown />
+
+      <LiveInsight />
 
       <section className="mt-28 sm:mt-40">
         <BlurFade>
@@ -109,14 +113,6 @@ export function Landing() {
             </BlurFade>
           ))}
         </div>
-      </section>
-
-      <section className="mt-28 sm:mt-36">
-        <BlurFade>
-          <p className="font-display text-4xl leading-tight tracking-tight text-ink sm:text-5xl">
-            The result tells you who won. The number tells you why.
-          </p>
-        </BlurFade>
       </section>
     </main>
   )

@@ -171,7 +171,13 @@ def _schedule_events(year: int) -> tuple[Event, ...]:
         if dt.tzinfo is not None:
             dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
         events.append(
-            Event(round=int(r.get("RoundNumber") or 0), name=str(r.get("EventName") or ""), date=dt)
+            Event(
+                round=int(r.get("RoundNumber") or 0),
+                name=str(r.get("EventName") or ""),
+                date=dt,
+                country=str(r.get("Country") or ""),
+                location=str(r.get("Location") or ""),
+            )
         )
     return tuple(events)
 
@@ -188,7 +194,13 @@ def next_race():
         ev = pick_next_event(list(_schedule_events(now.year + 1)), now)
     if ev is None:
         return None
-    return {"event_name": ev.name, "round": ev.round, "date_utc": ev.date.isoformat() + "Z"}
+    return {
+        "event_name": ev.name,
+        "round": ev.round,
+        "date_utc": ev.date.isoformat() + "Z",
+        "country": ev.country,
+        "location": ev.location,
+    }
 
 
 @router.get("/weekends/{year}/{round}")

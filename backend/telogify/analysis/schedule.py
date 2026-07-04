@@ -12,6 +12,8 @@ class Event:
     round: int
     name: str
     date: datetime
+    country: str = ""
+    location: str = ""  # host city/circuit locality
 
 
 def pick_next_event(events: list[Event], now: datetime) -> Event | None:

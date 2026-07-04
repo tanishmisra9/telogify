@@ -2,6 +2,7 @@ import { TeamMark, TeamRule } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
 import { emphasize } from '@/lib/emphasize'
 import { heatBg, rankAsc, rankDesc } from '@/lib/heat'
+import { driverName } from '@/lib/driverNames'
 import { qualiInsights } from '@/lib/qualiInsights'
 import type { QualiCharacterData } from '@/lib/api'
 
@@ -77,7 +78,7 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <TeamMark team={r.constructor} className="font-medium" />
-                      <span className="whitespace-nowrap text-xs text-muted">({r.driver})</span>
+                      <span className="whitespace-nowrap text-xs text-muted">{driverName(r.driver)}</span>
                     </div>
                   </td>
                   <Cell bg={heatBg(lapRanks[i], n)}>{r.lap_time_s.toFixed(3)}s</Cell>

@@ -29,6 +29,8 @@ export interface NextRace {
   event_name: string
   round: number
   date_utc: string
+  country?: string
+  location?: string
 }
 
 export interface BoxStats {
