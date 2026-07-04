@@ -25,12 +25,39 @@ def _content_text(content) -> str:
     return str(content)
 
 
+def _first_json_array(text: str) -> str | None:
+    """Slice out the first balanced [...] array, ignoring brackets inside strings. Tolerates
+    trailing prose the agent sometimes appends (which broke a naive find('[')..rfind(']')
+    slice: a trailing 'note [x]' made json.loads choke on 'Extra data')."""
+    start = text.find("[")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_str:
+            esc = c == "\\" and not esc
+            if c == '"' and not esc:
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c == "[":
+            depth += 1
+        elif c == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def parse_insights(final_text: str) -> list[dict]:
     """Parse the final message into exactly 3 insight dicts. Fails loud on bad output."""
-    start, end = final_text.find("["), final_text.rfind("]")
-    if start == -1 or end == -1 or end < start:
+    array = _first_json_array(final_text)
+    if array is None:
         raise ValueError("Agent final message contained no JSON array of insights.")
-    data = json.loads(final_text[start : end + 1])
+    data = json.loads(array)
     if not isinstance(data, list) or len(data) < 3:
         raise ValueError(f"Expected 3 insights, got {len(data) if isinstance(data, list) else '?'}.")
     insights = data[:3]

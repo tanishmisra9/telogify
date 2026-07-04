@@ -84,7 +84,17 @@ def _insights(state: PipelineState, agent_runner) -> dict:
     for _attempt in range(1, _MAX_INSIGHT_ATTEMPTS + 1):
         messages = agent_runner(state["year"], state["round"], feedback=feedback)
         final = _content_text(messages[-1].content)
-        insights = parse_insights(final)
+        try:
+            insights = parse_insights(final)
+        except ValueError as e:
+            # Malformed output (bad JSON, extra prose, wrong shape) is retryable, not fatal:
+            # feed the error back and let the agent re-emit rather than crashing the run.
+            feedback = (
+                f"Your last message could not be parsed ({e}). Output ONLY a JSON array of "
+                "exactly 3 objects with keys header, explanation_web, explanation_email. No "
+                "text before or after the array."
+            )
+            continue
         flagged = _flag_all(insights)
         if not flagged:
             trace = extract_trace(messages)

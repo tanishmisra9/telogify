@@ -24,6 +24,25 @@ def test_parse_insights_tolerates_surrounding_prose():
     assert len(out) == 3 and out[0]["header"] == "H1"
 
 
+def test_parse_insights_tolerates_trailing_prose_with_bracket():
+    # The real failure: a trailing note containing ']' made find('[')..rfind(']') over-grab
+    # and json.loads choke on 'Extra data'. The balanced-scan parser must stop at the array end.
+    text = '[{"header":"H1","explanation_web":"W1","explanation_email":"E1"},' \
+           '{"header":"H2","explanation_web":"W2","explanation_email":"E2"},' \
+           '{"header":"H3","explanation_web":"W3","explanation_email":"E3"}]\n' \
+           'Note: numbers are from tool returns [see above].'
+    out = parse_insights(text)
+    assert len(out) == 3 and out[2]["header"] == "H3"
+
+
+def test_parse_insights_handles_bracket_inside_string_value():
+    text = '[{"header":"Ferrari [scuderia] led S1","explanation_web":"W","explanation_email":"E"},' \
+           '{"header":"H2","explanation_web":"W2","explanation_email":"E2"},' \
+           '{"header":"H3","explanation_web":"W3","explanation_email":"E3"}]'
+    out = parse_insights(text)
+    assert out[0]["header"] == "Ferrari [scuderia] led S1"
+
+
 def test_parse_insights_rejects_too_few():
     with pytest.raises(ValueError):
         parse_insights('[{"header":"H","explanation_web":"W","explanation_email":"E"}]')
