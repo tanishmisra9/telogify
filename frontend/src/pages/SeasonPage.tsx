@@ -47,7 +47,7 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
 
   // One bare delta per column (no sign, no unit-doubling): the leader reads "leader", the rest
   // their gap to it. Pace shows race pace only; the 60/40 blend still drives the order + shading.
-  const paceCells = gapCells(rows.map((r) => r.pace_gap.mean), (d) => d.toFixed(3))
+  const paceCells = gapCells(rows.map((r) => r.pace_gap.mean), (d) => `+${d.toFixed(3)}`)
   const topCells = gapCells(rows.map((r) => r.top_speed_deficit_kmh), (d) => `${Math.round(d)} km/h`)
   const degCells = gapCells(rows.map((r) => r.tyre_deg_s_per_lap), (d) => `${d.toFixed(3)}s/lap`)
 
