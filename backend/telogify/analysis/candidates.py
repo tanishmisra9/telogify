@@ -43,8 +43,8 @@ REAL_STRAIGHT_KMH = 300.0  # a zone only counts as a real top-speed straight if 
 # segmentation/alignment artifact (a corner window that sampled the wrong corner, or a
 # 'straight' segment that caught a braking zone), not a real car difference. Drop them so a
 # bogus 99 km/h corner gap or 67 km/h straight deficit never reaches the agent.
-MAX_CORNER_DELTA_KMH = 25.0
-MAX_STRAIGHT_DEFICIT_KMH = 30.0
+MAX_CORNER_DELTA_KMH = 18.0
+MAX_STRAIGHT_DEFICIT_KMH = 20.0
 PRACTICE_SESSIONS = ("FP1", "FP2", "FP3")
 # Findings fully readable from the finishing/grid table (position swings) are obvious to
 # anyone who watched the race; halve their standalone score so they only reach the top by
