@@ -27,3 +27,6 @@ dist/
 # Local agent state (CLAUDE.md is a local working doc, kept out of the repo)
 .claude/
 CLAUDE.md
+
+# Brag / launch-video output
+brag-output/
