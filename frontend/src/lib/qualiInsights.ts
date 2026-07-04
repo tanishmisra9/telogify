@@ -14,6 +14,11 @@ export interface QualiInsight {
 
 const pct = (v: number) => Math.round(v * 100)
 const kmh = (v: number) => Math.round(v)
+const ordinal = (n: number) => {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`
+}
 
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b)
@@ -43,8 +48,8 @@ export function qualiInsights(rows: CarCharacterRow[], fastestCornerNumber: numb
   const topRank = rankByDesc(rows, (r) => r.top_speed_kmh)
   const cornerRank = rankByDesc(rows, (r) => r.fastest_corner_kmh)
 
-  // priority-ordered candidates; the first two valid ones win, so cross-channel trades outrank
-  // the raw gap. Each carries a `strength` used only to pick the most extreme team within a type.
+  // priority-ordered candidates; the first two valid ones (about different teams) win, so
+  // cross-channel trades outrank the raw gap.
   const candidates: (QualiInsight & { priority: number })[] = []
 
   // 1. Aero trade: the team whose corner-speed rank most outstrips its straight-line rank (or vice
@@ -63,7 +68,7 @@ export function qualiInsights(rows: CarCharacterRow[], fastestCornerNumber: numb
           priority: 1,
           kicker: 'Aero trade',
           team: r.constructor,
-          text: `${r.constructor} leaned hardest on downforce in qualifying: ${kmh(r.fastest_corner_kmh!)} km/h through ${cornerLabel}, among the best in the field, but ${topDef} km/h down the straight.`,
+          text: `${r.constructor} leaned hardest on downforce in qualifying: ${kmh(r.fastest_corner_kmh!)} km/h through ${cornerLabel}, ${ordinal(cornerRank[r.constructor])}-quickest in the field, but ${topDef} km/h down the straight.`,
         })
       } else {
         const cornerDef = kmh(maxCorner - r.fastest_corner_kmh!)
@@ -71,7 +76,7 @@ export function qualiInsights(rows: CarCharacterRow[], fastestCornerNumber: numb
           priority: 1,
           kicker: 'Aero trade',
           team: r.constructor,
-          text: `${r.constructor} ran the skinniest wing of the field: quickest cars on top speed, but ${cornerDef} km/h slower than the best through ${cornerLabel}.`,
+          text: `${r.constructor} ran the skinniest wing of the field: ${ordinal(topRank[r.constructor])}-fastest in a straight line, but ${cornerDef} km/h slower than the best through ${cornerLabel}.`,
         })
       }
     }
@@ -90,14 +95,14 @@ export function qualiInsights(rows: CarCharacterRow[], fastestCornerNumber: numb
         priority: 2,
         kicker: 'Full throttle',
         team: ftHigh.constructor,
-        text: `${ftHigh.constructor} held full throttle for ${pct(ftHigh.full_throttle_pct)}% of the lap, the most of any car, a low-drag lap that keeps the engine lit longest.`,
+        text: `${ftHigh.constructor} held full throttle for ${pct(ftHigh.full_throttle_pct)}% of the lap, the most of any car, the lowest-drag lap in the field.`,
       })
     } else {
       candidates.push({
         priority: 2,
         kicker: 'Full throttle',
         team: ftLow.constructor,
-        text: `${ftLow.constructor} spent the least time at full throttle, just ${pct(ftLow.full_throttle_pct)}% of the lap, the most lift-and-coast or draggiest car in the pack.`,
+        text: `${ftLow.constructor} spent the least time at full throttle, just ${pct(ftLow.full_throttle_pct)}% of the lap, the draggiest car or the one least able to put its power down.`,
       })
     }
   }

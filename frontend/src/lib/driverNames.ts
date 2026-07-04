@@ -31,7 +31,3 @@ export function driverName(code: string): string {
   return DRIVER_NAMES[code] ?? code
 }
 
-export function driverSurname(code: string): string {
-  const full = DRIVER_NAMES[code]
-  return full ? full.split(' ').slice(1).join(' ') : code
-}
