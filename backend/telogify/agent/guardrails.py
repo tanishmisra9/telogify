@@ -65,6 +65,35 @@ _BLOCKLIST = [
     "two completely different cars",
     "two different cars",
     "completely different car across",
+    # retirement CAUSE we never ingest: we know a car retired, never why. Do not invent one.
+    "crash",
+    "collision",
+    "collided",
+    "hit the wall",
+    "into the wall",
+    "spun off",
+    "spun out",
+    "mechanical failure",
+    "mechanical issue",
+    "mechanical problem",
+    "engine failure",
+    "engine blew",
+    "power unit failure",
+    "brake failure",
+    "brakes failed",
+    "brakes on fire",
+    "caught fire",
+    "caught on fire",
+    "went up in smoke",
+    "blew up",
+    "gearbox",
+    "hydraulic",
+    "suspension failure",
+    "suspension damage",
+    "puncture",
+    "retired with",
+    "retired due to",
+    "retired because",
 ]
 
 _NUMBER_WORD = (
@@ -81,6 +110,13 @@ _REGEX_BLOCKLIST = [
     re.compile(r"\bretired after \d+\b"),
     re.compile(r"\bpole to flag in the sprint\b"),
     re.compile(r"\bled from pole in the sprint\b"),
+    # implausible single-corner / single-straight speed gap (>=31 km/h), above the miner caps;
+    # matches "67.5 km/h (42 mph) slower", "99 km/h more", "41 km/h ... gap", not absolute
+    # top speeds ("331 km/h on the straights") or small legit gaps ("12 km/h slower").
+    re.compile(
+        r"\b(?:3[1-9]|[4-9]\d|\d{3})(?:\.\d+)? km/h(?: \([^)]*\))? "
+        r"(?:slower|faster|quicker|down|more|shy|off|behind|adrift|gap|deficit)\b"
+    ),
 ]
 
 
