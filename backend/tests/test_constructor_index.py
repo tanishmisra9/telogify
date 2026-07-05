@@ -26,7 +26,8 @@ def test_confidence_weights_dominate():
     assert summarize_constructor(scores)["mid"] == (10 * 0.9 - 10 * 0.1) / (0.9 + 0.1)
 
 
-def test_rank_highest_advantage_first_unscored_last():
+def test_summarize_constructor_empty_scores():
+    assert summarize_constructor([]) == {"high": None, "mid": None, "low": None, "overall": None}
     ranks = rank_constructors({"McLaren": 4.0, "Ferrari": 1.0, "Sauber": None})
     assert ranks["McLaren"] == 1
     assert ranks["Ferrari"] == 2

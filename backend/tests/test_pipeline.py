@@ -113,6 +113,16 @@ def test_regen_insights_errors_without_ingested_weekend(db_session, monkeypatch)
         pipeline.regen_insights(2025, 99, agent_runner=lambda *a, **k: None)
 
 
+def test_flag_all_flags_each_insight_independently():
+    flagged = pipeline._flag_all([
+        {"header": "Clean insight", "explanation_web": "W1", "explanation_email": "E1"},
+        {"header": "Maiden win", "explanation_web": "W2", "explanation_email": "E2"},
+        {"header": "H3", "explanation_web": "W3", "explanation_email": "E3"},
+    ])
+    assert 1 not in flagged
+    assert "maiden" in flagged[2]
+
+
 def test_pipeline_runs_phases_in_order(monkeypatch):
     calls = []
     monkeypatch.setattr(pipeline, "_ingest", lambda s: calls.append("ingest") or {"weekend_id": 1})
