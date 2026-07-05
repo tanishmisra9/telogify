@@ -149,3 +149,7 @@ def test_flags_sprint_pole_leadership_regex():
 
 def test_flags_retired_after_lap_number_regex():
     assert flag_unsupported_claims("Alonso retired after 37")
+
+
+def test_flags_before_retiring_phrase():
+    assert "before retiring" in flag_unsupported_claims("He lost ground before retiring from the race")

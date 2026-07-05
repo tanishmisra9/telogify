@@ -26,3 +26,8 @@ def test_end_of_season_returns_none():
 
 def test_empty_returns_none():
     assert pick_next_event([], BASE) is None
+
+
+def test_picks_earliest_date_regardless_of_input_order():
+    events = [_ev(5, "Far", 20), _ev(2, "Near", 3)]
+    assert pick_next_event(events, BASE).name == "Near"
