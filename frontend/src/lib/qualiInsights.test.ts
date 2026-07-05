@@ -3,12 +3,12 @@ import { qualiInsights } from '@/lib/qualiInsights'
 import type { CarCharacterRow } from '@/lib/api'
 
 function row(
-  constructor: string,
-  overrides: Partial<CarCharacterRow> = {},
+  team: string,
+  overrides: Partial<Omit<CarCharacterRow, 'constructor'>> = {},
 ): CarCharacterRow {
   return {
-    constructor,
-    driver: constructor.slice(0, 3).toUpperCase(),
+    constructor: team,
+    driver: team.slice(0, 3).toUpperCase(),
     lap_time_s: 66.0,
     top_speed_kmh: 330,
     min_speed_kmh: 70,

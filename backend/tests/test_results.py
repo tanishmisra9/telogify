@@ -106,3 +106,7 @@ def test_format_gap_label_multi_lap():
 
 def test_format_gap_label_shows_tenth_second_gap():
     assert format_gap_label(2, 0.312, None, None, "Finished") == "+0.3s"
+
+
+def test_format_gap_label_dns():
+    assert format_gap_label(20, None, None, None, "Did not start") == "DNS"

@@ -59,3 +59,12 @@ def test_classify_speed_bands():
     assert classify_speed(MID_MAX_KMH - 0.1) == "mid"
     assert classify_speed(MID_MAX_KMH) == "high"
     assert classify_speed(250.0) == "high"
+
+
+def test_driver_confidence_scales_to_target_laps():
+    from telogify.analysis.attribution import TARGET_LAPS, driver_confidence
+
+    assert driver_confidence(0) == 0.0
+    assert driver_confidence(TARGET_LAPS // 2) == 0.5
+    assert driver_confidence(TARGET_LAPS) == 1.0
+    assert driver_confidence(TARGET_LAPS + 5) == 1.0
