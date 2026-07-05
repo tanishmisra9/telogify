@@ -36,3 +36,11 @@ def test_corner_windows():
         (1, 150.0, 250.0),
         (2, 450.0, 550.0),
     ]
+
+
+def test_corner_windows_default_half_window():
+    from telogify.ingest.segment import CORNER_HALF_WINDOW_M
+
+    corners = [Corner(3, 1000.0)]
+    lo, hi = corner_windows(corners)[0][1:]
+    assert hi - lo == 2 * CORNER_HALF_WINDOW_M

@@ -53,3 +53,11 @@ def test_dedupes_repeated_car_in_same_message():
     msg = "TURN 1 INCIDENT INVOLVING CARS 3 (VER) AND 63 (RUS) NOTED - CAUSING A COLLISION"
     ev = parse_race_control(_msgs((57, msg)) + _msgs((57, msg)))
     assert len(ev) == 2  # one row per car, not duplicated when message repeats
+
+
+def test_skips_empty_messages_and_blank_laps():
+    ev = parse_race_control([
+        {"Lap": None, "Message": ""},
+        {"Lap": "  ", "Message": "SAFETY CAR DEPLOYED"},
+    ])
+    assert len(ev) == 1 and ev[0].kind == "safety_car" and ev[0].lap is None

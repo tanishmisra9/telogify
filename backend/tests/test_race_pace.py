@@ -69,6 +69,12 @@ def test_box_stats_matches_paceStats_ts_quantile():
     assert abs(s.q3 - 92.25) < 1e-9
 
 
+def test_box_stats_two_lap_median_interpolates():
+    s = box_stats([90.0, 92.0], ["S"])
+    assert abs(s.median - 91.0) < 1e-9
+    assert s.compounds == ["S"]
+
+
 # --- driver_distributions / constructor_distributions -------------------
 
 
