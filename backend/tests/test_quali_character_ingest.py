@@ -39,6 +39,12 @@ def test_full_throttle_fraction_empty_is_zero():
     assert full_throttle_fraction([]) == 0.0
 
 
+def test_full_throttle_fraction_drops_error_samples_above_100():
+    # FastF1 emits 104 for unavailable throttle; exclude from denominator, not just numerator.
+    assert full_throttle_fraction([100, 104, 100], threshold=99.0) == 1.0
+    assert full_throttle_fraction([104, 104], threshold=99.0) == 0.0
+
+
 def test_corner_min_speeds_one_entry_per_corner():
     distance = [0, 10, 20, 30, 40, 50]
     speed = [300, 100, 110, 300, 90, 300]

@@ -37,3 +37,19 @@ def test_incident_kept_but_investigation_dropped():
         (20, "FIA STEWARDS: INCIDENT INVOLVING CAR 3 (VER) WILL BE INVESTIGATED AFTER THE RACE"),
     ))
     assert [(e.driver, e.kind) for e in ev] == [("VER", "incident")]
+
+
+def test_retirement_and_forced_off():
+    ev = parse_race_control(_msgs(
+        (42, "CAR 14 (ALO) STOPPED ON TRACK"),
+        (18, "TURN 4 INCIDENT INVOLVING CAR 55 (SAI) NOTED - FORCING ANOTHER DRIVER OFF"),
+    ))
+    kinds = {(e.driver, e.kind) for e in ev}
+    assert ("ALO", "retirement") in kinds
+    assert ("SAI", "forced_off") in kinds
+
+
+def test_dedupes_repeated_car_in_same_message():
+    msg = "TURN 1 INCIDENT INVOLVING CARS 3 (VER) AND 63 (RUS) NOTED - CAUSING A COLLISION"
+    ev = parse_race_control(_msgs((57, msg)) + _msgs((57, msg)))
+    assert len(ev) == 2  # one row per car, not duplicated when message repeats
