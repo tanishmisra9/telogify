@@ -679,9 +679,19 @@ def _mine_deployment(db, sessions):
                 by_con[r.constructor].append(r)
         if len(by_con) < 2:
             continue
-        con_clip = {c: mean([r.total_clip_m for r in rs]) for c, rs in by_con.items()}
-        best = min(con_clip.values())
+        # Consistency gate: clipping is a CAR trait only if BOTH the team's cars show it. A single
+        # car clipping is one lap's energy strategy / traffic, not a reliable weakness. Use the min
+        # across the clipping cars (what the car does on both), which is robust to one noisy lap.
+        con_clip: dict[str, float] = {}
         for c, rs in by_con.items():
+            clippers = [r for r in rs if r.max_clip_m > 0]
+            if len(clippers) >= 2:
+                con_clip[c] = min(r.total_clip_m for r in clippers)
+        if len(con_clip) < 2:
+            continue
+        best = min(con_clip.values())
+        for c in con_clip:
+            rs = by_con[c]
             deficit = con_clip[c] - best
             if deficit <= 0:
                 continue
