@@ -65,4 +65,11 @@ describe('seasonSummary', () => {
     expect(s['A'].strength).toBeNull()
     expect(s['A'].weakness).toBeNull()
   })
+
+  it('returns empty summaries when fewer than three teams', () => {
+    const two = [row({ constructor: 'A' }), row({ constructor: 'B', pace_gap: agg(1.0) })]
+    const s = seasonSummary(two)
+    expect(s['A']).toEqual({ strength: null, weakness: null })
+    expect(s['B']).toEqual({ strength: null, weakness: null })
+  })
 })

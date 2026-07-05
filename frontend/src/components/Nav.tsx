@@ -29,6 +29,7 @@ export function Nav() {
                 <Link
                   to={l.to}
                   aria-current={active ? 'page' : undefined}
+                  aria-label={l.label}
                   className={`kicker border px-3 py-2 transition-colors ${
                     active
                       ? 'border-ink bg-ink text-bg'

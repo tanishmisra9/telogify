@@ -18,7 +18,7 @@ function HeadCell({ label, hint, align = 'right' }: { label: React.ReactNode; hi
   return (
     <th className={`px-4 py-2.5 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
       <Tooltip label={hint}>
-        <span className="cursor-help underline decoration-dotted decoration-muted/60 underline-offset-4">{label}</span>
+        <span tabIndex={0} className="cursor-help underline decoration-dotted decoration-muted/60 underline-offset-4">{label}</span>
       </Tooltip>
     </th>
   )
@@ -57,7 +57,7 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
       )}
 
       <div className="mt-6 overflow-x-auto">
-        <table className="w-full min-w-[680px] border-collapse text-sm">
+        <table className="w-full min-w-[680px] border-collapse text-sm" aria-label="Qualifying car character by team">
           <thead>
             <tr className="text-left text-xs text-muted">
               <th className="px-4 py-2.5 font-medium">Team</th>
@@ -104,8 +104,8 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
         </p>
       )}
       <p className="mt-2 text-xs text-muted">
-        Every figure is from each team's fastest clean lap in this session; cells shade toward the accent as a
-        car ranks higher on that metric. A driver who crashed or never set a representative lap is not shown.
+        Every figure is from each team's fastest representative lap in this session; cells shade toward the accent as a
+        car ranks higher on that metric. A driver who never set a representative lap is not shown.
       </p>
     </div>
   )
