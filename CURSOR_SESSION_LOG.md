@@ -21,7 +21,7 @@
 - Added `test_miner_caps.py` (corner + straight cap at MAX boundaries, uses test DB only).
 - Extended `test_race_pace.py` (compound dedupe, mean, single-lap driver row).
 - Extended `test_deployment.py` (clip boundary at MIN_DROP/MIN_CLIP_M; reject below thresholds).
-- **Sanity check:** lowering `MAX_CORNER_DELTA_KMH` to 5.0 makes cap test fail; reverted.
+- **Sanity check:** cap tests import `MAX_*` constants so they track threshold edits; removing the `> MAX` filter would yield 2 corner signals instead of 1.
 
 ### B — Guardrail pinning ✅
 - Added positive block examples for retirement causes, doubled-constructor possessive, >=31 km/h magnitude regex.
