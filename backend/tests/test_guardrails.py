@@ -63,3 +63,26 @@ def test_clean_prose_is_not_flagged():
 def test_empty_text():
     assert flag_unsupported_claims("") == []
     assert flag_unsupported_claims(None) == []
+
+
+def test_flags_retirement_causes():
+    # We know a car retired, never why; each cause phrase must block.
+    assert "crash" in flag_unsupported_claims("Russell retired after a crash at Turn 5")
+    assert "mechanical failure" in flag_unsupported_claims("a mechanical failure ended his race")
+    assert "engine failure" in flag_unsupported_claims("an engine failure on the main straight")
+    assert "puncture" in flag_unsupported_claims("a puncture forced an early stop")
+    assert "retired due to" in flag_unsupported_claims("He retired due to a hydraulic leak")
+
+
+def test_flags_doubled_constructor_possessive():
+    assert flag_unsupported_claims("Alpine's Alpine straight-line deficit was the largest")
+    assert flag_unsupported_claims("Ferrari's Ferrari ran out of deployment on the back straight")
+
+
+def test_flags_implausible_kmh_magnitude_backstop():
+    # >=31 km/h comparative gaps are blocked; small legit gaps and absolute speeds are not.
+    assert flag_unsupported_claims("McLaren was 35 km/h slower through the speed trap")
+    assert flag_unsupported_claims("a 42 km/h deficit on the main straight")
+    assert flag_unsupported_claims("99 km/h quicker than the field leader")
+    assert flag_unsupported_claims("Verstappen hit 331 km/h on the straights") == []
+    assert flag_unsupported_claims("Ferrari was 12 km/h slower on the straight") == []
