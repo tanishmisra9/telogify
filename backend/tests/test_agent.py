@@ -59,6 +59,7 @@ def test_bound_tool_reads_exact_db_value(seeded):
     out = json.loads(tools["get_straight_speed"].invoke({"driver": "LEC", "session_type": "R", "drs_zone": 2}))
     assert out["found"] is True
     assert out["max_speed_kmh"] == 330.5
+    assert out["max_speed_mph"] == round(330.5 * 0.621371, 1)
 
 
 def test_tool_call_loop(seeded):

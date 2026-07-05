@@ -26,6 +26,15 @@ from telogify.models import (
 )
 
 
+_KMH_TO_MPH = 0.621371
+
+
+def _mph(kmh: float | None) -> float | None:
+    if kmh is None:
+        return None
+    return round(kmh * _KMH_TO_MPH, 1)
+
+
 def _default_factory() -> Session:
     return Session(engine)
 
@@ -103,7 +112,9 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
                     "driver": driver,
                     "drs_zone": drs_zone,
                     "max_speed_kmh": seg.max_speed_kmh,
+                    "max_speed_mph": _mph(seg.max_speed_kmh),
                     "trap_speed_kmh": seg.trap_speed_kmh,
+                    "trap_speed_mph": _mph(seg.trap_speed_kmh),
                 }
             )
 
@@ -127,12 +138,14 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
             if row is None:
                 return json.dumps({"found": False})
             sign = 1.0 if row.constructor_a == constructor_a else -1.0
+            delta_kmh = (row.delta_s or 0.0) * sign
             return json.dumps(
                 {
                     "found": True,
                     "corner_number": corner_number,
                     "speed_class": row.speed_class,
-                    "min_speed_delta_kmh": (row.delta_s or 0.0) * sign,
+                    "min_speed_delta_kmh": delta_kmh,
+                    "min_speed_delta_mph": round(delta_kmh * _KMH_TO_MPH, 1),
                     "car_pct": row.car_pct,
                     "driver_pct": row.driver_pct,
                     "confidence": row.confidence,
@@ -259,13 +272,11 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
 
     @tool
     def get_deployment(driver: str = "", session_type: str = "Q") -> str:
-        """ERS deployment / clipping on the qualifying lap ("Q" or "SQ"): where a car's electrical
-        deployment runs out, inferred from its speed FALLING at full throttle before the braking
-        zone. Per driver: top_speed_kmh, total_clip_m (total distance clipping, higher = runs out of
-        deployment sooner = passable on straights), max_clip_m, and the clipping straights with the
-        distance down the straight where speed peaks. Pass a 3-letter code to filter, blank for all.
-        This is a CAR trait; use it for technical, car-centric findings about where a car is
-        vulnerable on the straights."""
+        """ERS deployment / clipping on the qualifying lap ("Q" or "SQ"): deploy depletion and
+        super-clipping inferred from acceleration residuals at wide-open throttle. Per driver:
+        top_speed_kmh, total_clip_m (depletion + superclip, higher = runs out sooner),
+        total_depletion_m, total_superclip_m, max_clip_m, max_clip_severity_ms2, and per-straight
+        clip segments. Pass a 3-letter code to filter, blank for all."""
         with sf() as db:
             sid = _session_id(db, _weekend_id(db, year, round), session_type)
             if sid is None:
@@ -280,8 +291,12 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
                         "driver": r.driver,
                         "constructor": r.constructor,
                         "top_speed_kmh": r.top_speed_kmh,
+                        "top_speed_mph": _mph(r.top_speed_kmh),
                         "total_clip_m": r.total_clip_m,
+                        "total_depletion_m": r.total_depletion_m,
+                        "total_superclip_m": r.total_superclip_m,
                         "max_clip_m": r.max_clip_m,
+                        "max_clip_severity_ms2": r.max_clip_severity_ms2,
                         "clip_straights": [st for st in (r.straights_json or []) if st.get("is_clip")],
                     }
                     for r in rows
