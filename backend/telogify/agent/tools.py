@@ -16,6 +16,7 @@ from telogify.models import (
     Attribution,
     CandidateInsight,
     ConstructorIndex,
+    DeploymentTrace,
     RaceControlEvent,
     RaceWeekend,
     Session as SessionRow,
@@ -256,9 +257,41 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
                 [{"lap": r.lap, "driver": r.driver, "kind": r.kind, "message": r.message} for r in rows]
             )
 
+    @tool
+    def get_deployment(driver: str = "", session_type: str = "Q") -> str:
+        """ERS deployment / clipping on the qualifying lap ("Q" or "SQ"): where a car's electrical
+        deployment runs out, inferred from its speed FALLING at full throttle before the braking
+        zone. Per driver: top_speed_kmh, total_clip_m (total distance clipping, higher = runs out of
+        deployment sooner = passable on straights), max_clip_m, and the clipping straights with the
+        distance down the straight where speed peaks. Pass a 3-letter code to filter, blank for all.
+        This is a CAR trait; use it for technical, car-centric findings about where a car is
+        vulnerable on the straights."""
+        with sf() as db:
+            sid = _session_id(db, _weekend_id(db, year, round), session_type)
+            if sid is None:
+                return json.dumps([])
+            q = select(DeploymentTrace).where(DeploymentTrace.session_id == sid)
+            if driver:
+                q = q.where(DeploymentTrace.driver == driver)
+            rows = db.exec(q.order_by(DeploymentTrace.total_clip_m.desc())).all()
+            return json.dumps(
+                [
+                    {
+                        "driver": r.driver,
+                        "constructor": r.constructor,
+                        "top_speed_kmh": r.top_speed_kmh,
+                        "total_clip_m": r.total_clip_m,
+                        "max_clip_m": r.max_clip_m,
+                        "clip_straights": [st for st in (r.straights_json or []) if st.get("is_clip")],
+                    }
+                    for r in rows
+                ]
+            )
+
     return [
         get_candidate_insights,
         get_race_control_events,
+        get_deployment,
         get_straight_speed,
         get_corner_delta,
         get_lap_evolution,

@@ -28,6 +28,7 @@ from telogify.analysis.sessions import pick_session
 from telogify.models import (
     Attribution,
     CandidateInsight,
+    DeploymentTrace,
     QualiCharacter,
     RaceWeekend,
     SectorBest,
@@ -659,6 +660,60 @@ def _actual_ranks(sessions: list[Session], db: DBSession) -> dict[str, int]:
     return {c: i + 1 for i, c in enumerate(ordered)}
 
 
+def _mine_deployment(db, sessions):
+    """ERS deployment weakness: a car that clips more (its speed falls at full throttle before the
+    braking zone) runs out of electrical deployment sooner and is passable at the end of straights.
+    Per-constructor mean clip distance on the qualifying lap, as a deficit to the field's best
+    (lowest-clipping) car. A distinct 'deployment' channel, so it can fuse with a race outcome."""
+    out = []
+    for stype in ("Q", "SQ"):
+        session = pick_session(sessions, (stype,))
+        if session is None:
+            continue
+        rows = db.exec(
+            select(DeploymentTrace).where(DeploymentTrace.session_id == session.id)
+        ).all()
+        by_con: dict[str, list] = defaultdict(list)
+        for r in rows:
+            if r.constructor:
+                by_con[r.constructor].append(r)
+        if len(by_con) < 2:
+            continue
+        con_clip = {c: mean([r.total_clip_m for r in rs]) for c, rs in by_con.items()}
+        best = min(con_clip.values())
+        for c, rs in by_con.items():
+            deficit = con_clip[c] - best
+            if deficit <= 0:
+                continue
+            worst = max(
+                (st for r in rs for st in (r.straights_json or []) if st.get("is_clip")),
+                key=lambda st: st["clip_m"],
+                default=None,
+            )
+            out.append(
+                Signal(
+                    signal_type="deployment_clip",
+                    category="deployment",
+                    magnitude=deficit,
+                    confidence=1.0,
+                    subject=c,
+                    session_type=stype,
+                    source_refs=[
+                        {
+                            "type": "deployment_clip",
+                            "constructor": c,
+                            "total_clip_m": round(con_clip[c]),
+                            "excess_clip_m": round(deficit),
+                            "field_best_clip_m": round(best),
+                            "worst_straight": worst,
+                            "session_type": stype,
+                        }
+                    ],
+                )
+            )
+    return out
+
+
 def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
     sessions = db.exec(select(Session).where(Session.weekend_id == weekend_id)).all()
     dc_map = _driver_constructor_map(db, [s.id for s in sessions])
@@ -670,6 +725,7 @@ def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
         + _mine_position_swings(db, sessions, dc_map)
         + _mine_sector_deltas(db, sessions, dc_map)
         + _mine_quali_character(db, sessions)
+        + _mine_deployment(db, sessions)
         + _mine_degradation(db, sessions, dc_map)
         + _mine_sprint_vs_race_pace(db, sessions, dc_map)
     )
