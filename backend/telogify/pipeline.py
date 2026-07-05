@@ -15,6 +15,7 @@ from telogify.agent.graph import build_agent
 from telogify.agent.tools import _weekend_id
 from telogify.agent.guardrails import flag_unsupported_claims
 from telogify.agent.insights import _content_text, extract_trace, parse_insights, persist_insights
+from telogify.agent.validation import validate_insights
 from telogify.analysis.attribution import store_attributions
 from telogify.analysis.candidates import compute_candidates
 from telogify.analysis.constructor_index import build_constructor_index
@@ -79,6 +80,14 @@ def _flag_all(insights: list[dict]) -> dict[int, list[str]]:
     return flagged
 
 
+def _merge_flags(*maps: dict[int, list[str]]) -> dict[int, list[str]]:
+    merged: dict[int, list[str]] = {}
+    for m in maps:
+        for slot, issues in m.items():
+            merged.setdefault(slot, []).extend(issues)
+    return merged
+
+
 def _insights(state: PipelineState, agent_runner) -> dict:
     """Generate the 3 insights, rejecting and re-prompting on any guardrail violation.
     Nothing is persisted, and the pipeline fails loud, unless a clean set is produced within
@@ -94,23 +103,24 @@ def _insights(state: PipelineState, agent_runner) -> dict:
             # Malformed output (bad JSON, extra prose, wrong shape) is retryable, not fatal:
             # feed the error back and let the agent re-emit rather than crashing the run.
             feedback = (
-                f"Your last message could not be parsed ({e}). Output ONLY a JSON array of "
-                "exactly 3 objects with keys header, explanation_web, explanation_email. No "
-                "text before or after the array."
+                f"Your last message could not be parsed ({e}). Your final message must "
+                "contain a raw JSON array of exactly 3 objects with keys header, "
+                "explanation_web, and explanation_email. Do not wrap the array in Markdown "
+                "backticks or add conversational filler."
             )
             continue
-        flagged = _flag_all(insights)
+        flagged = _merge_flags(_flag_all(insights), validate_insights(insights, extract_trace(messages)))
         if not flagged:
             trace = extract_trace(messages)
             with Session(engine) as db:
                 rows = persist_insights(state["weekend_id"], insights, trace, db)
             return {"insight_count": len(rows)}
         feedback = (
-            "Your last set of 3 insights violated the rules above. Specifically, insight "
-            f"slot(s) {sorted(flagged)} used unsupported phrasing: {flagged}. Rewrite ALL 3 "
-            "insights from scratch, removing every one of those phrases and any claim like "
-            "them, while keeping every number grounded in tool returns. Output the JSON "
-            "array again, nothing else."
+            "Your last set of 3 insights failed validation. Specifically, insight "
+            f"slot(s) {sorted(flagged)} had issues: {flagged}. Rewrite ALL 3 insights "
+            "from scratch, fixing every issue while keeping every number grounded in tool "
+            "returns. Output the JSON array as your final message; do not wrap it in "
+            "Markdown backticks."
         )
     raise RuntimeError(
         f"Insight agent kept producing unsupported claims after {_MAX_INSIGHT_ATTEMPTS} "
