@@ -86,3 +86,37 @@ def test_flags_implausible_kmh_magnitude_backstop():
     assert flag_unsupported_claims("99 km/h quicker than the field leader")
     assert flag_unsupported_claims("Verstappen hit 331 km/h on the straights") == []
     assert flag_unsupported_claims("Ferrari was 12 km/h slower on the straight") == []
+
+
+def test_flags_grid_row_labels():
+    assert "front row" in flag_unsupported_claims("Both Ferraris locked out the front row")
+    assert "second row" in flag_unsupported_claims("McLaren started from the second row")
+    assert "third row" in flag_unsupported_claims("Alpine qualified on the third row")
+
+
+def test_flags_leadership_and_start_lap_events():
+    assert "led every lap" in flag_unsupported_claims("Norris led every lap on his way to victory")
+    assert "wire to wire" in flag_unsupported_claims("a wire to wire win for Mercedes")
+    assert "off the line" in flag_unsupported_claims("Russell got away cleanly off the line")
+    assert "turn one" in flag_unsupported_claims("contact at turn one reshaped the order")
+
+
+def test_flags_career_and_season_framing():
+    assert "first win" in flag_unsupported_claims("Antonelli took his first win from pole")
+    assert "championship" in flag_unsupported_claims("a championship-defining result for McLaren")
+    assert "back-to-back" in flag_unsupported_claims("a back-to-back victory for Red Bull")
+
+
+def test_collision_from_race_control_is_allowed():
+    # Collisions are ingested from race control; the agent may cite them, unlike invented causes.
+    assert flag_unsupported_claims(
+        "Russell's race was compromised by a lap-57 collision with Verstappen"
+    ) == []
+
+
+def test_kmh_backstop_boundary_30_not_flagged():
+    assert flag_unsupported_claims("Williams was 30 km/h slower on the straight") == []
+
+
+def test_flags_completed_lap_count_regex():
+    assert "completed 42 laps" in flag_unsupported_claims("He completed 42 laps before stopping")
