@@ -23,6 +23,7 @@ from telogify.config import settings
 from telogify.db import engine
 from telogify.ingest.loader import load_weekend
 from telogify.ingest.quali_character import store_quali_character
+from telogify.ingest.deployment import store_deployment
 from telogify.ingest.race_control import store_race_control
 from telogify.ingest.results import store_results
 from telogify.ingest.sectors import store_sector_bests
@@ -47,6 +48,7 @@ def _ingest(state: PipelineState) -> dict:
         store_sector_bests(data, db)
         store_quali_character(data, db)
         store_race_control(data, db)
+        store_deployment(data, db)
         return {"weekend_id": data.weekend.id}
 
 

@@ -133,6 +133,26 @@ class QualiCharacter(SQLModel, table=True):
     corner_speeds_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
 
 
+class DeploymentTrace(SQLModel, table=True):
+    """Per-driver ERS deployment / clipping on a representative qualifying lap, inferred from the
+    speed trace (F1 broadcasts no battery state). `total_clip_m` / `max_clip_m` compare cars: a car
+    that clips more runs out of electrical deployment sooner down the straights and is passable there."""
+
+    __tablename__ = "deployment_trace"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    driver: str = Field(index=True)
+    constructor: str | None = None
+    top_speed_kmh: float | None = None
+    total_clip_m: float = 0.0
+    max_clip_m: float = 0.0
+    n_straights: int = 0
+    n_clips: int = 0
+    # per-straight: {start_m, end_m, peak_kmh, peak_at_m, clip_m, drop_kmh, end_reason, is_clip}
+    straights_json: list = Field(default_factory=list, sa_column=Column(JSON))
+
+
 class Attribution(SQLModel, table=True):
     __tablename__ = "attribution"
 
