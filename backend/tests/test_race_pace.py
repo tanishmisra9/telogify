@@ -147,3 +147,27 @@ def test_stints_with_no_lap_times_ignored():
     ids = {r.id for r in rows}
     assert "Red Bull" not in ids
     assert "Ferrari" in ids
+
+
+def test_compound_tags_dedupe_and_abbreviate():
+    stints = [
+        {"driver": "VER", "constructor": "Red Bull", "compound": "MEDIUM", "lap_times": [90.0]},
+        {"driver": "VER", "constructor": "Red Bull", "compound": "MEDIUM", "lap_times": [90.1]},
+        {"driver": "VER", "constructor": "Red Bull", "compound": "HARD",   "lap_times": [90.2]},
+    ]
+    rows = driver_distributions(stints)
+    assert rows[0].stats.compounds == ["M", "H"]
+
+
+def test_box_stats_mean_matches_statistics():
+    vals = [90.0, 92.0, 94.0]
+    s = box_stats(vals, [])
+    assert abs(s.mean - 92.0) < 1e-9
+
+
+def test_driver_distributions_single_lap_per_driver():
+    stints = [{"driver": "VER", "constructor": "Red Bull", "compound": "SOFT", "lap_times": [89.5]}]
+    rows = driver_distributions(stints)
+    assert len(rows) == 1
+    assert rows[0].stats.n_laps == 1
+    assert rows[0].stats.median == 89.5

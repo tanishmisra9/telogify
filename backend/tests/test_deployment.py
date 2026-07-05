@@ -74,3 +74,38 @@ def test_low_speed_run_is_not_a_clip():
     runs = detect_clipping(d, sp, th, br, min_straight_m=100)
     low = [r for r in runs if r.peak_kmh < 250]
     assert low and not low[0].is_clip
+
+
+def test_clip_boundary_exactly_at_min_drop_and_min_clip_m():
+    # ends in braking, high speed, drop == MIN_DROP (12), clip_m == MIN_CLIP_M (40)
+    rise = [(240 + 10 * k, 100, False) for k in range(9)]  # 240..320, peak at d=160
+    clip = [(308, 100, False), (308, 100, False)]  # 40m past peak, drop 12 km/h
+    samples = rise + clip + [(308, 100, True)]
+    runs = detect_clipping(*_trace(samples), min_straight_m=100)
+    assert len(runs) == 1
+    r = runs[0]
+    assert r.end_reason == "brake"
+    assert r.drop_kmh >= 12 and r.clip_m >= 40
+    assert r.is_clip
+
+
+def test_clip_rejected_when_drop_below_min():
+    # Same geometry as boundary test but only 11 km/h drop -> not a clip
+    rise = [(240 + 10 * k, 100, False) for k in range(9)]  # peak 320 at d=160
+    clip = [(315, 100, False), (309, 100, False)]  # drop 11 km/h from peak 320
+    samples = rise + clip + [(309, 100, True)]
+    runs = detect_clipping(*_trace(samples), min_straight_m=100)
+    assert len(runs) == 1
+    assert runs[0].drop_kmh < 12
+    assert not runs[0].is_clip
+
+
+def test_clip_rejected_when_clip_distance_below_min():
+    # 15 km/h drop but only 20m past peak -> not a clip
+    rise = [(240 + 10 * k, 100, False) for k in range(9)]  # peak 320 at d=160
+    clip = [(305, 100, False)]  # one sample, 20m past peak, drop 15
+    samples = rise + clip + [(305, 100, True)]
+    runs = detect_clipping(*_trace(samples), min_straight_m=100)
+    assert len(runs) == 1
+    assert runs[0].clip_m < 40
+    assert not runs[0].is_clip
