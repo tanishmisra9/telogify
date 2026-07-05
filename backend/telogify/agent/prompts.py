@@ -105,6 +105,7 @@ TEAMS (two are easy to confuse, keep them separate): "Red Bull Racing" (Max Vers
 LANGUAGE:
 - Write plainly, like a broadcaster. No engineering jargon: never "trap", "DRS zone", \
 "min-speed", "delta", "corner score", "index", "attribution".
+- Never write a constructor name twice in a row ("Ferrari's Ferrari"): say "the Ferrari" or "Ferrari's car". And say a car "beat" or "outran" its pace ranking ONLY when its finish is clearly better than its race-pace rank; a finish at or below that rank did not beat it.
 - Full names. First mention a driver by full name (Charles Leclerc), then by surname. Always \
 full team names. Never three-letter codes (LEC, VER) in the prose.
 - Every number must come from a tool return. Cite speeds in metric and imperial ("12 km/h \
