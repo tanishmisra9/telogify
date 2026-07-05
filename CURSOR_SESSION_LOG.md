@@ -3,50 +3,76 @@
 **Branch:** `cursor-hardening` (local only, not pushed)  
 **Started:** 2026-07-05  
 **Baseline:** backend 196 passed, frontend build + 21 tests green  
-**Final:** backend **210 passed**, frontend build + **21 tests** green
 
-## Commits (5)
+## Current status (Round 5)
 
-| Commit | Subagent | Summary |
-|--------|----------|---------|
-| `aee8ec3` | B | Guardrail pinning: retirement causes, DRS, doubled-constructor, >=31 km/h backstop |
-| `25ff988` | C | Ingest helpers: throttle>100 drop, race-control retirement/forced-off/dedupe |
-| `dbca25c` | A | race_pace compound tags; miner cap boundaries; clip drop/distance gates |
-| `21a43c3` | D | a11y: Tooltip focusCapture, aria-pressed/labels on chart toggles, nav aria-current |
-| `0bbe479` | E | deployment.py docstring: representative lap, not clean lap |
+| Suite | Count |
+|-------|-------|
+| Backend pytest | **233** passed (+37 from baseline) |
+| Frontend vitest | **29** passed (+8 from baseline) |
+| Commits on branch | **15** (hardening work + session log) |
 
-## Subagent outcomes
+## Why the first pass stopped
 
-### A — Backend analysis tests ✅
-- Added `test_miner_caps.py` (corner + straight cap at MAX boundaries, uses test DB only).
-- Extended `test_race_pace.py` (compound dedupe, mean, single-lap driver row).
-- Extended `test_deployment.py` (clip boundary at MIN_DROP/MIN_CLIP_M; reject below thresholds).
-- **Sanity check:** cap tests import `MAX_*` constants so they track threshold edits; removing the `> MAX` filter would yield 2 corner signals instead of 1.
+Round 1 finished subagents A–E and I treated "diminishing returns" as a stop signal. That was premature for a 3–4 hour session. **Round 2+ resumed** the same bounded rules: offline tests, a11y, docstrings only.
 
-### B — Guardrail pinning ✅
-- Added positive block examples for retirement causes, doubled-constructor possessive, >=31 km/h magnitude regex.
-- No changes to `guardrails.py` semantics.
+## Commits
 
-### C — Ingest pure-helper tests ✅
-- `full_throttle_fraction` drops FastF1 error samples (throttle > 100).
-- `parse_race_control`: retirement, forced_off, message dedupe.
+| Commit | Area | Summary |
+|--------|------|---------|
+| `aee8ec3` | B | Guardrail pinning: retirement, DRS, doubled-constructor, ≥31 km/h |
+| `25ff988` | C | Ingest: throttle>100, race-control retirement/forced-off/dedupe |
+| `dbca25c` | A | race_pace, miner caps, clip boundaries |
+| `21a43c3` | D | Tooltip focusCapture, chart toggles, nav aria-current |
+| `0bbe479` | E | deployment.py representative-lap docstring |
+| `a02d912` / `5cabe67` | log | Session log |
+| `4267259` | B | Grid, leadership, career framing guardrail tests |
+| `1617a24` | serialize | strip_em_dashes dedicated tests |
+| `6909c71` | A/C | segment default window, race_pace two-lap, race_control empty msg |
+| `5183136` | D/C | qualiInsights tests, landing/countdown/subscribe a11y |
+| `d7a31de` | B/A | parse_insights edges, classify_speed boundaries |
+| `6f2f7e8` | D | drivers + emphasize frontend tests |
+| `91a2b3b` | A/D | DTW length mismatch, weekends list aria-labels |
+| `3c1e574` | E/A | points_for_session docstring, gap label + heat tie tests |
+| *(pending)* | A/B | pick_fastest_corner MIN_LOSS boundary, corner delta sign, guardrail negatives |
 
-### D — Frontend hygiene + a11y ✅
-- Build + vitest green after changes.
-- Headless screenshots captured (light + dark): `/`, `/weekends`, `/weekends/2026/8` — structure unchanged (screenshots in `frontend/screenshots/`, not committed).
-- API was not running during screenshots; weekend detail may show empty data panels but layout verified.
+## Subagent coverage (cumulative)
 
-### E — Docstring accuracy ✅
-- Fixed `ingest/deployment.py` module comment: uses representative-lap selection (no TrackStatus gate), not clean-lap filter.
+### A — Analysis tests
+- race_pace: compound tags, two-lap median, mean
+- miner_caps: corner/straight MAX boundaries, negative delta subject
+- deployment: clip MIN_DROP / MIN_CLIP_M boundaries
+- fingerprints: DTW unequal-length sequences
+- quali_character analysis: MIN_CORNER_LOSS_KMH boundary
+- attribution: classify_speed at LOW/MID thresholds
 
-## Skipped / not touched
+### B — Guardrails (pin only, no semantic edits)
+- Grid rows, leadership, start-lap, career framing
+- Retirement causes, DRS, doubled-constructor, ≥31 km/h backstop
+- Negative tests: collision allowed, plain ordinals, 30 km/h not flagged
 
-- **agent/prompts.py** — off-limits per session rules.
-- **guardrails.py regex/threshold edits** — off-limits; tests only.
-- **Ingest numeric constants** (fuel_effect, REAL_STRAIGHT_KMH, pace ranking) — untouched.
-- **API spend** — no `run-weekend`, `send-digest`, or FastF1 live ingest.
-- **Further docstring sweep** — no other clear code contradictions found in targeted read; diminishing returns.
+### C — Ingest helpers
+- full_throttle_fraction drops throttle>100
+- race_control: retirement, forced_off, dedupe, empty messages
+- segment: default CORNER_HALF_WINDOW_M
 
-## Human review recommended
+### D — Frontend hygiene + a11y
+- qualiInsights, drivers, emphasize, heat unit tests
+- Tooltip focusCapture; chart aria-pressed/labels; nav/footer/home labels
+- Landing CTAs, countdown aria-live, subscribe role=alert
+- Weekends list per-row aria-label
 
-- None blocking. Optional: eyeball dark/light screenshots in `frontend/screenshots/` if you want visual confirmation beyond headless capture.
+### E — Docstrings
+- ingest/deployment.py: representative lap (not clean lap)
+- ingest/results.py: points_for_session sprint vs race
+- qualiInsights.ts: representative lap comment
+
+## Still off-limits / skipped
+
+- `agent/prompts.py`, guardrail regex/threshold edits, ingest numeric constants, pace ranking
+- API spend (`run-weekend`, `send-digest`, live FastF1)
+- Headless screenshots not re-run this round (unchanged a11y-only diffs)
+
+## Human review
+
+- None blocking. Optional: run screenshot recipe after merge if you want visual confirmation of a11y-only frontend diffs.
