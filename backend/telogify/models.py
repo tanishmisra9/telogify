@@ -100,6 +100,21 @@ class SectorBest(SQLModel, table=True):
     best_time_s: float
 
 
+class RaceControlEvent(SQLModel, table=True):
+    """A notable on-track event from official race control messages: collision, incident,
+    penalty, safety car, forced-off, or retirement. One row per car involved (driver is the
+    3-letter code, or None for a track-wide event like a safety car)."""
+
+    __tablename__ = "race_control_event"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    lap: int | None = None
+    driver: str | None = Field(default=None, index=True)
+    kind: str  # collision | incident | penalty | safety_car | forced_off | retirement
+    message: str
+
+
 class QualiCharacter(SQLModel, table=True):
     __tablename__ = "quali_character"
 

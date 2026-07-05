@@ -103,7 +103,7 @@ export function Landing() {
         <div className="mt-12 grid gap-10 sm:grid-cols-3 sm:gap-8">
           {STEPS.map((step, i) => (
             <BlurFade key={step.title} delay={0.06 * i}>
-              <div className="border-t-2 border-ink pt-5">
+              <div>
                 <span className="font-display text-6xl leading-none text-accent">
                   {String(i + 1).padStart(2, '0')}
                 </span>

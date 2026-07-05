@@ -16,6 +16,7 @@ from telogify.models import (
     Attribution,
     CandidateInsight,
     ConstructorIndex,
+    RaceControlEvent,
     RaceWeekend,
     Session as SessionRow,
     SessionResult,
@@ -45,7 +46,7 @@ def _session_id(db: Session, weekend_id: int, session_type: str) -> int | None:
 
 
 def build_tools(year: int, round: int, session_factory=None) -> list:
-    """Return the 7 LangChain tools bound to this weekend."""
+    """Return the LangChain tools bound to this weekend."""
     from langchain_core.tools import tool
 
     sf = session_factory or _default_factory
@@ -236,8 +237,28 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
                 ]
             )
 
+    @tool
+    def get_race_control_events(driver: str = "", session_type: str = "R") -> str:
+        """Official race control events (collisions, incidents, penalties, safety cars, forced-off,
+        retirements) for the race ("R") or sprint ("SPRINT"), each with the lap and the cars
+        involved. Pass a driver's 3-letter code to filter to that driver, or leave it blank for all.
+        ALWAYS call this before blaming a poor result on the car: an event here is the real cause,
+        not tyre wear or straight-line speed. Returns [] when nothing notable happened."""
+        with sf() as db:
+            sid = _session_id(db, _weekend_id(db, year, round), session_type)
+            if sid is None:
+                return json.dumps([])
+            q = select(RaceControlEvent).where(RaceControlEvent.session_id == sid)
+            if driver:
+                q = q.where(RaceControlEvent.driver == driver)
+            rows = db.exec(q.order_by(RaceControlEvent.lap)).all()
+            return json.dumps(
+                [{"lap": r.lap, "driver": r.driver, "kind": r.kind, "message": r.message} for r in rows]
+            )
+
     return [
         get_candidate_insights,
+        get_race_control_events,
         get_straight_speed,
         get_corner_delta,
         get_lap_evolution,

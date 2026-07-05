@@ -66,9 +66,8 @@ _BLOCKLIST = [
     "two different cars",
     "completely different car across",
     # retirement CAUSE we never ingest: we know a car retired, never why. Do not invent one.
+    # (a "collision" IS allowed now: it comes from ingested race control events, not the agent.)
     "crash",
-    "collision",
-    "collided",
     "hit the wall",
     "into the wall",
     "spun off",
