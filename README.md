@@ -23,7 +23,7 @@ PreCompute (deterministic, all sessions)
 ## Stack
 
 - **Backend:** Python 3.12, FastAPI, LangGraph, SQLModel + Alembic, Postgres, Anthropic SDK
-  (`claude-opus-4-7`), FastF1, Resend, pytest. Manual CLI trigger only (no scheduler).
+  (`claude-sonnet-5`), FastF1, Resend, pytest. Manual CLI trigger only (no scheduler).
 - **Frontend:** Vite + React + TypeScript + Tailwind v4 + Framer Motion. Custom SVG charts (no
   chart library). Vitest for unit tests.
 - **Infra:** Railway (backend + Postgres), Vercel (frontend).
@@ -47,7 +47,7 @@ alembic upgrade head            # apply migrations to telogify_dev
 | --- | --- |
 | `DATABASE_URL` | Postgres URL. Local default `postgresql://localhost:5432/telogify_dev`. `postgres://` is auto-normalized. |
 | `ANTHROPIC_API_KEY` | Required by the insight agent. The agent fails loud if it is missing. |
-| `ANTHROPIC_MODEL` | Defaults to `claude-opus-4-7`. |
+| `ANTHROPIC_MODEL` | Defaults to `claude-sonnet-5`. |
 | `RESEND_API_KEY` | Required by `send-digest`. Pre-domain, uses Resend's shared sender. |
 | `RESEND_FROM` | Sender, e.g. `Telogify <insights@telogify.app>` once the domain is verified. |
 | `FASTF1_CACHE` | FastF1 on-disk cache dir (default `.fastf1_cache`). |

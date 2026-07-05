@@ -1,4 +1,6 @@
-"""LangGraph ReAct agent wiring (Opus 4.7 + bound DB tools)."""
+"""LangGraph ReAct agent wiring (Sonnet 5 + bound DB tools)."""
+
+from langchain_core.messages import SystemMessage
 
 from telogify.agent.prompts import SYSTEM_PROMPT
 from telogify.agent.tools import build_tools
@@ -23,4 +25,11 @@ def build_agent(year: int, round: int, session_factory=None):
         max_tokens=4096,
     )
     tools = build_tools(year, round, session_factory=session_factory)
-    return create_react_agent(model, tools, prompt=SYSTEM_PROMPT, checkpointer=MemorySaver())
+    # Cache the static prefix. Order in the request is tools -> system -> messages, so one
+    # breakpoint on the system block caches tool schemas + system prompt together. Both are
+    # identical across every ReAct step, guardrail retry, and round (retry feedback lands on the
+    # user message, not here), so the cache reads hit on every call after the first.
+    prompt = SystemMessage(
+        content=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+    )
+    return create_react_agent(model, tools, prompt=prompt, checkpointer=MemorySaver())

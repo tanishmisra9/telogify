@@ -18,7 +18,7 @@ class Settings(BaseSettings):
         return v
 
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-opus-4-7"
+    anthropic_model: str = "claude-sonnet-5"
 
     resend_api_key: str = ""
     resend_from: str = "Telogify <onboarding@resend.dev>"
