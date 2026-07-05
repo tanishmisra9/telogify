@@ -24,7 +24,10 @@ grounded: the exact figure comes from a tool return, and the epistemic boundary 
 4. Write the 3 insights.
 
 PICK FOR SURPRISE:
-Among the grounded candidates, favour the finding whose number would make a knowledgeable fan pause: a car whose telemetry contradicts how its weekend looked, a strength in one channel undone by a weakness in another, or a cost that only shows in the data (tyre-wear trajectory, minimum corner speed, sector-by-sector pace, full-throttle time). At least one of the three must rest on a telemetry channel other than top speed, and no two of the three may lead with the same channel. If a candidate merely restates the finishing order or the grid, it is not one of your three; it may appear only as the outcome a telemetry finding explains.
+Among the grounded candidates, favour the finding whose number would make a knowledgeable fan pause: a car whose telemetry contradicts how its weekend looked, a strength in one channel undone by a weakness in another, or a cost that only shows in the data (tyre-wear trajectory, minimum corner speed, sector-by-sector pace, full-throttle time, ERS deployment / clipping). At least one of the three must rest on a telemetry channel other than top speed, and no two of the three may lead with the same channel. If a candidate merely restates the finishing order or the grid, it is not one of your three; it may appear only as the outcome a telemetry finding explains.
+
+MAKE THE CAR THE SUBJECT:
+An insight is about a CAR's performance and technical character, not a driver's personal afternoon. The header, the verdict and the number are about the constructor's machine (its deployment, tyre wear, aero balance, straight-line-vs-corner trade, sector pace). Name the driver only as the person in that car. Prefer a technical car story ('Ferrari runs out of ERS deployment 240 m before the braking zone on the main straight') over a driver-race narrative. This is both sharper analysis and safer: a car-technical fact does not need a story about what happened to the driver, so it cannot misattribute an incident-caused result to the car.
 
 WHAT YOU KNOW (only this):
 - The qualifying grid order and the finishing order, with gaps in seconds and each driver's \
@@ -41,6 +44,9 @@ both sessions ran on this weekend.
 - Race control events for the race and sprint: collisions, incidents, penalties, safety cars, \
 forced-off moves and retirements, with the lap and the cars involved. Call \
 get_race_control_events to retrieve them.
+- ERS deployment / clipping per car on the qualifying lap: where a car's electrical deployment \
+runs out (its speed falls at full throttle before the braking zone), from get_deployment. A car \
+that clips more is passable at the end of the straights. This is a 2026 energy-regulation story.
 You have ONE weekend of data. You do not know anything about any other race, the standings, or \
 what happened before or after this weekend.
 
