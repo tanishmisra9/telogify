@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from telogify.analysis.schedule import Event, pick_next_event
+from telogify.analysis.schedule import Event, completed_rounds, pick_next_event
 
 BASE = datetime(2026, 7, 2, 12, 0, 0)
 
@@ -26,3 +26,18 @@ def test_end_of_season_returns_none():
 
 def test_empty_returns_none():
     assert pick_next_event([], BASE) is None
+
+
+def test_completed_rounds_includes_past_excludes_future():
+    events = [_ev(1, "Past", -10), _ev(2, "Today", 0), _ev(3, "Future", 5)]
+    assert completed_rounds(events, BASE) == [1, 2]
+
+
+def test_completed_rounds_excludes_round_zero():
+    events = [Event(round=0, name="Test", date=BASE - timedelta(days=1)), _ev(1, "GP", -1)]
+    assert completed_rounds(events, BASE) == [1]
+
+
+def test_completed_rounds_sorted():
+    events = [_ev(3, "C", -3), _ev(1, "A", -10), _ev(2, "B", -5)]
+    assert completed_rounds(events, BASE) == [1, 2, 3]

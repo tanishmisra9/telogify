@@ -57,6 +57,8 @@ alembic upgrade head            # apply migrations to telogify_dev
 
 ```bash
 telogify run-weekend 2025 11    # ingest + compute + generate and persist 3 insights
+telogify run-weekend 2026       # all completed rounds for the season (one agent call per weekend)
+telogify run-weekend 2026 --dry-run  # preview which rounds would run, no API spend
 telogify diagnose 2025 11       # ranking sanity: clean-lap counts + attribution confidence
 telogify send-digest 2025 11    # email the 3 insights to subscribers via Resend
 ```

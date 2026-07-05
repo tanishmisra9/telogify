@@ -5,6 +5,8 @@ WeekendData never leaves the ingest node. Each phase is idempotent (delete + rei
 and FastF1 caches raw data on disk, so re-running a weekend is safe and skips re-downloads.
 """
 
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -20,6 +22,7 @@ from telogify.analysis.attribution import store_attributions
 from telogify.analysis.candidates import compute_candidates
 from telogify.analysis.constructor_index import build_constructor_index
 from telogify.analysis.fingerprints import store_fingerprints
+from telogify.analysis.schedule import completed_rounds, fetch_season_schedule
 from telogify.config import settings
 from telogify.db import engine
 from telogify.ingest.loader import load_weekend
@@ -160,6 +163,50 @@ def run_weekend(year: int, round: int, agent_runner=None) -> PipelineState:
         {"year": year, "round": round},
         config={"configurable": {"thread_id": f"weekend-{year}-{round}"}},
     )
+
+
+@dataclass
+class RoundResult:
+    round: int
+    ok: bool
+    insight_count: int = 0
+    error: str | None = None
+
+
+@dataclass
+class SeasonRunResult:
+    year: int
+    rounds: list[int]
+    results: list[RoundResult] = field(default_factory=list)
+
+
+def season_rounds(year: int, *, now: datetime | None = None) -> list[int]:
+    """Completed round numbers for a season (race session date on or before `now`)."""
+    when = now or datetime.utcnow()
+    return completed_rounds(fetch_season_schedule(year), when)
+
+
+def run_season(
+    year: int,
+    agent_runner=None,
+    *,
+    now: datetime | None = None,
+    continue_on_error: bool = True,
+) -> SeasonRunResult:
+    """Run the full pipeline for every completed round in a season."""
+    rounds = season_rounds(year, now=now)
+    outcome = SeasonRunResult(year=year, rounds=rounds)
+    for rnd in rounds:
+        try:
+            state = run_weekend(year, rnd, agent_runner=agent_runner)
+            outcome.results.append(
+                RoundResult(round=rnd, ok=True, insight_count=state.get("insight_count", 0))
+            )
+        except Exception as exc:
+            outcome.results.append(RoundResult(round=rnd, ok=False, error=str(exc)))
+            if not continue_on_error:
+                break
+    return outcome
 
 
 def regen_insights(year: int, round: int, agent_runner=None) -> dict:

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from telogify.analysis.schedule import Event, pick_next_event
+from telogify.analysis.schedule import Event, fetch_season_schedule, pick_next_event
 
 from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import REFERENCE_AGE_LAPS, fit_all_groups
@@ -145,41 +145,8 @@ def latest_insight(db: Session = Depends(get_session)):
 
 @lru_cache(maxsize=4)
 def _schedule_events(year: int) -> tuple[Event, ...]:
-    """FastF1 season schedule mapped to Event rows (naive UTC dates). Cached per season;
-    returns () on any failure so the endpoint degrades to 'no countdown'. The pick of which
-    event is next is computed per-request against the current time, so caching the (stable)
-    schedule here is safe."""
-    try:
-        import fastf1
-        import pandas as pd
-
-        sched = fastf1.get_event_schedule(year, include_testing=False)
-    except Exception:
-        return ()
-
-    events: list[Event] = []
-    for _, r in sched.iterrows():
-        # Prefer the race-session start; fall back to the event date.
-        raw = r.get("Session5DateUtc")
-        if raw is None or pd.isna(raw):
-            raw = r.get("Session5Date")
-        if raw is None or pd.isna(raw):
-            raw = r.get("EventDate")
-        if raw is None or pd.isna(raw):
-            continue
-        dt = pd.Timestamp(raw).to_pydatetime()
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-        events.append(
-            Event(
-                round=int(r.get("RoundNumber") or 0),
-                name=str(r.get("EventName") or ""),
-                date=dt,
-                country=str(r.get("Country") or ""),
-                location=str(r.get("Location") or ""),
-            )
-        )
-    return tuple(events)
+    """Cached wrapper around fetch_season_schedule for the landing countdown."""
+    return fetch_season_schedule(year)
 
 
 @router.get("/next-race")

@@ -131,3 +131,49 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
 
     assert calls == ["ingest", "analyze", "candidates", "insights"]
     assert state["insight_count"] == 3
+
+
+def test_run_season_runs_each_planned_round(monkeypatch):
+    monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
+    calls = []
+
+    def fake_run_weekend(year, round, agent_runner=None):
+        calls.append(round)
+        return {"insight_count": 3}
+
+    monkeypatch.setattr(pipeline, "run_weekend", fake_run_weekend)
+
+    summary = pipeline.run_season(2026)
+    assert summary.rounds == [1, 2, 3]
+    assert calls == [1, 2, 3]
+    assert all(r.ok for r in summary.results)
+    assert all(r.insight_count == 3 for r in summary.results)
+
+
+def test_run_season_continues_after_failure(monkeypatch):
+    monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
+
+    def fake_run_weekend(year, round, agent_runner=None):
+        if round == 2:
+            raise RuntimeError("guardrail failure")
+        return {"insight_count": 3}
+
+    monkeypatch.setattr(pipeline, "run_weekend", fake_run_weekend)
+
+    summary = pipeline.run_season(2026)
+    assert len(summary.results) == 3
+    assert summary.results[0].ok
+    assert not summary.results[1].ok
+    assert summary.results[1].error == "guardrail failure"
+    assert summary.results[2].ok
+
+
+def test_run_season_empty_rounds_skips_pipeline(monkeypatch):
+    monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [])
+    called = []
+    monkeypatch.setattr(pipeline, "run_weekend", lambda *a, **k: called.append(1))
+
+    summary = pipeline.run_season(2026)
+    assert summary.rounds == []
+    assert summary.results == []
+    assert called == []
