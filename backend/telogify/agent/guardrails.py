@@ -119,6 +119,9 @@ _REGEX_BLOCKLIST = [
     # DRS state is not reliably known (FastF1: channel semantics "need more research"), so any
     # DRS mention is unsupported. Straights are described plainly, never as "DRS zones".
     re.compile(r"\bdrs\b", re.IGNORECASE),
+    # a word repeated possessively ("Alpine's Alpine", "Ferrari's Ferrari") - the car-centric
+    # voice occasionally doubles a constructor name; a prompt note did not reliably stop it.
+    re.compile(r"\b(\w+)'s \1\b", re.IGNORECASE),
 ]
 
 
