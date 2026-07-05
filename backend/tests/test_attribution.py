@@ -52,6 +52,10 @@ def test_weak_teammate_baseline_caps_confidence():
 
 
 def test_classify_speed_bands():
-    assert classify_speed(100.0) == "low"
-    assert classify_speed(150.0) == "mid"
+    from telogify.analysis.attribution import LOW_MAX_KMH, MID_MAX_KMH
+
+    assert classify_speed(LOW_MAX_KMH - 0.1) == "low"
+    assert classify_speed(LOW_MAX_KMH) == "mid"
+    assert classify_speed(MID_MAX_KMH - 0.1) == "mid"
+    assert classify_speed(MID_MAX_KMH) == "high"
     assert classify_speed(250.0) == "high"

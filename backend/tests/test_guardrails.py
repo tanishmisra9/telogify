@@ -120,3 +120,9 @@ def test_kmh_backstop_boundary_30_not_flagged():
 
 def test_flags_completed_lap_count_regex():
     assert "completed 42 laps" in flag_unsupported_claims("He completed 42 laps before stopping")
+
+
+def test_flags_remaining_retirement_cause_phrases():
+    assert "hit the wall" in flag_unsupported_claims("He hit the wall at turn 12")
+    assert "gearbox" in flag_unsupported_claims("a gearbox issue ended the run")
+    assert "led from start to finish" in flag_unsupported_claims("McLaren led from start to finish")

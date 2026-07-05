@@ -48,6 +48,42 @@ def test_parse_insights_rejects_too_few():
         parse_insights('[{"header":"H","explanation_web":"W","explanation_email":"E"}]')
 
 
+def test_parse_insights_rejects_missing_keys():
+    text = (
+        '[{"header":"H1","explanation_web":"W1"},'
+        '{"header":"H2","explanation_web":"W2"},'
+        '{"header":"H3","explanation_web":"W3"}]'
+    )
+    with pytest.raises(ValueError, match="missing keys"):
+        parse_insights(text)
+
+
+def test_parse_insights_rejects_no_json_array():
+    with pytest.raises(ValueError, match="no JSON array"):
+        parse_insights("No insights here, just prose.")
+
+
+def test_parse_insights_truncates_to_three():
+    items = [
+        {"header": f"H{i}", "explanation_web": f"W{i}", "explanation_email": f"E{i}"}
+        for i in range(1, 6)
+    ]
+    out = parse_insights(json.dumps(items))
+    assert len(out) == 3 and out[0]["header"] == "H1" and out[2]["header"] == "H3"
+
+
+def test_extract_trace_handles_block_content():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "get_pace", "args": {}, "id": "c1", "type": "tool_call"}],
+        ),
+        type("ToolMsg", (), {"type": "tool", "tool_call_id": "c1", "content": [{"text": '{"ok": true}'}]})(),
+    ]
+    trace = extract_trace(messages)
+    assert trace[0]["result"] == '{"ok": true}'
+
+
 def test_extract_trace_pairs_calls_with_returns():
     messages = [
         AIMessage(
