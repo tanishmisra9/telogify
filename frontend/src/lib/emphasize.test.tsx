@@ -24,4 +24,8 @@ describe('emphasize', () => {
   it('emphasizes nothing when there are no figures', () => {
     expect(accents('a clean lap')).toEqual([])
   })
+  it('emphasizes bare numbers and decimals', () => {
+    expect(accents('gained 0.22 seconds a lap')).toEqual(['0.22 seconds'])
+    expect(accents('a gap of +2 positions')).toEqual(['2'])
+  })
 })
