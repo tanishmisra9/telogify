@@ -46,6 +46,16 @@ def test_summary_aggregates_clips():
     assert s["n_clips"] == 1 and s["total_clip_m"] >= 40 and s["top_speed_kmh"] >= 320
 
 
+def test_summary_empty_when_no_straights():
+    assert summarize_deployment([]) == {
+        "n_straights": 0,
+        "n_clips": 0,
+        "total_clip_m": 0.0,
+        "max_clip_m": 0.0,
+        "top_speed_kmh": 0.0,
+    }
+
+
 def test_lift_ending_run_is_not_a_clip():
     # big drop but the run ends in a LIFT (lift-coast / corner approach), not braking -> not a clip
     rise = [(200 + 12 * k, 100, False) for k in range(10)]

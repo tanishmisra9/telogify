@@ -132,3 +132,20 @@ def test_flags_remaining_retirement_cause_phrases():
     assert "hit the wall" in flag_unsupported_claims("He hit the wall at turn 12")
     assert "gearbox" in flag_unsupported_claims("a gearbox issue ended the run")
     assert "led from start to finish" in flag_unsupported_claims("McLaren led from start to finish")
+
+
+def test_flags_additional_blocklist_categories():
+    assert "newcomer" in flag_unsupported_claims("the newcomer struggled on debut pace")
+    assert "lights to flag" in flag_unsupported_claims("a lights to flag dominance")
+    assert "got the jump" in flag_unsupported_claims("Russell got the jump at the start")
+    assert "front-row" in flag_unsupported_claims("a front-row lockout for Ferrari")
+    assert "sprint double" in flag_unsupported_claims("targeting a sprint double this weekend")
+    assert "won both" in flag_unsupported_claims("McLaren won both the sprint and the race")
+
+
+def test_flags_sprint_pole_leadership_regex():
+    assert flag_unsupported_claims("He led from pole in the sprint before fading in the race")
+
+
+def test_flags_retired_after_lap_number_regex():
+    assert flag_unsupported_claims("Alonso retired after 37")

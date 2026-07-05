@@ -84,6 +84,26 @@ def test_extract_trace_handles_block_content():
     assert trace[0]["result"] == '{"ok": true}'
 
 
+def test_extract_trace_preserves_multiple_calls_in_order():
+    from langchain_core.messages import ToolMessage
+
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "get_pace", "args": {"driver": "VER"}, "id": "c1", "type": "tool_call"},
+                {"name": "get_straight_speed", "args": {"driver": "LEC"}, "id": "c2", "type": "tool_call"},
+            ],
+        ),
+        ToolMessage(content='{"median": 90.1}', tool_call_id="c1"),
+        ToolMessage(content='{"max_speed_kmh": 330}', tool_call_id="c2"),
+    ]
+    trace = extract_trace(messages)
+    assert [t["tool"] for t in trace] == ["get_pace", "get_straight_speed"]
+    assert "90.1" in trace[0]["result"]
+    assert "330" in trace[1]["result"]
+
+
 def test_extract_trace_pairs_calls_with_returns():
     messages = [
         AIMessage(
