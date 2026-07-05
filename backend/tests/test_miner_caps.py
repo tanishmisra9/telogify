@@ -40,6 +40,30 @@ def test_corner_delta_cap_filters_at_boundary(test_engine):
         assert signals[0].locus == "corner:1"
 
 
+def test_corner_delta_negative_delta_attributes_slower_constructor(test_engine):
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2026, round=97, circuit_name="X", country="Y", event_name="Sign Test")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+
+        sess = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+        db.add(sess)
+        db.commit()
+        db.refresh(sess)
+
+        db.add(Attribution(
+            session_id=sess.id, corner_number=3, constructor_a="Ferrari", constructor_b="McLaren",
+            delta_s=-10.0, confidence=0.8,
+        ))
+        db.commit()
+
+        signals = _mine_corner_deltas(db, [sess])
+        assert len(signals) == 1
+        assert signals[0].subject == "Ferrari"  # negative delta -> constructor_a is slower
+        assert signals[0].magnitude == 10.0
+
+
 def test_straight_deficit_cap_filters_at_boundary(test_engine):
     with Session(test_engine) as db:
         wk = RaceWeekend(year=2026, round=98, circuit_name="X", country="Y", event_name="Straight Cap")

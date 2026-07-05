@@ -30,6 +30,18 @@ def test_pick_fastest_corner_excludes_near_top_speed_kinks():
     assert pick_fastest_corner(rows) == 8
 
 
+def test_pick_fastest_corner_boundary_at_min_loss():
+    from telogify.analysis.quali_character import MIN_CORNER_LOSS_KMH
+
+    top = 330.0
+    rows = [
+        _row("A", "d1", 66.0, top, 70.0, 0.6, {5: top - MIN_CORNER_LOSS_KMH}),
+        _row("B", "d2", 66.1, top, 71.0, 0.6, {5: top - MIN_CORNER_LOSS_KMH + 1}),
+    ]
+    assert pick_fastest_corner(rows) == 5
+    assert pick_fastest_corner([_row("A", "d1", 66.0, top, 70.0, 0.6, {5: top - MIN_CORNER_LOSS_KMH + 1})]) is None
+
+
 def test_pick_fastest_corner_none_without_corner_speeds():
     assert pick_fastest_corner([_row("A", "d1", 66.0, 330.0, 70.0, 0.6, {})]) is None
 

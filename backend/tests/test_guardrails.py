@@ -114,6 +114,12 @@ def test_collision_from_race_control_is_allowed():
     ) == []
 
 
+def test_plain_ordinals_and_collision_are_allowed():
+    assert flag_unsupported_claims("Leclerc started third and finished eighth") == []
+    assert flag_unsupported_claims("a collision with Norris at turn 6") == []
+    assert "first corner" in flag_unsupported_claims("contact at the first corner")
+
+
 def test_kmh_backstop_boundary_30_not_flagged():
     assert flag_unsupported_claims("Williams was 30 km/h slower on the straight") == []
 
