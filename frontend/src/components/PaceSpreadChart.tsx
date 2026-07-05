@@ -65,6 +65,8 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
               <button
                 type="button"
                 onClick={() => setViewMode(mode)}
+                aria-label={mode === 'drivers' ? 'Show pace per driver' : 'Show pace per team'}
+                aria-pressed={viewMode === mode}
                 className={`rounded-full px-3 py-1 text-sm transition-colors ${
                   viewMode === mode ? 'bg-accent/15 text-accent' : 'text-muted hover:text-ink'
                 }`}

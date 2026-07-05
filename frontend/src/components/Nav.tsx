@@ -28,6 +28,7 @@ export function Nav() {
               <Tooltip key={l.to} label={l.hint}>
                 <Link
                   to={l.to}
+                  aria-current={active ? 'page' : undefined}
                   className={`kicker border px-3 py-2 transition-colors ${
                     active
                       ? 'border-ink bg-ink text-bg'

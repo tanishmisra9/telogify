@@ -29,8 +29,8 @@ export function Tooltip({ label, children }: { label: string; children: ReactEle
       className="relative inline-flex"
       onMouseEnter={() => show(500)}
       onMouseLeave={hide}
-      onFocus={() => show(0)}
-      onBlur={hide}
+      onFocusCapture={() => show(0)}
+      onBlurCapture={hide}
     >
       {trigger}
       <AnimatePresence>
