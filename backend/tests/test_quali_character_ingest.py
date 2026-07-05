@@ -72,3 +72,9 @@ def test_lap_character_combines_all_four_metrics():
 
 def test_lap_character_none_when_no_telemetry():
     assert lap_character([], [], [], []) is None
+
+
+def test_lap_character_with_empty_throttle_still_computes_speeds():
+    char = lap_character([0, 10, 20], [300, 100, 300], [], [(1, 5, 25)])
+    assert char is not None
+    assert char.full_throttle_pct == 0.0

@@ -165,6 +165,17 @@ def test_compound_tags_dedupe_and_abbreviate():
     assert rows[0].stats.compounds == ["M", "H"]
 
 
+def test_compound_tags_include_intermediate_and_wet():
+    stints = [
+        {"driver": "VER", "constructor": "Red Bull", "compound": "INTERMEDIATE", "lap_times": [95.0]},
+        {"driver": "HAM", "constructor": "Mercedes", "compound": "WET", "lap_times": [96.0]},
+    ]
+    rows = driver_distributions(stints)
+    tags = {r.id: r.stats.compounds for r in rows}
+    assert tags["VER"] == ["I"]
+    assert tags["HAM"] == ["W"]
+
+
 def test_box_stats_mean_matches_statistics():
     vals = [90.0, 92.0, 94.0]
     s = box_stats(vals, [])

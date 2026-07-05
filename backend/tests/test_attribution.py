@@ -51,6 +51,12 @@ def test_weak_teammate_baseline_caps_confidence():
     assert attr.confidence == 0.25  # base 4/8=0.5 * cap 0.5
 
 
+def test_attribute_corner_returns_none_without_two_constructors():
+    a = [DriverCorner("Ferrari", "LEC", 210.0, 8)]
+    assert attribute_corner(1, a, []) is None
+    assert attribute_corner(1, [], []) is None
+
+
 def test_classify_speed_bands():
     from telogify.analysis.attribution import LOW_MAX_KMH, MID_MAX_KMH
 
