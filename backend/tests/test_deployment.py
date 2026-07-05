@@ -44,3 +44,33 @@ def test_summary_aggregates_clips():
     runs = detect_clipping(*_trace(rise + clip + [(300, 100, True)]), min_straight_m=100)
     s = summarize_deployment(runs)
     assert s["n_clips"] == 1 and s["total_clip_m"] >= 40 and s["top_speed_kmh"] >= 320
+
+
+def test_lift_ending_run_is_not_a_clip():
+    # big drop but the run ends in a LIFT (lift-coast / corner approach), not braking -> not a clip
+    rise = [(200 + 12 * k, 100, False) for k in range(10)]
+    fall = [(300, 100, False), (285, 100, False), (270, 100, False), (255, 100, False)]  # -45 km/h
+    from telogify.analysis.deployment import detect_clipping
+    runs = detect_clipping(*_trace(rise + fall + [(250, 30, False)]), min_straight_m=100)  # ends by lift
+    assert runs and runs[0].end_reason == "lift" and not runs[0].is_clip
+
+
+def test_drag_plateau_is_not_a_clip():
+    # long run, ends in braking, but speed barely falls (drag-limited, not deployment) -> not a clip
+    rise = [(240 + 10 * k, 100, False) for k in range(9)]           # up to ~320
+    plateau = [(322, 100, False)] * 8 + [(320, 100, False)]          # holds, tiny drop
+    from telogify.analysis.deployment import detect_clipping
+    runs = detect_clipping(*_trace(rise + plateau + [(300, 100, True)]), min_straight_m=100)
+    assert runs and not runs[0].is_clip  # drop < MIN_DROP
+
+
+def test_low_speed_run_is_not_a_clip():
+    # a slow corner-exit squirt that falls, ends in braking, but is nowhere near top speed
+    from telogify.analysis.deployment import detect_clipping
+    fast = [(240 + 10 * k, 100, False) for k in range(10)] + [(330, 100, True)]  # sets lap top ~330
+    slow = [(150, 100, False), (165, 100, False), (178, 100, False), (188, 100, False),
+            (185, 100, False), (176, 100, False), (168, 100, False), (155, 100, True)]  # peak 188 << 0.85*330, ~140m before brake
+    d, sp, th, br = _trace(fast + slow, start=0)
+    runs = detect_clipping(d, sp, th, br, min_straight_m=100)
+    low = [r for r in runs if r.peak_kmh < 250]
+    assert low and not low[0].is_clip

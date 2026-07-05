@@ -114,7 +114,7 @@ _REGEX_BLOCKLIST = [
     # top speeds ("331 km/h on the straights") or small legit gaps ("12 km/h slower").
     re.compile(
         r"\b(?:3[1-9]|[4-9]\d|\d{3})(?:\.\d+)? km/h(?: \([^)]*\))? "
-        r"(?:slower|faster|quicker|down|more|shy|off|behind|adrift|gap|deficit)\b"
+        r"(?:slower|faster|quicker|shy|off|behind|adrift|deficit)\b"
     ),
     # DRS state is not reliably known (FastF1: channel semantics "need more research"), so any
     # DRS mention is unsupported. Straights are described plainly, never as "DRS zones".

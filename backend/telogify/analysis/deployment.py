@@ -18,7 +18,20 @@ from dataclasses import dataclass
 FULL_THROTTLE = 99.0  # throttle % counted as "full" (FastF1 0-100; 104 = error, treated as full)
 MIN_STRAIGHT_M = 250.0  # ignore short inter-corner squirts; a real deployment straight is longer
 MIN_CLIP_M = 40.0  # full-throttle distance past the speed peak to count as clipping
-MIN_DROP_KMH = 2.0  # speed must actually fall this much after the peak (else it is drag-limited)
+MIN_DROP_KMH = 12.0  # a real clip DECELERATES this much; smaller drops are a drag-limited plateau
+HIGH_SPEED_FRAC = 0.85  # a clip only counts near the car's top speed (where max deployment happens),
+# not on a slow corner-exit squirt where a full-throttle speed dip is just cornering
+
+
+@dataclass(frozen=True)
+class _Run:
+    start_m: float
+    end_m: float
+    peak_kmh: float
+    peak_at_m: float
+    clip_m: float
+    drop_kmh: float
+    end_reason: str
 
 
 @dataclass(frozen=True)
@@ -55,23 +68,33 @@ def detect_clipping(
         d, sp = distance[i:j], speed[i:j]
         if len(sp) >= 3 and (d[-1] - d[0]) >= min_straight_m:
             pk = max(range(len(sp)), key=lambda k: sp[k])
-            clip_m = d[-1] - d[pk]
-            drop = sp[pk] - sp[-1]
             ended_on_brake = j < n and brake[j]
             runs.append(
-                StraightRun(
-                    start_m=d[0],
-                    end_m=d[-1],
-                    peak_kmh=sp[pk],
-                    peak_at_m=d[pk],
-                    clip_m=clip_m,
-                    drop_kmh=drop,
+                _Run(
+                    start_m=d[0], end_m=d[-1], peak_kmh=sp[pk], peak_at_m=d[pk],
+                    clip_m=d[-1] - d[pk], drop_kmh=sp[pk] - sp[-1],
                     end_reason="brake" if ended_on_brake else "lift",
-                    is_clip=clip_m >= MIN_CLIP_M and drop >= MIN_DROP_KMH,
                 )
             )
         i = j if j > i else i + 1
-    return runs
+    # a clip must be at high speed (near the lap's top), fall enough, run far enough past the peak,
+    # AND end in braking (deployment ran out right up to a real braking zone, not a lift/corner-exit)
+    lap_top = max((r.peak_kmh for r in runs), default=0.0)
+    out: list[StraightRun] = []
+    for r in runs:
+        is_clip = (
+            r.end_reason == "brake"
+            and r.peak_kmh >= HIGH_SPEED_FRAC * lap_top
+            and r.clip_m >= MIN_CLIP_M
+            and r.drop_kmh >= MIN_DROP_KMH
+        )
+        out.append(
+            StraightRun(
+                start_m=r.start_m, end_m=r.end_m, peak_kmh=r.peak_kmh, peak_at_m=r.peak_at_m,
+                clip_m=r.clip_m, drop_kmh=r.drop_kmh, end_reason=r.end_reason, is_clip=is_clip,
+            )
+        )
+    return out
 
 
 def summarize_deployment(runs: list[StraightRun]) -> dict:
