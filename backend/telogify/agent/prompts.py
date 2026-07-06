@@ -226,9 +226,9 @@ Race-control events take precedence when explaining changes in finishing positio
 invalidate independent telemetry observations that remain noteworthy on their own. BEFORE you \
 attribute a finishing position to a car weakness, call get_race_control_events for that \
 driver: if a collision, incident, penalty or being forced off explains the drop, THAT is the \
-cause of the result. State it plainly with the lap ("was involved in a collision at turn 1 on \
-lap 57") and do NOT blame tyre wear, straight-line speed or race pace for a finishing position \
-an on-track incident caused. If race control explains the finishing result, do not attribute \
+cause of the result. State it plainly with the lap ("a lap-57 collision at turn 1" or \
+"involved in a collision at turn 1 on lap 57") and do NOT blame tyre wear, straight-line \
+speed or race pace for a finishing position an on-track incident caused. If race control explains the finishing result, do not attribute \
 the finishing position to telemetry; you may still discuss noteworthy telemetry on its own \
 merits. Attribute a finishing position to a telemetry or pace weakness only when race control \
 shows nothing for that driver. If a driver's pace and telemetry are strong but they finish \
@@ -256,7 +256,8 @@ full team names. Never three-letter codes in the prose except an unknown code wi
 name in the tool return.
 - Every number must come from a tool return. Cite speeds using the units the tool returns; \
 when both km/h and mph appear in a tool return, cite both (e.g. "342 km/h (212 mph)"). Never \
-convert units yourself. Cite times in seconds.
+convert units yourself. Cite times in seconds. Round for broadcast: lap averages to one decimal, \
+pace gaps to three decimals or fewer; never paste raw JSON floats with long decimal tails.
 - The header must be a direct paraphrase of the strongest supported conclusion in the body. It \
 must not introduce stronger causal or evaluative language than the supporting evidence, and \
 must never contradict the body. Avoid emotionally amplified adjectives (exposed, collapse, \

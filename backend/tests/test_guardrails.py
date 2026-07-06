@@ -1,6 +1,26 @@
 from telogify.agent.guardrails import flag_unsupported_claims
 
 
+def test_flags_grid_row_labels():
+    assert "front row" in flag_unsupported_claims("Both Ferraris locked out the front row")
+    assert "second row" in flag_unsupported_claims("McLaren started from the second row")
+    assert "third row" in flag_unsupported_claims("Alpine qualified on the third row")
+    # Ordinals are allowed.
+    assert flag_unsupported_claims("Leclerc started third and finished eighth") == []
+
+
+def test_fix_hints_for_grid_row_labels():
+    from telogify.agent.guardrails import fix_hints_for_phrases, format_insight_validation_feedback
+
+    hints = fix_hints_for_phrases(["second row"])
+    assert any("started third" in h for h in hints)
+    assert any("Never" in h and "second row" in h for h in hints)
+    feedback = format_insight_validation_feedback({3: ["second row"]})
+    assert "slot(s) [3]" in feedback
+    assert "started third" in feedback
+    assert "explanation_email" in feedback
+
+
 def test_flags_the_audited_fabrications():
     # The exact failure phrases from the audit must be caught.
     assert flag_unsupported_claims("Antonelli's maiden Grand Prix win") == ["maiden"]
@@ -20,6 +40,22 @@ def test_flags_retirement_lap_numbers():
         "Lance Stroll was out after just five laps"
     )
     assert "after 10 laps" in flag_unsupported_claims("he retired after 10 laps")
+
+
+def test_allows_race_control_lap_cites():
+    assert flag_unsupported_claims(
+        "Charles Leclerc still finished eighth, but race control shows a lap-57 collision with George Russell"
+    ) == []
+    assert flag_unsupported_claims(
+        "Piastri was involved in a collision on lap 16 and took a penalty on lap 23"
+    ) == []
+    assert flag_unsupported_claims(
+        "involved in a collision at turn 1 on lap 57"
+    ) == []
+
+
+def test_flags_overtake_lap_claims():
+    assert "on lap 30" in flag_unsupported_claims("Norris passed Piastri on lap 30 on the straight")
 
 
 def test_flags_sprint_weekend_fabrications():

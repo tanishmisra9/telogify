@@ -17,6 +17,10 @@ class Settings(BaseSettings):
             return v.replace("postgres://", "postgresql://", 1)
         return v
 
+    llm_provider: str = "openai"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1"
+
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5"
 
@@ -35,3 +39,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def configured_llm_label() -> str:
+    """Provider and model from settings (LLM_PROVIDER + matching *_MODEL)."""
+    provider = settings.llm_provider.strip().lower()
+    model_by_provider = {
+        "openai": settings.openai_model,
+        "anthropic": settings.anthropic_model,
+    }
+    model = model_by_provider.get(provider, "?")
+    return f"{provider} / {model}"

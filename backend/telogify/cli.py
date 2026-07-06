@@ -1,11 +1,67 @@
 """Telogify CLI. Manual triggers only (no scheduler)."""
 
+import sys
+
 import typer
+
+from telogify.pipeline import RoundResult
 
 app = typer.Typer(
     add_completion=False,
     help="Telogify: 3 quantified telemetry insights per F1 race weekend.",
 )
+
+
+def _progress(msg: str) -> None:
+    typer.echo(msg)
+    sys.stdout.flush()
+
+
+def _on_round_start(round: int, index: int, total: int) -> None:
+    _progress(f"  round {round} ({index}/{total}): running...")
+
+
+def _on_round_complete(result: RoundResult, index: int, total: int) -> None:
+    if result.ok:
+        _progress(
+            f"  round {result.round} ({index}/{total}): ok, "
+            f"{result.insight_count} insight(s) persisted"
+        )
+    else:
+        _progress(f"  round {result.round} ({index}/{total}): failed - {result.error}")
+
+
+def _echo_llm_model() -> None:
+    from telogify.config import configured_llm_label
+
+    _progress(f"Model: {configured_llm_label()}")
+
+
+def _echo_season_final_summary(summary) -> None:
+    """Aggregate summary after all rounds have been logged live."""
+    _progress("")
+    _progress("Summary:")
+    for result in summary.results:
+        if result.ok:
+            _progress(f"  R{result.round}: {result.insight_count} insights")
+        else:
+            _progress(f"  R{result.round}: FAILED ({result.error})")
+
+    failed = [r for r in summary.results if not r.ok]
+    if failed:
+        _progress(f"\n{len(failed)} round(s) failed.")
+        raise typer.Exit(code=1)
+
+    _progress(f"\nDone: {len(summary.results)} round(s) completed.")
+
+
+def _run_insights_one(year: int, round: int) -> None:
+    from telogify.pipeline import regen_insights
+
+    _echo_llm_model()
+    _progress(f"Regenerating insights for {year} round {round}...")
+    state = regen_insights(year, round)
+    _progress(f"Done: persisted {state.get('insight_count', 0)} insights.")
 
 
 @app.command("run-weekend")
@@ -26,59 +82,70 @@ def run_weekend_cmd(
     if round is not None:
         from telogify.pipeline import run_weekend as run
 
-        typer.echo(f"Running weekend {year} round {round}...")
+        _progress(f"Running weekend {year} round {round}...")
         state = run(year, round)
-        typer.echo(f"Done: persisted {state.get('insight_count', 0)} insights.")
+        _progress(f"Done: persisted {state.get('insight_count', 0)} insights.")
         return
 
     from telogify.pipeline import run_season, season_rounds
 
     rounds = season_rounds(year)
     if not rounds:
-        typer.echo(f"No completed rounds found for {year}.")
+        _progress(f"No completed rounds found for {year}.")
         return
 
     if dry_run:
-        typer.echo(f"{year} completed rounds ({len(rounds)}): {', '.join(str(r) for r in rounds)}")
+        _progress(f"{year} completed rounds ({len(rounds)}): {', '.join(str(r) for r in rounds)}")
         return
 
-    typer.echo(f"Running season {year}: {len(rounds)} completed round(s)...")
-    summary = run_season(year)
-    total = len(summary.rounds)
-    for i, result in enumerate(summary.results, start=1):
-        if result.ok:
-            typer.echo(
-                f"  round {result.round} ({i}/{total}): ok, "
-                f"{result.insight_count} insight(s) persisted"
-            )
-        else:
-            typer.echo(f"  round {result.round} ({i}/{total}): failed - {result.error}")
-
-    typer.echo("")
-    typer.echo("Summary:")
-    for result in summary.results:
-        if result.ok:
-            typer.echo(f"  R{result.round}: {result.insight_count} insights")
-        else:
-            typer.echo(f"  R{result.round}: FAILED ({result.error})")
-
-    failed = [r for r in summary.results if not r.ok]
-    if failed:
-        typer.echo(f"\n{len(failed)} round(s) failed.")
-        raise typer.Exit(code=1)
-
-    typer.echo(f"\nDone: {len(summary.results)} round(s) completed.")
+    _progress(f"Running season {year}: {len(rounds)} completed round(s)...")
+    summary = run_season(
+        year,
+        on_round_start=_on_round_start,
+        on_round_complete=_on_round_complete,
+    )
+    _echo_season_final_summary(summary)
 
 
-@app.command("regen-insights")
-def regen_insights(year: int, round: int) -> None:
-    """Regenerate only the 3 insights from already-ingested data: recomputes candidates and
-    re-runs the agent, skipping FastF1 ingest. Use after changing scoring or prompts."""
-    from telogify.pipeline import regen_insights as run
+@app.command("run-insights")
+def run_insights_cmd(
+    year: int,
+    round: int | None = typer.Argument(
+        None, help="Round number; omit to regenerate insights for all completed rounds."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="List completed rounds only; do not call the agent."
+    ),
+) -> None:
+    """Regenerate only the 3 insights from already-ingested data (LLM only, no FastF1 ingest).
 
-    typer.echo(f"Regenerating insights for {year} round {round}...")
-    state = run(year, round)
-    typer.echo(f"Done: persisted {state.get('insight_count', 0)} insights.")
+    Recomputes candidates and re-runs the agent. Omitting ROUND runs every completed round on
+    the schedule (one agent call per weekend). Use --dry-run to preview without API spend.
+    Requires prior ingest via run-weekend."""
+    if round is not None:
+        _run_insights_one(year, round)
+        return
+
+    from telogify.pipeline import run_insights_season, season_rounds
+
+    rounds = season_rounds(year)
+    if not rounds:
+        _progress(f"No completed rounds found for {year}.")
+        return
+
+    if dry_run:
+        _echo_llm_model()
+        _progress(f"{year} completed rounds ({len(rounds)}): {', '.join(str(r) for r in rounds)}")
+        return
+
+    _echo_llm_model()
+    _progress(f"Regenerating insights for season {year}: {len(rounds)} completed round(s)...")
+    summary = run_insights_season(
+        year,
+        on_round_start=_on_round_start,
+        on_round_complete=_on_round_complete,
+    )
+    _echo_season_final_summary(summary)
 
 
 @app.command("diagnose")

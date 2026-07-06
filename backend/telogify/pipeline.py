@@ -5,6 +5,7 @@ WeekendData never leaves the ingest node. Each phase is idempotent (delete + rei
 and FastF1 caches raw data on disk, so re-running a weekend is safe and skips re-downloads.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypedDict
@@ -15,7 +16,7 @@ from sqlmodel import Session
 
 from telogify.agent.graph import build_agent
 from telogify.agent.tools import _weekend_id
-from telogify.agent.guardrails import flag_unsupported_claims
+from telogify.agent.guardrails import flag_unsupported_claims, format_insight_validation_feedback
 from telogify.agent.insights import _content_text, extract_trace, parse_insights, persist_insights
 from telogify.agent.validation import validate_insights
 from telogify.analysis.attribution import store_attributions
@@ -97,12 +98,16 @@ def _insights(state: PipelineState, agent_runner) -> dict:
     _MAX_INSIGHT_ATTEMPTS: shipping a fabricated claim is worse than shipping nothing."""
     feedback = None
     flagged: dict[int, list[str]] = {}
+    parse_failures = 0
+    last_parse_error: str | None = None
     for _attempt in range(1, _MAX_INSIGHT_ATTEMPTS + 1):
         messages = agent_runner(state["year"], state["round"], feedback=feedback)
         final = _content_text(messages[-1].content)
         try:
             insights = parse_insights(final)
         except ValueError as e:
+            parse_failures += 1
+            last_parse_error = str(e)
             # Malformed output (bad JSON, extra prose, wrong shape) is retryable, not fatal:
             # feed the error back and let the agent re-emit rather than crashing the run.
             feedback = (
@@ -118,12 +123,11 @@ def _insights(state: PipelineState, agent_runner) -> dict:
             with Session(engine) as db:
                 rows = persist_insights(state["weekend_id"], insights, trace, db)
             return {"insight_count": len(rows)}
-        feedback = (
-            "Your last set of 3 insights failed validation. Specifically, insight "
-            f"slot(s) {sorted(flagged)} had issues: {flagged}. Rewrite ALL 3 insights "
-            "from scratch, fixing every issue while keeping every number grounded in tool "
-            "returns. Output the JSON array as your final message; do not wrap it in "
-            "Markdown backticks."
+        feedback = format_insight_validation_feedback(flagged)
+    if parse_failures == _MAX_INSIGHT_ATTEMPTS and not flagged:
+        raise RuntimeError(
+            f"Insight agent failed to produce parseable JSON after {_MAX_INSIGHT_ATTEMPTS} "
+            f"attempts for {state['year']} round {state['round']}: {last_parse_error}"
         )
     raise RuntimeError(
         f"Insight agent kept producing unsupported claims after {_MAX_INSIGHT_ATTEMPTS} "
@@ -192,20 +196,55 @@ def run_season(
     *,
     now: datetime | None = None,
     continue_on_error: bool = True,
+    on_round_start: Callable[[int, int, int], None] | None = None,
+    on_round_complete: Callable[[RoundResult, int, int], None] | None = None,
 ) -> SeasonRunResult:
     """Run the full pipeline for every completed round in a season."""
     rounds = season_rounds(year, now=now)
     outcome = SeasonRunResult(year=year, rounds=rounds)
-    for rnd in rounds:
+    total = len(rounds)
+    for i, rnd in enumerate(rounds, start=1):
+        if on_round_start:
+            on_round_start(rnd, i, total)
         try:
             state = run_weekend(year, rnd, agent_runner=agent_runner)
-            outcome.results.append(
-                RoundResult(round=rnd, ok=True, insight_count=state.get("insight_count", 0))
-            )
+            result = RoundResult(round=rnd, ok=True, insight_count=state.get("insight_count", 0))
         except Exception as exc:
-            outcome.results.append(RoundResult(round=rnd, ok=False, error=str(exc)))
-            if not continue_on_error:
-                break
+            result = RoundResult(round=rnd, ok=False, error=str(exc))
+        outcome.results.append(result)
+        if on_round_complete:
+            on_round_complete(result, i, total)
+        if not result.ok and not continue_on_error:
+            break
+    return outcome
+
+
+def run_insights_season(
+    year: int,
+    agent_runner=None,
+    *,
+    now: datetime | None = None,
+    continue_on_error: bool = True,
+    on_round_start: Callable[[int, int, int], None] | None = None,
+    on_round_complete: Callable[[RoundResult, int, int], None] | None = None,
+) -> SeasonRunResult:
+    """Regenerate insights for every completed round in a season (LLM only, no FastF1 ingest)."""
+    rounds = season_rounds(year, now=now)
+    outcome = SeasonRunResult(year=year, rounds=rounds)
+    total = len(rounds)
+    for i, rnd in enumerate(rounds, start=1):
+        if on_round_start:
+            on_round_start(rnd, i, total)
+        try:
+            state = regen_insights(year, rnd, agent_runner=agent_runner)
+            result = RoundResult(round=rnd, ok=True, insight_count=state.get("insight_count", 0))
+        except Exception as exc:
+            result = RoundResult(round=rnd, ok=False, error=str(exc))
+        outcome.results.append(result)
+        if on_round_complete:
+            on_round_complete(result, i, total)
+        if not result.ok and not continue_on_error:
+            break
     return outcome
 
 

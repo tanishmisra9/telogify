@@ -1,4 +1,4 @@
-import { emphasize } from '@/lib/emphasize'
+import { emphasize, bindMetricSpaces } from '@/lib/emphasize'
 import type { InsightItem } from '@/lib/api'
 
 export function Insight({ item, showSlot = true }: { item: InsightItem; showSlot?: boolean }) {
@@ -11,8 +11,8 @@ export function Insight({ item, showSlot = true }: { item: InsightItem; showSlot
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <h3 className="font-display text-[1.6875rem] font-semibold leading-[1.05] tracking-tight sm:text-[2.025rem] lg:text-[2.7rem]">
-            {item.header}
+          <h3 className="font-display text-[1.5625rem] font-semibold leading-[1.05] tracking-tight sm:text-[1.875rem] lg:text-[2.5rem]">
+            {bindMetricSpaces(item.header)}
           </h3>
           <p className="mt-4 text-[17px] leading-relaxed text-ink">
             {emphasize(item.explanation_web)}

@@ -94,6 +94,7 @@ def test_build_agent_fails_loud_without_api_key(monkeypatch):
     from telogify.agent import graph
     from telogify.config import settings
 
-    monkeypatch.setattr(settings, "anthropic_api_key", "")
-    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
         graph.build_agent(2025, 11)

@@ -19,6 +19,7 @@ fastf1
 # Insight agent (LangGraph ReAct + Anthropic)
 langgraph
 langchain-anthropic
+langchain-openai
 
 # Email
 resend

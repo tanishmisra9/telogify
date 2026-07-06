@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom'
+import { BarChart } from '@/components/BarChart'
 import { BlurFade } from '@/components/BlurFade'
 import { DegradationChart } from '@/components/DegradationChart'
 import { Insight } from '@/components/Insight'
@@ -6,9 +7,7 @@ import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
 import { Results } from '@/components/Results'
 import { SectionTitle } from '@/components/SectionTitle'
-import { SectorBars } from '@/components/SectorBars'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
-import { TopSpeedBars } from '@/components/TopSpeedBars'
 import {
   useApi,
   type DegradationData,
@@ -16,6 +15,7 @@ import {
   type PaceData,
   type QualiCharacterData,
   type ResultRow,
+  type SectorBestRow,
   type SectorsData,
   type SessionInfo,
   type TopSpeedsData,
@@ -23,6 +23,75 @@ import {
 } from '@/lib/api'
 
 const PRACTICE_CODES = ['FP1', 'FP2', 'FP3']
+
+function PracticeSectorChart({ sector, rows }: { sector: number; rows: SectorBestRow[] }) {
+  const sorted = rows.filter((r) => r.sector === sector).sort((a, b) => a.best_time_s - b.best_time_s)
+  if (sorted.length === 0) return null
+
+  const fastest = sorted[0].best_time_s
+  const bars = sorted.map((r) => ({
+    id: r.driver,
+    label: r.driver,
+    value: r.best_time_s - fastest,
+    team: r.constructor,
+  }))
+
+  return (
+    <div>
+      <h3 className="mb-2 text-[1.35rem] font-semibold text-ink">Sector {sector}</h3>
+      <BarChart rows={bars} formatValue={(v) => v.toFixed(3)} />
+    </div>
+  )
+}
+
+function PracticeSectors({ data }: { data: SectorsData }) {
+  if (data.drivers.length === 0) {
+    return <p className="text-sm text-muted">No practice sector data yet.</p>
+  }
+
+  return (
+    <div className="glass rounded-[--radius-panel] p-6">
+      <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Best sectors</h2>
+      <div className="mt-5 grid gap-8">
+        {[1, 2, 3].map((sector) => (
+          <PracticeSectorChart key={sector} sector={sector} rows={data.drivers} />
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-muted">
+        Indicative: practice fuel loads and engine modes vary between runs, so this is a read on
+        where time is, not a verdict. Bars are each driver's gap to the fastest sector time.
+      </p>
+    </div>
+  )
+}
+
+function PracticeTopSpeeds({ data }: { data: TopSpeedsData }) {
+  if (data.drivers.length === 0) {
+    return <p className="text-sm text-muted">No practice top-speed data yet.</p>
+  }
+
+  const sorted = [...data.drivers].sort((a, b) => b.max_speed_kmh - a.max_speed_kmh)
+  const bars = sorted.map((r) => ({
+    id: r.driver,
+    label: r.driver,
+    value: r.max_speed_kmh,
+    team: r.constructor,
+  }))
+  const domainMin = Math.min(...sorted.map((r) => r.max_speed_kmh)) - 6
+
+  return (
+    <div className="glass rounded-[--radius-panel] p-6">
+      <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Top speeds (km/h)</h2>
+      <div className="mt-5">
+        <BarChart rows={bars} formatValue={(v) => v.toFixed(0)} domainMin={domainMin} />
+      </div>
+      <p className="mt-2 text-xs text-muted">
+        Indicative: engine modes and fuel loads vary between practice runs, so a deficit here may
+        be a mode choice rather than a true weakness.
+      </p>
+    </div>
+  )
+}
 
 function Upcoming({ children }: { children: React.ReactNode }) {
   return (
@@ -138,14 +207,14 @@ export function WeekendPage() {
           <div className="grid gap-6">
             {sectors.data ? (
               <BlurFade>
-                <SectorBars data={sectors.data} />
+                <PracticeSectors data={sectors.data} />
               </BlurFade>
             ) : (
               <SkeletonCard className="min-h-[560px]" />
             )}
             {topspeeds.data ? (
               <BlurFade delay={0.06}>
-                <TopSpeedBars data={topspeeds.data} />
+                <PracticeTopSpeeds data={topspeeds.data} />
               </BlurFade>
             ) : (
               <SkeletonCard className="min-h-[300px]" />

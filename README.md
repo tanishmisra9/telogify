@@ -22,8 +22,8 @@ PreCompute (deterministic, all sessions)
 
 ## Stack
 
-- **Backend:** Python 3.12, FastAPI, LangGraph, SQLModel + Alembic, Postgres, Anthropic SDK
-  (`claude-sonnet-5`), FastF1, Resend, pytest. Manual CLI trigger only (no scheduler).
+- **Backend:** Python 3.12, FastAPI, LangGraph, SQLModel + Alembic, Postgres, LangChain chat models
+  (OpenAI default, Anthropic switchable via `LLM_PROVIDER`), FastF1, Resend, pytest. Manual CLI trigger only (no scheduler).
 - **Frontend:** Vite + React + TypeScript + Tailwind v4 + Framer Motion. Custom SVG charts (no
   chart library). Vitest for unit tests.
 - **Infra:** Railway (backend + Postgres), Vercel (frontend).
@@ -46,7 +46,10 @@ alembic upgrade head            # apply migrations to telogify_dev
 | Var | Purpose |
 | --- | --- |
 | `DATABASE_URL` | Postgres URL. Local default `postgresql://localhost:5432/telogify_dev`. `postgres://` is auto-normalized. |
-| `ANTHROPIC_API_KEY` | Required by the insight agent. The agent fails loud if it is missing. |
+| `LLM_PROVIDER` | Insight agent backend: `openai` (default) or `anthropic`. Set in `.env`; no code change to switch. |
+| `OPENAI_API_KEY` | Required when `LLM_PROVIDER=openai`. |
+| `OPENAI_MODEL` | Defaults to `gpt-4.1`. |
+| `ANTHROPIC_API_KEY` | Required when `LLM_PROVIDER=anthropic`. |
 | `ANTHROPIC_MODEL` | Defaults to `claude-sonnet-5`. |
 | `RESEND_API_KEY` | Required by `send-digest`. Pre-domain, uses Resend's shared sender. |
 | `RESEND_FROM` | Sender, e.g. `Telogify <insights@telogify.app>` once the domain is verified. |
@@ -59,6 +62,9 @@ alembic upgrade head            # apply migrations to telogify_dev
 telogify run-weekend 2025 11    # ingest + compute + generate and persist 3 insights
 telogify run-weekend 2026       # all completed rounds for the season (one agent call per weekend)
 telogify run-weekend 2026 --dry-run  # preview which rounds would run, no API spend
+telogify run-insights 2026      # LLM-only: regenerate insights for all ingested completed rounds
+telogify run-insights 2026 8    # LLM-only: regenerate insights for one round (no FastF1 re-ingest)
+telogify run-insights 2026 --dry-run  # preview insight regen rounds, no API spend
 telogify diagnose 2025 11       # ranking sanity: clean-lap counts + attribution confidence
 telogify send-digest 2025 11    # email the 3 insights to subscribers via Resend
 ```
@@ -101,8 +107,9 @@ subscribe (`/subscribe`).
 
 **Backend (Railway):** create a project, add the Postgres plugin (injects `DATABASE_URL`),
 and point a service at this repo with root directory `backend`. `backend/railway.toml`
-runs `alembic upgrade head` then `uvicorn` on deploy. Set `ANTHROPIC_API_KEY`,
-`RESEND_API_KEY`, `RESEND_FROM`, and `WEB_BASE_URL` in the service variables.
+runs `alembic upgrade head` then `uvicorn` on deploy. Set `LLM_PROVIDER` and the matching API key
+(`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`), plus `RESEND_API_KEY`, `RESEND_FROM`, and
+`WEB_BASE_URL` in the service variables.
 
 **Frontend (Vercel):** import the repo with root directory `frontend` (Vite is
 auto-detected, output `dist`). `frontend/vercel.json` rewrites all routes to `index.html`

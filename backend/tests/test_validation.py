@@ -33,6 +33,12 @@ def test_flag_untraceable_numbers_skips_when_no_trace():
     assert flag_untraceable_numbers("330.5 km/h", []) == []
 
 
+def test_flag_untraceable_numbers_accepts_rounded_stint_average():
+    text = "Leclerc averaged 73.459 seconds per lap on softs."
+    trace = [{"tool": "get_stint_summary", "args": {}, "result": '{"avg_pace_s": 73.45858333333333}'}]
+    assert flag_untraceable_numbers(text, trace) == []
+
+
 def test_flag_cross_insight_conflicts_detects_opposing_speed_claims():
     insights = [
         {

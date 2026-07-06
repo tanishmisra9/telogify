@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 
 from telogify.agent.insights import extract_trace, parse_insights, persist_insights
 from telogify.models import Insight, RaceWeekend
-from telogify.serialize import strip_em_dashes
+from telogify.serialize import round_prose_numbers, strip_em_dashes
 
 
 def test_strip_em_dashes():
@@ -58,6 +58,41 @@ def test_extract_trace_pairs_calls_with_returns():
     ]
     trace = extract_trace(messages)
     assert trace == [{"tool": "get_straight_speed", "args": {"driver": "LEC"}, "result": '{"max_speed_kmh": 330.5}'}]
+
+
+def test_round_prose_numbers_strips_long_floats():
+    text = (
+        "Hamilton averaged 81.98835714285714 seconds while Ferrari was "
+        "0.10499999999998977 seconds per lap off Mercedes."
+    )
+    out = round_prose_numbers(text)
+    assert "35714285714" not in out
+    assert "99999999999998977" not in out
+    assert "82" in out
+    assert "0.105" in out
+
+
+def test_persist_insights_rounds_long_decimals(db_session):
+    wk = RaceWeekend(year=2025, round=16, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    insights = [
+        {
+            "header": "H1",
+            "explanation_web": "Pace was 0.10499999999998977 seconds off.",
+            "explanation_email": "E1",
+        },
+        {"header": "H2", "explanation_web": "W2", "explanation_email": "E2"},
+        {"header": "H3", "explanation_web": "W3", "explanation_email": "E3"},
+    ]
+    trace = [{"tool": "t", "args": {}, "result": "{}"}]
+    persist_insights(wk.id, insights, trace, db_session)
+
+    stored = db_session.exec(select(Insight).where(Insight.weekend_id == wk.id, Insight.slot == 1)).one()
+    assert "999999" not in stored.explanation_web
+    assert "0.105" in stored.explanation_web
 
 
 def test_persist_insights_strips_dashes_and_logs_trace(db_session):

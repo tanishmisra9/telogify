@@ -23,6 +23,7 @@ const DRIVER_NAMES: Record<string, string> = {
   BEA: 'Oliver Bearman',
   BOT: 'Valtteri Bottas',
   PER: 'Sergio Perez',
+  LIN: 'Arvid Lindblad',
 }
 
 export function driverName(code: string | null | undefined): string {

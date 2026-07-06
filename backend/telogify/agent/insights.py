@@ -11,7 +11,7 @@ from sqlmodel import delete
 
 from telogify.agent.guardrails import flag_unsupported_claims
 from telogify.models import Insight
-from telogify.serialize import strip_em_dashes
+from telogify.serialize import round_prose_numbers, strip_em_dashes
 
 _REQUIRED_KEYS = ("header", "explanation_web", "explanation_email")
 
@@ -94,9 +94,9 @@ def persist_insights(
     db.exec(delete(Insight).where(Insight.weekend_id == weekend_id))
     rows = []
     for slot, ins in enumerate(insights[:3], start=1):
-        header = strip_em_dashes(ins["header"])
-        web = strip_em_dashes(ins["explanation_web"])
-        email = strip_em_dashes(ins["explanation_email"])
+        header = round_prose_numbers(strip_em_dashes(ins["header"]))
+        web = round_prose_numbers(strip_em_dashes(ins["explanation_web"]))
+        email = round_prose_numbers(strip_em_dashes(ins["explanation_email"]))
 
         # Regression net: warn loudly if the prose contains a claim the data cannot support.
         flagged = flag_unsupported_claims(f"{header} {web} {email}")

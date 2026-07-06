@@ -2,7 +2,7 @@ import { TeamMark, TeamRule } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
 import { emphasize } from '@/lib/emphasize'
 import { heatBg, rankAsc, rankDesc } from '@/lib/heat'
-import { driverName } from '@/lib/driverNames'
+import { driverName } from '@/lib/drivers'
 import { qualiInsights } from '@/lib/qualiInsights'
 import type { QualiCharacterData } from '@/lib/api'
 

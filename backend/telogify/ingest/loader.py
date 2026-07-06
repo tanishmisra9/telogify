@@ -4,7 +4,6 @@ The FastF1-touching code is kept thin so the session enumeration and persistence
 logic can be tested offline (see tests/test_loader.py).
 """
 
-import os
 from dataclasses import dataclass, field
 
 import fastf1
@@ -12,7 +11,7 @@ import pandas as pd
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
-from telogify.config import settings
+from telogify.ingest.fastf1_cache import enable_cache
 from telogify.models import RaceWeekend, Session
 
 # FastF1 full session name -> our session_type code.
@@ -27,21 +26,11 @@ _NAME_TO_TYPE = {
     "Race": "R",
 }
 
-_cache_enabled = False
-
 
 @dataclass
 class WeekendData:
     weekend: RaceWeekend
     sessions: dict[str, "fastf1.core.Session"] = field(default_factory=dict)
-
-
-def _enable_cache() -> None:
-    global _cache_enabled
-    if not _cache_enabled:
-        os.makedirs(settings.fastf1_cache, exist_ok=True)
-        fastf1.Cache.enable_cache(settings.fastf1_cache)
-        _cache_enabled = True
 
 
 def list_weekend_sessions(event: pd.Series) -> list[tuple[str, str]]:
@@ -86,7 +75,7 @@ def _upsert_session(db: DBSession, weekend_id: int, code: str, status: str) -> N
 
 def load_weekend(year: int, round: int, db: DBSession) -> WeekendData:
     """Load all present sessions for (year, round), persist weekend + session rows."""
-    _enable_cache()
+    enable_cache()
     event = fastf1.get_event(year, round)
     weekend = _upsert_weekend(db, year, round, event)
 

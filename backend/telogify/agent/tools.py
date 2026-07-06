@@ -55,7 +55,7 @@ def _session_id(db: Session, weekend_id: int, session_type: str) -> int | None:
     return s.id if s else None
 
 
-def build_tools(year: int, round: int, session_factory=None) -> list:
+def build_tools(year: int, round_num: int, session_factory=None) -> list:
     """Return the LangChain tools bound to this weekend."""
     from langchain_core.tools import tool
 
@@ -69,7 +69,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
         gaps, and rewards findings that combine channels. Always call this first, then pick the
         three strongest to write up."""
         with sf() as db:
-            wid = _weekend_id(db, year, round)
+            wid = _weekend_id(db, year, round_num)
             rows = db.exec(
                 select(CandidateInsight)
                 .where(CandidateInsight.weekend_id == wid)
@@ -96,7 +96,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
         """Max and trap speed (km/h) for a driver in one DRS zone of one session
         (session_type one of FP1/FP2/FP3/Q/SQ/SPRINT/R)."""
         with sf() as db:
-            sid = _session_id(db, _weekend_id(db, year, round), session_type)
+            sid = _session_id(db, _weekend_id(db, year, round_num), session_type)
             seg = db.exec(
                 select(StraightSegment).where(
                     StraightSegment.session_id == sid,
@@ -126,7 +126,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
         min-speed difference in km/h (constructor_a minus constructor_b); car_pct and
         driver_pct split that gap; confidence is 0-1."""
         with sf() as db:
-            sid = _session_id(db, _weekend_id(db, year, round), session_type)
+            sid = _session_id(db, _weekend_id(db, year, round_num), session_type)
             row = db.exec(
                 select(Attribution).where(
                     Attribution.session_id == sid,
@@ -145,7 +145,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
                     "corner_number": corner_number,
                     "speed_class": row.speed_class,
                     "min_speed_delta_kmh": delta_kmh,
-                    "min_speed_delta_mph": round(delta_kmh * _KMH_TO_MPH, 1),
+                    "min_speed_delta_mph": _mph(delta_kmh),
                     "car_pct": row.car_pct,
                     "driver_pct": row.driver_pct,
                     "confidence": row.confidence,
@@ -157,7 +157,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
         """Lap times (seconds) and average pace for one driver stint, to read tyre
         degradation. Searches the race, then any session."""
         with sf() as db:
-            wid = _weekend_id(db, year, round)
+            wid = _weekend_id(db, year, round_num)
             sids = [
                 s.id for s in db.exec(select(SessionRow).where(SessionRow.weekend_id == wid)).all()
             ]
@@ -186,7 +186,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
         """Finishing order for a session: position, driver, constructor, gap to leader (s),
         status."""
         with sf() as db:
-            sid = _session_id(db, _weekend_id(db, year, round), session_type)
+            sid = _session_id(db, _weekend_id(db, year, round_num), session_type)
             rows = db.exec(
                 select(SessionResult)
                 .where(SessionResult.session_id == sid)
@@ -209,7 +209,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
     def get_stint_summary(driver: str, session_type: str = "R") -> str:
         """All stints for a driver in a session (R or SPRINT): stint number, compound, lap range, average pace (s)."""
         with sf() as db:
-            wid = _weekend_id(db, year, round)
+            wid = _weekend_id(db, year, round_num)
             session_id = _session_id(db, wid, session_type)
             rows = db.exec(
                 select(Stint)
@@ -234,7 +234,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
         """Teams ranked by real race pace this weekend: overall_rank (1 = fastest) and
         race_pace_gap_s, the seconds per lap each team was off the fastest team's pace."""
         with sf() as db:
-            wid = _weekend_id(db, year, round)
+            wid = _weekend_id(db, year, round_num)
             rows = db.exec(
                 select(ConstructorIndex)
                 .where(ConstructorIndex.weekend_id == wid)
@@ -259,7 +259,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
         ALWAYS call this before blaming a poor result on the car: an event here is the real cause,
         not tyre wear or straight-line speed. Returns [] when nothing notable happened."""
         with sf() as db:
-            sid = _session_id(db, _weekend_id(db, year, round), session_type)
+            sid = _session_id(db, _weekend_id(db, year, round_num), session_type)
             if sid is None:
                 return json.dumps([])
             q = select(RaceControlEvent).where(RaceControlEvent.session_id == sid)
@@ -278,7 +278,7 @@ def build_tools(year: int, round: int, session_factory=None) -> list:
         total_depletion_m, total_superclip_m, max_clip_m, max_clip_severity_ms2, and per-straight
         clip segments. Pass a 3-letter code to filter, blank for all."""
         with sf() as db:
-            sid = _session_id(db, _weekend_id(db, year, round), session_type)
+            sid = _session_id(db, _weekend_id(db, year, round_num), session_type)
             if sid is None:
                 return json.dumps([])
             q = select(DeploymentTrace).where(DeploymentTrace.session_id == sid)

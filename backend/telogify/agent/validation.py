@@ -5,6 +5,7 @@ cross-insight speed/pace claims do not contradict without session qualification.
 """
 
 import json
+import math
 import re
 
 # Constructors the agent may name in prose (longest first for substring matching).
@@ -67,13 +68,32 @@ def _trace_blob(trace: list[dict]) -> str:
     return " ".join(parts)
 
 
+_TRACE_FLOAT_RE = re.compile(r"[-+]?(?:\d+\.\d+|\d+)(?:[eE][-+]?\d+)?")
+
+
 def _number_variants(value: float) -> set[str]:
-    out = {str(value), f"{value:.1f}", f"{value:.2f}"}
+    out = {str(value), f"{value:.1f}", f"{value:.2f}", f"{value:.3f}"}
     rounded = round(value, 1)
     out.add(str(rounded))
     if value == int(value):
         out.add(str(int(value)))
     return out
+
+
+def _trace_floats(blob: str) -> list[float]:
+    values: list[float] = []
+    for match in _TRACE_FLOAT_RE.finditer(blob):
+        try:
+            values.append(float(match.group(0)))
+        except ValueError:
+            continue
+    return values
+
+
+def _number_traced(qty: float, blob: str, trace_values: list[float]) -> bool:
+    if any(v in blob for v in _number_variants(qty)):
+        return True
+    return any(math.isclose(qty, tv, rel_tol=1e-4, abs_tol=0.001) for tv in trace_values)
 
 
 def extract_prose_quantities(text: str) -> list[float]:
@@ -91,9 +111,10 @@ def flag_untraceable_numbers(text: str, trace: list[dict]) -> list[str]:
     if not trace:
         return []
     blob = _trace_blob(trace)
+    trace_values = _trace_floats(blob)
     untraceable: list[str] = []
     for qty in extract_prose_quantities(text):
-        if not any(v in blob for v in _number_variants(qty)):
+        if not _number_traced(qty, blob, trace_values):
             untraceable.append(str(qty))
     return untraceable
 

@@ -146,10 +146,14 @@ class DeploymentTrace(SQLModel, table=True):
     constructor: str | None = None
     top_speed_kmh: float | None = None
     total_clip_m: float = 0.0
+    total_depletion_m: float = 0.0
+    total_superclip_m: float = 0.0
     max_clip_m: float = 0.0
+    max_clip_severity_ms2: float = 0.0
     n_straights: int = 0
     n_clips: int = 0
-    # per-straight: {start_m, end_m, peak_kmh, peak_at_m, clip_m, drop_kmh, end_reason, is_clip}
+    # per-straight: start/end, peak, clip_m, depletion_m, superclip_m, drop_kmh, end_reason,
+    # is_clip, clip_type, clip_severity_ms2, method
     straights_json: list = Field(default_factory=list, sa_column=Column(JSON))
 
 

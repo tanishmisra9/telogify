@@ -32,6 +32,9 @@ def fetch_season_schedule(year: int) -> tuple[Event, ...]:
         import fastf1
         import pandas as pd
 
+        from telogify.ingest.fastf1_cache import enable_cache
+
+        enable_cache()
         sched = fastf1.get_event_schedule(year, include_testing=False)
     except Exception:
         return ()

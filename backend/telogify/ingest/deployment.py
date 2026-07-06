@@ -2,7 +2,7 @@
 lap, where does the car's electrical deployment run out on the straights.
 
 Reuses the same representative-lap selection as quali_character (fastest clean lap) and the same
-distance-aligned telemetry, then runs the pure `detect_clipping` on the speed trace. Stored per
+distance-aligned telemetry, then runs DDRZ `detect_clipping` on the speed trace. Stored per
 Q/SQ session, idempotently. Race deployment (energy-managed, lap-to-lap) is a later extension.
 """
 
@@ -27,16 +27,22 @@ def extract_deployment(session) -> dict[str, dict]:
         drv_laps = reps[reps["Driver"] == driver]
         lap = drv_laps.loc[drv_laps["LapTime"].idxmin()]
         try:
-            tel = lap.get_telemetry()
+            tel = lap.get_telemetry().add_distance()
         except Exception:
             continue
         if "Distance" not in tel or len(tel) == 0:
             continue
+        time_s = None
+        if "Time" in tel.columns:
+            time_s = tel["Time"].dt.total_seconds().tolist()
+        gear = tel["nGear"].tolist() if "nGear" in tel.columns else None
         runs = detect_clipping(
             tel["Distance"].tolist(),
             tel["Speed"].tolist(),
             tel["Throttle"].tolist(),
             [bool(b) for b in tel["Brake"].tolist()],
+            time_s=time_s,
+            gear=gear,
         )
         if not runs:
             continue
@@ -50,9 +56,14 @@ def extract_deployment(session) -> dict[str, dict]:
                     "peak_kmh": round(r.peak_kmh),
                     "peak_at_m": round(r.peak_at_m),
                     "clip_m": round(r.clip_m),
+                    "depletion_m": round(r.depletion_m),
+                    "superclip_m": round(r.superclip_m),
                     "drop_kmh": round(r.drop_kmh),
                     "end_reason": r.end_reason,
                     "is_clip": r.is_clip,
+                    "clip_type": r.clip_type,
+                    "clip_severity_ms2": round(r.clip_severity_ms2, 2),
+                    "method": r.method,
                 }
                 for r in runs
             ],
@@ -79,7 +90,10 @@ def store_deployment(data: WeekendData, db: DBSession) -> None:
                     constructor=d["constructor"],
                     top_speed_kmh=s["top_speed_kmh"],
                     total_clip_m=s["total_clip_m"],
+                    total_depletion_m=s["total_depletion_m"],
+                    total_superclip_m=s["total_superclip_m"],
                     max_clip_m=s["max_clip_m"],
+                    max_clip_severity_ms2=s["max_clip_severity_ms2"],
                     n_straights=s["n_straights"],
                     n_clips=s["n_clips"],
                     straights_json=d["straights"],

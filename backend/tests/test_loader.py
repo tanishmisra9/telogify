@@ -47,7 +47,7 @@ def test_load_weekend_persists(db_session, monkeypatch):
             "Location": "Spielberg",
         }
     )
-    monkeypatch.setattr(loader, "_enable_cache", lambda: None)
+    monkeypatch.setattr("telogify.ingest.fastf1_cache.enable_cache", lambda: None)
     monkeypatch.setattr(fastf1, "get_event", lambda y, r: event)
     monkeypatch.setattr(
         fastf1, "get_session", lambda y, r, name: types.SimpleNamespace(load=lambda *a, **k: None)
