@@ -27,6 +27,7 @@ export function Weekends() {
             <li>
               <Link
                 to={`/weekends/${w.year}/${w.round}`}
+                aria-label={`${w.event_name}, round ${w.round}, ${w.year}`}
                 className="group flex items-center gap-5 border-b border-border py-6 transition-colors hover:bg-surface"
               >
                 <span className="num w-14 text-2xl font-bold text-accent">

@@ -58,6 +58,8 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
               key={mkey}
               type="button"
               onClick={() => setMetric(mkey)}
+              aria-label={`Show ${METRIC_LABEL[mkey]} trend`}
+              aria-pressed={metric === mkey}
               className={`rounded-full px-3 py-1 text-sm transition-colors ${
                 metric === mkey ? 'bg-accent/15 text-accent' : 'text-muted hover:text-ink'
               }`}

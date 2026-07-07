@@ -77,6 +77,8 @@ export function DegradationChart({ data }: { data: DegradationData }) {
               <button
                 type="button"
                 onClick={() => setCompound(c)}
+                aria-label={`Show ${c.toLowerCase()} tyre degradation`}
+                aria-pressed={compound === c}
                 className={`rounded-full px-3 py-1 text-sm transition-colors ${
                   compound === c ? 'bg-accent/15 text-accent' : 'text-muted hover:text-ink'
                 }`}

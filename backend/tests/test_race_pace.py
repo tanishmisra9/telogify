@@ -72,6 +72,12 @@ def test_box_stats_matches_paceStats_ts_quantile():
     assert abs(s.q3 - 92.25) < 1e-9
 
 
+def test_box_stats_two_lap_median_interpolates():
+    s = box_stats([90.0, 92.0], ["S"])
+    assert abs(s.median - 91.0) < 1e-9
+    assert s.compounds == ["S"]
+
+
 # --- driver_distributions / constructor_distributions -------------------
 
 
@@ -203,3 +209,38 @@ def test_chart_constructor_distributions_mean_gap():
     assert rows[0].id == "RB"
     assert rows[0].stats.n_laps == 4
     assert rows[0].gap_to_fastest_s == 0.0
+
+
+def test_compound_tags_dedupe_and_abbreviate():
+    stints = [
+        {"driver": "VER", "constructor": "Red Bull", "compound": "MEDIUM", "lap_times": [90.0]},
+        {"driver": "VER", "constructor": "Red Bull", "compound": "MEDIUM", "lap_times": [90.1]},
+        {"driver": "VER", "constructor": "Red Bull", "compound": "HARD",   "lap_times": [90.2]},
+    ]
+    rows = driver_distributions(stints)
+    assert rows[0].stats.compounds == ["M", "H"]
+
+
+def test_compound_tags_include_intermediate_and_wet():
+    stints = [
+        {"driver": "VER", "constructor": "Red Bull", "compound": "INTERMEDIATE", "lap_times": [95.0]},
+        {"driver": "HAM", "constructor": "Mercedes", "compound": "WET", "lap_times": [96.0]},
+    ]
+    rows = driver_distributions(stints)
+    tags = {r.id: r.stats.compounds for r in rows}
+    assert tags["VER"] == ["I"]
+    assert tags["HAM"] == ["W"]
+
+
+def test_box_stats_mean_matches_statistics():
+    vals = [90.0, 92.0, 94.0]
+    s = box_stats(vals, [])
+    assert abs(s.mean - 92.0) < 1e-9
+
+
+def test_driver_distributions_single_lap_per_driver():
+    stints = [{"driver": "VER", "constructor": "Red Bull", "compound": "SOFT", "lap_times": [89.5]}]
+    rows = driver_distributions(stints)
+    assert len(rows) == 1
+    assert rows[0].stats.n_laps == 1
+    assert rows[0].stats.median == 89.5

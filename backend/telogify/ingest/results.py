@@ -48,6 +48,8 @@ def sprint_points(position: int | None) -> int:
 
 
 def points_for_session(session_type: str, position: int | None) -> int:
+    """Championship points for a finishing position. Sprint uses the 8-deep scale; every other
+    session type uses the grand-prix table. Callers should only pass race or sprint sessions."""
     if session_type == "SPRINT":
         return sprint_points(position)
     return race_points(position)

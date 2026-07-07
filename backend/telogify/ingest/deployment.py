@@ -1,8 +1,8 @@
 """ERS deployment / clipping extraction: per driver, from the fastest representative qualifying
 lap, where does the car's electrical deployment run out on the straights.
 
-Reuses the same representative-lap selection as quali_character (fastest clean lap) and the same
-distance-aligned telemetry, then runs DDRZ `detect_clipping` on the speed trace. Stored per
+Reuses the same representative-lap selection as quali_character (fastest representative lap per
+driver, without the pooled multi-lap TrackStatus gate) and the same distance-aligned telemetry, then runs the pure `detect_clipping` on the speed trace. Stored per
 Q/SQ session, idempotently. Race deployment (energy-managed, lap-to-lap) is a later extension.
 """
 

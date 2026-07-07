@@ -8,7 +8,7 @@ export function Results({ rows }: { rows: ResultRow[] }) {
   if (rows.length === 0) return <p className="text-sm text-muted">No results.</p>
 
   return (
-    <ol className={GRID}>
+    <ol className={GRID} aria-label="Finishing order">
       <li className="contents" aria-hidden>
         <span className={HEAD} />
         <span className={HEAD}>Driver</span>

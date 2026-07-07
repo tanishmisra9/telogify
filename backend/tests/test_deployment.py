@@ -71,6 +71,27 @@ def test_lift_ending_run_with_wot_decel_is_a_clip():
     assert runs[0].clip_m >= 40
 
 
+def test_summary_empty_when_no_straights():
+    assert summarize_deployment([]) == {
+        "n_straights": 0,
+        "n_clips": 0,
+        "total_clip_m": 0.0,
+        "total_depletion_m": 0,
+        "total_superclip_m": 0,
+        "max_clip_m": 0.0,
+        "max_clip_severity_ms2": 0.0,
+        "top_speed_kmh": 0.0,
+    }
+
+
+def test_lift_ending_run_is_not_a_clip():
+    # big drop but the run ends in a LIFT (lift-coast / corner approach), not braking -> not a clip
+    rise = [(200 + 12 * k, 100, False) for k in range(10)]
+    fall = [(300, 100, False), (285, 100, False), (270, 100, False), (255, 100, False)]  # -45 km/h
+    runs = detect_clipping(*_trace(rise + fall + [(250, 30, False)]), min_straight_m=100)  # ends by lift
+    assert runs and runs[0].end_reason == "lift" and not runs[0].is_clip
+
+
 def test_drag_plateau_is_not_a_clip():
     rise = [(240 + 10 * k, 100, False) for k in range(9)]
     plateau = [(322, 100, False)] * 8 + [(320, 100, False)]
@@ -115,3 +136,25 @@ def test_summary_max_severity_is_most_negative():
     s = summarize_deployment(runs)
     if s["n_clips"]:
         assert s["max_clip_severity_ms2"] <= DEPLETION_RESIDUAL_MS2
+
+
+def test_clip_rejected_when_drop_below_min():
+    # Same geometry as boundary test but only 11 km/h drop -> not a clip
+    rise = [(240 + 10 * k, 100, False) for k in range(9)]  # peak 320 at d=160
+    clip = [(315, 100, False), (309, 100, False)]  # drop 11 km/h from peak 320
+    samples = rise + clip + [(309, 100, True)]
+    runs = detect_clipping(*_trace(samples), min_straight_m=100)
+    assert len(runs) == 1
+    assert runs[0].drop_kmh < 12
+    assert not runs[0].is_clip
+
+
+def test_clip_rejected_when_clip_distance_below_min():
+    # 15 km/h drop but only 20m past peak -> not a clip
+    rise = [(240 + 10 * k, 100, False) for k in range(9)]  # peak 320 at d=160
+    clip = [(305, 100, False)]  # one sample, 20m past peak, drop 15
+    samples = rise + clip + [(305, 100, True)]
+    runs = detect_clipping(*_trace(samples), min_straight_m=100)
+    assert len(runs) == 1
+    assert runs[0].clip_m < 40
+    assert not runs[0].is_clip

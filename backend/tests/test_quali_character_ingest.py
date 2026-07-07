@@ -39,6 +39,12 @@ def test_full_throttle_fraction_empty_is_zero():
     assert full_throttle_fraction([]) == 0.0
 
 
+def test_full_throttle_fraction_drops_error_samples_above_100():
+    # FastF1 emits 104 for unavailable throttle; exclude from denominator, not just numerator.
+    assert full_throttle_fraction([100, 104, 100], threshold=99.0) == 1.0
+    assert full_throttle_fraction([104, 104], threshold=99.0) == 0.0
+
+
 def test_corner_min_speeds_one_entry_per_corner():
     distance = [0, 10, 20, 30, 40, 50]
     speed = [300, 100, 110, 300, 90, 300]
@@ -66,3 +72,9 @@ def test_lap_character_combines_all_four_metrics():
 
 def test_lap_character_none_when_no_telemetry():
     assert lap_character([], [], [], []) is None
+
+
+def test_lap_character_with_empty_throttle_still_computes_speeds():
+    char = lap_character([0, 10, 20], [300, 100, 300], [], [(1, 5, 25)])
+    assert char is not None
+    assert char.full_throttle_pct == 0.0

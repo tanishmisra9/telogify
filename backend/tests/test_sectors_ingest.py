@@ -34,3 +34,9 @@ def test_best_sectors_separates_drivers():
     ]
     out = {b.driver: b.best_time_s for b in best_sectors(rows)}
     assert out == {"VER": 30.0, "LEC": 29.5}
+
+
+def test_best_sectors_keeps_both_sectors_from_same_driver():
+    rows = [{"driver": "VER", "sector1_s": 30.0, "sector2_s": 40.5, "sector3_s": 20.0}]
+    out = {(b.driver, b.sector): b.best_time_s for b in best_sectors(rows)}
+    assert out == {("VER", 1): 30.0, ("VER", 2): 40.5, ("VER", 3): 20.0}

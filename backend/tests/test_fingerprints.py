@@ -15,6 +15,10 @@ def test_dtw_distance_single_mismatch():
     assert dtw_distance([0, 0, 0], [0, 1, 0]) == 1.0
 
 
+def test_dtw_distance_different_length_sequences():
+    assert dtw_distance([1, 2], [1, 2, 3, 4]) == 3.0
+
+
 def test_corner_features_from_v_shaped_trace():
     grid = np.linspace(100, 200, 11)  # lo=100, step 10
     speed = np.array([300, 280, 250, 220, 200, 180, 210, 250, 290, 310, 320])

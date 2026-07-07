@@ -26,6 +26,7 @@ function CTAs() {
       <Tooltip label="See every analysed race weekend">
         <Link
           to="/weekends"
+          aria-label="Browse analysed race weekends"
           className="lift inline-flex items-center border-[1.5px] border-ink bg-accent px-6 py-2.5 font-display text-2xl text-accent-ink shadow-[4px_4px_0_var(--color-shadow)]"
         >
           Browse
@@ -34,6 +35,7 @@ function CTAs() {
       <Tooltip label="Get the weekly digest in your inbox">
         <Link
           to="/subscribe"
+          aria-label="Subscribe to the weekly email digest"
           className="lift inline-flex items-center border-[1.5px] border-ink bg-surface px-6 py-2.5 font-display text-2xl text-ink shadow-[4px_4px_0_var(--color-shadow)]"
         >
           Subscribe

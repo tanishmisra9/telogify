@@ -1,10 +1,7 @@
 import type { CarCharacterRow } from '@/lib/api'
 
-// Deterministic, quantified qualifying reads derived from each team's best clean lap (the only
-// laps stored, so a driver who crashed or never set a representative lap simply isn't here — the
-// crash guardrail is structural). No model, no fabricated result: we never claim "pole" or a grid
-// position, only what the telemetry of the compared laps shows. Cross-channel trades (downforce vs
-// straight-line, throttle commitment) are preferred over the obvious raw one-lap gap.
+// Deterministic, quantified qualifying reads derived from each team's best representative lap
+// (the only laps stored, so a driver who never set a representative lap simply isn't here).
 
 export interface QualiInsight {
   kicker: string

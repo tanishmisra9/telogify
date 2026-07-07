@@ -8,6 +8,9 @@ describe('rankDesc', () => {
   it('sinks nulls to the worst rank', () => {
     expect(rankDesc([10, null, 20])).toEqual([2, 3, 1])
   })
+  it('assigns tied values the same rank band', () => {
+    expect(rankDesc([20, 20, 10])).toEqual([1, 2, 3])
+  })
 })
 
 describe('rankAsc', () => {

@@ -41,3 +41,8 @@ def test_completed_rounds_excludes_round_zero():
 def test_completed_rounds_sorted():
     events = [_ev(3, "C", -3), _ev(1, "A", -10), _ev(2, "B", -5)]
     assert completed_rounds(events, BASE) == [1, 2, 3]
+
+
+def test_picks_earliest_date_regardless_of_input_order():
+    events = [_ev(5, "Far", 20), _ev(2, "Near", 3)]
+    assert pick_next_event(events, BASE).name == "Near"

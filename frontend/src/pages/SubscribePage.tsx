@@ -62,7 +62,7 @@ export function SubscribePage() {
               {status === 'submitting' ? 'Subscribing...' : 'Subscribe'}
             </button>
             {status === 'error' && (
-              <p className="text-sm text-accent">Something went wrong. Try again.</p>
+              <p className="text-sm text-accent" role="alert">Something went wrong. Try again.</p>
             )}
           </form>
         </BlurFade>

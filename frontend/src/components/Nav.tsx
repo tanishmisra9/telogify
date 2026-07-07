@@ -15,7 +15,7 @@ export function Nav() {
       <nav className="mx-auto flex max-w-6xl flex-col items-start gap-2 px-6 py-3 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:py-0">
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <Link to="/" className="group flex items-baseline gap-2">
+          <Link to="/" className="group flex items-baseline gap-2" aria-label="Telogify home">
             <span className="font-display text-3xl leading-none tracking-tight">
               Telo<span className="text-accent">gify</span>
             </span>
@@ -28,6 +28,8 @@ export function Nav() {
               <Tooltip key={l.to} label={l.hint}>
                 <Link
                   to={l.to}
+                  aria-current={active ? 'page' : undefined}
+                  aria-label={l.label}
                   className={`kicker border px-3 py-2 transition-colors ${
                     active
                       ? 'border-ink bg-ink text-bg'
