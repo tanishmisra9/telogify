@@ -7,7 +7,7 @@ import type { PaceData, PaceRow } from '@/lib/api'
 
 type ViewMode = 'drivers' | 'constructors'
 
-const MARGIN = { top: 24, right: 16, bottom: 100, left: 54 }
+const MARGIN = { top: 24, right: 16, bottom: 110, left: 54 }
 const WIDTH = 1100
 const HEIGHT = 480
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
@@ -125,25 +125,31 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
 
                   {viewMode === 'drivers' ? (
                     <>
-                      <text x={cx} y={INNER_H + 24} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={500}>
+                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={500}>
                         {row.label}
                       </text>
-                      <text x={cx} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+                      <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
+                        {s.mean.toFixed(2)}
+                      </text>
+                      <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
                         +{row.gap_to_fastest_s.toFixed(2)}s
                       </text>
-                      <text x={cx} y={INNER_H + 58} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+                      <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
                     </>
                   ) : (
                     <>
-                      <text x={cx} y={INNER_H + 24} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={600} className="uppercase tracking-wide">
+                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={600} className="uppercase tracking-wide">
                         {teamShortName(row.team)}
                       </text>
-                      <text x={cx} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+                      <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
+                        {s.mean.toFixed(2)}
+                      </text>
+                      <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
                         +{row.gap_to_fastest_s.toFixed(2)}s
                       </text>
-                      <text x={cx} y={INNER_H + 58} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+                      <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
                     </>
@@ -174,6 +180,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
       )}
 
       <p className="mt-4 text-xs text-muted">
+        Sorted by mean pace; gaps are mean delta to the fastest. Lap 1 excluded, fuel-corrected.
         Solid line median, dashed line mean, dotted line pace ceiling (fastest tenth of laps), box
         is the middle 50 percent of laps, whiskers cover 99.3 percent, dots are outliers.
       </p>

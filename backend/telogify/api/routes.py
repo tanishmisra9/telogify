@@ -18,8 +18,8 @@ from telogify.analysis.quali_character import (
     pick_fastest_corner,
 )
 from telogify.analysis.race_pace import (
-    constructor_distributions,
-    driver_distributions,
+    chart_constructor_distributions,
+    chart_driver_distributions,
     driver_stop_counts,
     stop_count_spread,
 )
@@ -233,7 +233,14 @@ def weekend_pace(
     w = _weekend(db, year, round)
     race = _session_of(db, w.id, session)
     if race is None:
-        return {"drivers": [], "constructors": [], "stop_counts": {}, "stop_count_spread": 0}
+        return {
+            "drivers": [],
+            "constructors": [],
+            "stop_counts": {},
+            "stop_count_spread": 0,
+            "rank_metric": "mean",
+            "excludes_lap_1": True,
+        }
     dc = _driver_constructor(db, race.id)
     stints = db.exec(select(Stint).where(Stint.session_id == race.id)).all()
     stint_dicts = [
@@ -243,17 +250,20 @@ def weekend_pace(
             "compound": s.compound,
             "lap_times": s.lap_times_json or [],
             "stint_number": s.stint_number,
+            "lap_start": s.lap_start,
         }
         for s in stints
     ]
     stop_counts = driver_stop_counts(stint_dicts)
     return {
-        "drivers": [_pace_row_to_dict(r) for r in driver_distributions(stint_dicts)],
-        "constructors": [_pace_row_to_dict(r) for r in constructor_distributions(stint_dicts)],
+        "drivers": [_pace_row_to_dict(r) for r in chart_driver_distributions(stint_dicts)],
+        "constructors": [_pace_row_to_dict(r) for r in chart_constructor_distributions(stint_dicts)],
         # The box plot pools every stint per driver regardless of stop count, so gaps are
         # already pit-equated; these two fields just flag when that equalization is shakier.
         "stop_counts": stop_counts,
         "stop_count_spread": stop_count_spread(stop_counts),
+        "rank_metric": "mean",
+        "excludes_lap_1": True,
     }
 
 

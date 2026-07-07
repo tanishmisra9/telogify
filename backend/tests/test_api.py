@@ -145,14 +145,15 @@ def test_next_race_picks_soonest_future(client, monkeypatch):
 
 def test_pace(client):
     data = client.get("/weekends/2025/11/pace").json()
-    # New shape: drivers + constructors lists of precomputed distributions, plus
-    # pit-equalization context (stop counts, spread).
+    # Chart path: mean-ranked, lap 1 excluded; season ranking still uses median elsewhere.
     assert "drivers" in data and "constructors" in data
+    assert data["rank_metric"] == "mean"
+    assert data["excludes_lap_1"] is True
     drivers = {d["id"]: d for d in data["drivers"]}
     assert set(drivers) == {"NOR", "LEC"}
     assert drivers["NOR"]["team"] == "McLaren"
     assert drivers["NOR"]["gap_to_fastest_s"] == 0.0
-    assert drivers["NOR"]["stats"]["n_laps"] == 3
+    assert drivers["NOR"]["stats"]["n_laps"] == 2  # lap 1 excluded from [70.5, 70.0, 69.9]
     constructors = {c["id"]: c for c in data["constructors"]}
     assert set(constructors) == {"McLaren", "Ferrari"}
     # Both drivers seeded with a single stint -> zero stops, zero spread.

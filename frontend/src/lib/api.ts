@@ -59,6 +59,8 @@ export interface PaceData {
   constructors: PaceRow[]
   stop_counts: Record<string, number>
   stop_count_spread: number
+  rank_metric?: 'mean' | 'median'
+  excludes_lap_1?: boolean
 }
 
 export interface ResultRow {

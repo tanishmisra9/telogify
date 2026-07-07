@@ -115,7 +115,11 @@ class _Group:
     compounds: list[str | None] = field(default_factory=list)
 
 
-def _build_rows(groups: dict[str, _Group]) -> list[PaceRow]:
+def _pace_key(row: PaceRow, rank_by: str) -> float:
+    return row.stats.median if rank_by == "median" else row.stats.mean
+
+
+def _build_rows(groups: dict[str, _Group], *, rank_by: str = "median") -> list[PaceRow]:
     rows: list[PaceRow] = []
     for gid, g in groups.items():
         if not g.laps:
@@ -129,12 +133,23 @@ def _build_rows(groups: dict[str, _Group]) -> list[PaceRow]:
                 gap_to_fastest_s=0.0,
             )
         )
-    rows.sort(key=lambda r: r.stats.median)
+    rows.sort(key=lambda r: _pace_key(r, rank_by))
     if rows:
-        fastest = rows[0].stats.median
+        fastest = _pace_key(rows[0], rank_by)
         for r in rows:
-            r.gap_to_fastest_s = r.stats.median - fastest
+            r.gap_to_fastest_s = _pace_key(r, rank_by) - fastest
     return rows
+
+
+def _exclude_first_race_lap(stints: list[dict]) -> list[dict]:
+    """Drop the first representative lap from opening stint 1 (lap_start == 1)."""
+    out: list[dict] = []
+    for st in stints:
+        times = list(st.get("lap_times") or [])
+        if st.get("stint_number") == 1 and st.get("lap_start") == 1 and times:
+            times = times[1:]
+        out.append({**st, "lap_times": times})
+    return out
 
 
 def driver_distributions(stints: list[dict]) -> list[PaceRow]:
@@ -163,11 +178,33 @@ def constructor_distributions(stints: list[dict]) -> list[PaceRow]:
     return _build_rows(groups)
 
 
+def chart_driver_distributions(stints: list[dict]) -> list[PaceRow]:
+    """Pace spread chart: lap 1 excluded, sorted and gapped by mean pace."""
+    groups: dict[str, _Group] = {}
+    for st in _exclude_first_race_lap(stints):
+        driver = st["driver"]
+        g = groups.setdefault(driver, _Group(team=st.get("constructor")))
+        g.laps.extend(st.get("lap_times") or [])
+        g.compounds.append(st.get("compound"))
+    return _build_rows(groups, rank_by="mean")
+
+
+def chart_constructor_distributions(stints: list[dict]) -> list[PaceRow]:
+    """Pace spread chart: lap 1 excluded, sorted and gapped by mean pace."""
+    groups: dict[str, _Group] = {}
+    for st in _exclude_first_race_lap(stints):
+        key = st.get("constructor") or "?"
+        g = groups.setdefault(key, _Group(team=st.get("constructor")))
+        g.laps.extend(st.get("lap_times") or [])
+        g.compounds.append(st.get("compound"))
+    return _build_rows(groups, rank_by="mean")
+
+
 def constructor_median_gaps(stints: list[dict]) -> dict[str, float]:
     """Return {constructor: gap_to_fastest_s} ranked by median pace.
 
-    Used by constructor_index and candidates to anchor ranking on the same
-    metric the chart displays.
+    Used by constructor_index and candidates. The pace spread chart uses
+    chart_constructor_distributions (mean-ranked, lap 1 excluded) instead.
     """
     rows = constructor_distributions(stints)
     return {r.id: r.gap_to_fastest_s for r in rows}

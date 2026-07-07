@@ -5,7 +5,10 @@ import pytest
 from telogify.analysis.race_pace import (
     BoxStats,
     PaceRow,
+    _exclude_first_race_lap,
     box_stats,
+    chart_constructor_distributions,
+    chart_driver_distributions,
     constructor_distributions,
     constructor_median_gaps,
     driver_distributions,
@@ -147,3 +150,56 @@ def test_stints_with_no_lap_times_ignored():
     ids = {r.id for r in rows}
     assert "Red Bull" not in ids
     assert "Ferrari" in ids
+
+
+# --- chart_distributions (mean-ranked, lap 1 excluded) -------------------
+
+
+def test_exclude_first_race_lap_drops_opening_lap():
+    stints = [
+        {"driver": "VER", "stint_number": 1, "lap_start": 1, "lap_times": [100.0, 90.0, 90.0]},
+    ]
+    filtered = _exclude_first_race_lap(stints)
+    assert filtered[0]["lap_times"] == [90.0, 90.0]
+
+
+def test_exclude_first_race_lap_skips_non_opening_stint():
+    stints = [
+        {"driver": "VER", "stint_number": 2, "lap_start": 15, "lap_times": [90.0, 90.0]},
+    ]
+    filtered = _exclude_first_race_lap(stints)
+    assert filtered[0]["lap_times"] == [90.0, 90.0]
+
+
+def test_chart_driver_distributions_sorted_by_mean():
+    stints = [
+        {"driver": "VER", "constructor": "RB", "compound": "M", "stint_number": 1, "lap_start": 2, "lap_times": [90.0, 90.0, 100.0]},
+        {"driver": "HAM", "constructor": "Merc", "compound": "H", "stint_number": 1, "lap_start": 2, "lap_times": [92.0, 92.0, 92.0]},
+    ]
+    rows_median = driver_distributions(stints)
+    rows_chart = chart_driver_distributions(stints)
+    assert rows_median[0].id == "VER"
+    assert rows_chart[0].id == "HAM"
+    assert rows_chart[0].gap_to_fastest_s == 0.0
+    means = [r.stats.mean for r in rows_chart]
+    assert means == sorted(means)
+
+
+def test_chart_excludes_lap_one_from_pool():
+    stints = [
+        {"driver": "VER", "constructor": "RB", "compound": "M", "stint_number": 1, "lap_start": 1, "lap_times": [100.0, 90.0, 90.0]},
+    ]
+    rows = chart_driver_distributions(stints)
+    assert rows[0].stats.n_laps == 2
+
+
+def test_chart_constructor_distributions_mean_gap():
+    stints = [
+        {"driver": "VER", "constructor": "RB", "compound": "M", "stint_number": 1, "lap_start": 2, "lap_times": [90.0, 90.0]},
+        {"driver": "PER", "constructor": "RB", "compound": "H", "stint_number": 1, "lap_start": 2, "lap_times": [91.0, 91.0]},
+    ]
+    rows = chart_constructor_distributions(stints)
+    assert len(rows) == 1
+    assert rows[0].id == "RB"
+    assert rows[0].stats.n_laps == 4
+    assert rows[0].gap_to_fastest_s == 0.0
