@@ -744,7 +744,9 @@ def _mine_recap_outcomes(
     sessions: list[Session],
     dc_map: dict[str, str],
 ) -> list[Signal]:
-    """Grid-to-finish swings with matching Wikipedia race-recap facts."""
+    """Grid-to-finish swings with matching Wikipedia race-recap facts AND a quantified race-pace
+    deficit for that constructor: recap only stands as a candidate when it can explain a real
+    number, never as a standalone event narrative."""
     recap = db.exec(select(WeekendRecap).where(WeekendRecap.weekend_id == weekend_id)).first()
     if recap is None or not recap.sessions_json:
         return []
@@ -759,6 +761,19 @@ def _mine_recap_outcomes(
     race = pick_session(sessions, ("R",))
     if quali is None or race is None:
         return []
+
+    stints = db.exec(select(Stint).where(Stint.session_id == race.id)).all()
+    stint_dicts = [
+        {
+            "driver": st.driver,
+            "constructor": dc_map.get(st.driver),
+            "compound": st.compound,
+            "lap_times": st.lap_times_json or [],
+        }
+        for st in stints
+        if dc_map.get(st.driver)
+    ]
+    pace_deficits = constructor_median_gaps(stint_dicts)
 
     grid = {
         r.driver: r.position
@@ -777,12 +792,15 @@ def _mine_recap_outcomes(
         matching = [f for f in facts if fact_mentions_driver(f, r.driver)]
         if not matching:
             continue
-        kind_weight = max(_RECAP_KIND_WEIGHT.get(f.get("kind", "other"), 0.3) for f in matching)
-        swing_abs = abs(swing)
-        swing_boost = 1.5 if swing_abs >= 10 else 1.0
         constructor = dc_map.get(r.driver) or r.constructor
         if constructor is None:
             continue
+        pace_deficit = pace_deficits.get(constructor)
+        if pace_deficit is None or pace_deficit <= 0:
+            continue
+        kind_weight = max(_RECAP_KIND_WEIGHT.get(f.get("kind", "other"), 0.3) for f in matching)
+        swing_abs = abs(swing)
+        swing_boost = 1.5 if swing_abs >= 10 else 1.0
         out.append(
             Signal(
                 signal_type="recap_outcome",
@@ -800,6 +818,7 @@ def _mine_recap_outcomes(
                         "finish": r.position,
                         "positions_gained": swing,
                         "recap_facts": matching,
+                        "pace_deficit_s": pace_deficit,
                     }
                 ],
             )

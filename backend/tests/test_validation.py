@@ -6,9 +6,9 @@ from telogify.agent.validation import (
     flag_cross_insight_conflicts,
     flag_false_deployment_superlative,
     flag_false_retirement_causation,
-    flag_missed_recap_cause_chain,
     flag_qualifying_practice_sector_mismatch,
     flag_session_abbreviations,
+    flag_unquantified_recap_cause,
     flag_untraceable_numbers,
     flag_untraceable_recap_claims,
     flag_weak_deployment_cluster,
@@ -247,38 +247,42 @@ def test_flag_untraceable_recap_claims_blocks_unsupported_mechanical():
     assert any("engine failure" in i for i in issues)
 
 
-def test_flag_missed_recap_cause_chain():
-    text = "Antonelli finished 15th after a lap-47 track-limits penalty."
-    trace = [
+def _recap_trace(fact_text: str) -> list[dict]:
+    return [
         {
-            "tool": "get_candidate_insights",
+            "tool": "get_weekend_recap",
+            "args": {},
             "result": json.dumps(
-                [
-                    {
-                        "source_refs": {
-                            "refs": [
-                                {
-                                    "type": "recap_outcome",
-                                    "driver": "ANT",
-                                    "grid": 1,
-                                    "finish": 15,
-                                    "recap_facts": [
-                                        {
-                                            "kind": "damage",
-                                            "text": "broken left-front wheel shield",
-                                        }
-                                    ],
-                                }
-                            ]
+                {
+                    "sessions": {
+                        "R": {
+                            "present": True,
+                            "facts": [
+                                {"kind": "damage", "lap": None, "drivers": ["ANT"], "text": fact_text}
+                            ],
                         }
                     }
-                ]
+                }
             ),
         }
     ]
-    issues = flag_missed_recap_cause_chain(text, trace)
+
+
+def test_flag_unquantified_recap_cause_rejects_standalone_narrative():
+    trace = _recap_trace("broken left-front wheel shield")
+    text = "Antonelli's car suffered a broken left-front wheel shield during the race."
+    issues = flag_unquantified_recap_cause(text, trace)
     assert len(issues) == 1
-    assert "get_weekend_recap" in issues[0]
+    assert "unquantified recap" in issues[0]
+
+
+def test_flag_unquantified_recap_cause_passes_with_quantified_number():
+    trace = _recap_trace("broken left-front wheel shield")
+    text = (
+        "Antonelli's car lost 0.842 seconds a lap after a broken left-front wheel shield "
+        "unbalanced the car for the rest of the race."
+    )
+    assert flag_unquantified_recap_cause(text, trace) == []
 
 
 def test_flag_weak_deployment_cluster():

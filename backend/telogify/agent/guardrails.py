@@ -191,6 +191,11 @@ _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
         "untraceable recap",
         "Only cite retirement cause, mechanical failure, or retirement lap from get_weekend_recap facts.",
     ),
+    (
+        "unquantified recap",
+        "A recap fact must be the stated cause of a quantified pace or telemetry number already in "
+        "this insight. Either attach the number or drop the recap claim entirely.",
+    ),
 )
 
 

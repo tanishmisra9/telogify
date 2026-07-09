@@ -8,8 +8,6 @@ import json
 import math
 import re
 
-from telogify.ingest.wikipedia_parse import _SURNAME_TO_CODE
-
 # Constructors the agent may name in prose (longest first for substring matching).
 _CONSTRUCTORS = (
     "Red Bull Racing",
@@ -72,8 +70,6 @@ _CLIP_SUPERLATIVE = re.compile(
 _CLIP_METRES = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b", re.IGNORECASE)
 
 _SESSION_ABBREV = re.compile(r"\b(?:\bin\s+)?(?:SQ|Q)\b|\bin\s+R\b|\bSPRINT\b", re.IGNORECASE)
-
-_DAMAGE_TERMS = ("damage", "bodywork", "wheel shield", "broken", "problem with his car", "problem with her car")
 
 _QUALIFYING_CTX = re.compile(
     r"\bqualifying\b|\bin q\b|q-lap|speed trap",
@@ -379,47 +375,28 @@ def extract_prose_quantities(text: str) -> list[float]:
     return found
 
 
-def _recap_outcome_candidates(trace: list[dict]) -> list[dict]:
-    outcomes: list[dict] = []
-    for candidate in _parse_tool_results(trace, "get_candidate_insights"):
-        refs = candidate.get("source_refs") or {}
-        for ref in refs.get("refs") or []:
-            if ref.get("type") == "recap_outcome":
-                outcomes.append(ref)
-    return outcomes
+def flag_unquantified_recap_cause(text: str, trace: list[dict]) -> list[str]:
+    """Flag a recap fact used as a standalone narrative with no quantified number attached.
 
-
-def flag_missed_recap_cause_chain(text: str, trace: list[dict]) -> list[str]:
-    """Retry when recap_outcome has damage facts but insight cites only track-limits penalties."""
-    if _recap_tool_called(trace):
+    Recap may only appear as the stated cause of a pace/telemetry figure already in the same
+    insight; a mechanical/damage/retirement phrase with no quantity nearby is journalism, not
+    an insight, and must be rejected.
+    """
+    if not _recap_tool_called(trace):
         return []
-    outcomes = _recap_outcome_candidates(trace)
-    if not outcomes:
+    facts = _recap_facts(trace)
+    if not facts:
         return []
+    blob = _recap_blob(facts)
     low = text.lower()
-    if not re.search(r"track[- ]limits?", low):
+    mentions_recap = any(term in low and term in blob for term in _RECAP_MECHANICAL) or any(
+        (f.get("text") or "").lower() in low for f in facts if f.get("text")
+    )
+    if not mentions_recap:
         return []
-    if any(term in low for term in _DAMAGE_TERMS):
+    if _QUANTITY_RE.search(text):
         return []
-    for outcome in outcomes:
-        facts = outcome.get("recap_facts") or []
-        has_damage = any(
-            f.get("kind") == "damage"
-            or "damage" in (f.get("text") or "").lower()
-            or "wheel shield" in (f.get("text") or "").lower()
-            for f in facts
-        )
-        if not has_damage:
-            continue
-        grid = outcome.get("grid")
-        finish = outcome.get("finish")
-        if grid is not None and finish is not None and grid <= 3 and finish >= 10:
-            driver = outcome.get("driver", "driver")
-            return [
-                f"missed recap: call get_weekend_recap for {driver} cause chain "
-                "(recap has damage; insight cites only track-limits penalty)"
-            ]
-    return []
+    return ["unquantified recap: cites a recap event with no quantified pace/telemetry number attached"]
 
 
 def flag_weak_deployment_cluster(text: str, trace: list[dict]) -> list[str]:
@@ -441,36 +418,6 @@ def flag_session_abbreviations(text: str) -> list[str]:
     """Retry when insight prose uses Q/SQ/R/SPRINT instead of plain session names."""
     if _SESSION_ABBREV.search(text):
         return ["language: use qualifying, sprint qualifying, the race, or the sprint; not Q/SQ/R/SPRINT"]
-    return []
-
-
-def flag_ignored_recap_outcome(insights: list[dict], trace: list[dict]) -> list[str]:
-    """Retry when a large-swing recap_outcome with damage never appears in any insight."""
-    outcomes = _recap_outcome_candidates(trace)
-    if not outcomes:
-        return []
-    all_text = " ".join(_insight_text(ins) for ins in insights).lower()
-    for outcome in outcomes:
-        grid = outcome.get("grid")
-        finish = outcome.get("finish")
-        if grid is None or finish is None or grid > 3 or finish < 10:
-            continue
-        facts = outcome.get("recap_facts") or []
-        has_damage = any(
-            f.get("kind") == "damage"
-            or "damage" in (f.get("text") or "").lower()
-            or "wheel shield" in (f.get("text") or "").lower()
-            for f in facts
-        )
-        if not has_damage:
-            continue
-        driver = outcome.get("driver", "")
-        surname = next((s for s, code in _SURNAME_TO_CODE.items() if code == driver), None)
-        if surname and surname not in all_text:
-            return [
-                f"ignored recap_outcome: {driver} started P{grid} and finished P{finish}; "
-                "use get_weekend_recap damage facts with race-control penalties if that beats telemetry-only findings"
-            ]
     return []
 
 
@@ -559,14 +506,12 @@ def validate_insights(insights: list[dict], trace: list[dict]) -> dict[int, list
             flagged.setdefault(i, []).append(issue)
         for issue in flag_untraceable_recap_claims(text, trace):
             flagged.setdefault(i, []).append(issue)
-        for issue in flag_missed_recap_cause_chain(text, trace):
+        for issue in flag_unquantified_recap_cause(text, trace):
             flagged.setdefault(i, []).append(issue)
         for issue in flag_weak_deployment_cluster(text, trace):
             flagged.setdefault(i, []).append(issue)
         for issue in flag_session_abbreviations(text):
             flagged.setdefault(i, []).append(issue)
-    for issue in flag_ignored_recap_outcome(insights, trace):
-        flagged.setdefault(1, []).append(issue)
     for conflict in flag_cross_insight_conflicts(insights):
         # Attach cross-insight conflicts to every slot mentioned in the message.
         for slot in re.findall(r"\d+", conflict.split(" contradict")[0]):
