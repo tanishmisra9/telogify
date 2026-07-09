@@ -1,0 +1,21 @@
+The '''2026 Chinese Grand Prix''' was a Formula One motor race.
+
+== Background ==
+Season context that should be skipped.
+
+== Qualifying ==
+Pierre Gasly qualified in the midfield. Alpine struggled for single-lap pace in sector two.
+
+== Race ==
+Max Verstappen retired on lap 45 with a coolant leak after a difficult race. Charles Leclerc was involved in a collision with George Russell on lap 57. A virtual safety car was deployed on lap 40, which helped Lewis Hamilton gain positions with a three-stop strategy.
+
+== Classification ==
+{| class="wikitable"
+|-
+| Pos || Driver
+|-
+| 1 || George Russell
+|}
+
+== Championship standings ==
+Points table omitted.

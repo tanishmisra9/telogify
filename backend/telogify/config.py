@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # estimate the extra time carried at that lap vs an empty tank.
     fuel_effect_s_per_lap: float = 0.065
 
+    wikipedia_recap_enabled: bool = True
+    wikipedia_user_agent: str = (
+        "TelogifyRecapBot/1.0 (https://telogify.com; recap@telogify.com) httpx"
+    )
+
 
 settings = Settings()
 

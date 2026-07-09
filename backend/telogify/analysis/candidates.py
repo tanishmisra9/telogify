@@ -25,6 +25,7 @@ from telogify.analysis.race_pace import constructor_median_gaps
 from telogify.analysis.season import build_season_snapshot
 from telogify.analysis.sectors import best_across_sessions
 from telogify.analysis.sessions import pick_session
+from telogify.ingest.wikipedia_parse import fact_mentions_driver
 from telogify.models import (
     Attribution,
     CandidateInsight,
@@ -36,6 +37,7 @@ from telogify.models import (
     SessionResult,
     StraightSegment,
     Stint,
+    WeekendRecap,
 )
 
 POSITION_SWING_MIN = 2  # only notable grid-to-finish swings become signals
@@ -724,6 +726,87 @@ def _mine_deployment(db, sessions):
     return out
 
 
+_RECAP_KIND_WEIGHT: dict[str, float] = {
+    "damage": 1.0,
+    "retirement": 0.95,
+    "penalty": 0.9,
+    "collision": 0.85,
+    "safety_car": 0.7,
+    "strategy": 0.5,
+    "weather": 0.4,
+    "other": 0.3,
+}
+
+
+def _mine_recap_outcomes(
+    db: DBSession,
+    weekend_id: int,
+    sessions: list[Session],
+    dc_map: dict[str, str],
+) -> list[Signal]:
+    """Grid-to-finish swings with matching Wikipedia race-recap facts."""
+    recap = db.exec(select(WeekendRecap).where(WeekendRecap.weekend_id == weekend_id)).first()
+    if recap is None or not recap.sessions_json:
+        return []
+    r_data = recap.sessions_json.get("R") or {}
+    if not r_data.get("present"):
+        return []
+    facts: list[dict] = r_data.get("facts") or []
+    if not facts:
+        return []
+
+    quali = pick_session(sessions, ("Q",))
+    race = pick_session(sessions, ("R",))
+    if quali is None or race is None:
+        return []
+
+    grid = {
+        r.driver: r.position
+        for r in db.exec(select(SessionResult).where(SessionResult.session_id == quali.id)).all()
+        if r.driver and r.position is not None
+    }
+
+    out: list[Signal] = []
+    for r in db.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all():
+        start = grid.get(r.driver) if r.driver else None
+        if start is None or r.position is None or r.driver is None:
+            continue
+        swing = start - r.position
+        if abs(swing) < POSITION_SWING_MIN:
+            continue
+        matching = [f for f in facts if fact_mentions_driver(f, r.driver)]
+        if not matching:
+            continue
+        kind_weight = max(_RECAP_KIND_WEIGHT.get(f.get("kind", "other"), 0.3) for f in matching)
+        swing_abs = abs(swing)
+        swing_boost = 1.5 if swing_abs >= 10 else 1.0
+        constructor = dc_map.get(r.driver) or r.constructor
+        if constructor is None:
+            continue
+        out.append(
+            Signal(
+                signal_type="recap_outcome",
+                category="recap",
+                magnitude=swing_abs * kind_weight * swing_boost,
+                confidence=kind_weight,
+                subject=constructor,
+                session_type="R",
+                source_refs=[
+                    {
+                        "type": "recap_outcome",
+                        "driver": r.driver,
+                        "constructor": constructor,
+                        "grid": start,
+                        "finish": r.position,
+                        "positions_gained": swing,
+                        "recap_facts": matching,
+                    }
+                ],
+            )
+        )
+    return out
+
+
 def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
     sessions = db.exec(select(Session).where(Session.weekend_id == weekend_id)).all()
     dc_map = _driver_constructor_map(db, [s.id for s in sessions])
@@ -733,6 +816,7 @@ def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
         + _mine_straight_deltas(db, sessions, dc_map)
         + _mine_race_pace(db, sessions, dc_map)
         + _mine_position_swings(db, sessions, dc_map)
+        + _mine_recap_outcomes(db, weekend_id, sessions, dc_map)
         + _mine_sector_deltas(db, sessions, dc_map)
         + _mine_quali_character(db, sessions)
         + _mine_deployment(db, sessions)

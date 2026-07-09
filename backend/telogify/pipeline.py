@@ -8,17 +8,18 @@ and FastF1 caches raw data on disk, so re-running a weekend is safe and skips re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+import json
 from typing import TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from telogify.agent.graph import build_agent
 from telogify.agent.tools import _weekend_id
 from telogify.agent.guardrails import flag_unsupported_claims, format_insight_validation_feedback
 from telogify.agent.insights import _content_text, extract_trace, parse_insights, persist_insights
-from telogify.agent.validation import validate_insights
+from telogify.agent.validation import filter_guardrails_with_recap, validate_insights
 from telogify.analysis.attribution import store_attributions
 from telogify.analysis.candidates import compute_candidates
 from telogify.analysis.constructor_index import build_constructor_index
@@ -34,6 +35,8 @@ from telogify.ingest.results import store_results
 from telogify.ingest.sectors import store_sector_bests
 from telogify.ingest.stints import store_stints
 from telogify.ingest.straights import store_straights
+from telogify.ingest.wikipedia import store_weekend_recap
+from telogify.models import WeekendRecap
 
 
 class PipelineState(TypedDict, total=False):
@@ -54,6 +57,7 @@ def _ingest(state: PipelineState) -> dict:
         store_quali_character(data, db)
         store_race_control(data, db)
         store_deployment(data, db)
+        store_weekend_recap(data, db)
         return {"weekend_id": data.weekend.id}
 
 
@@ -73,12 +77,14 @@ def _candidates(state: PipelineState) -> dict:
 _MAX_INSIGHT_ATTEMPTS = 3
 
 
-def _flag_all(insights: list[dict]) -> dict[int, list[str]]:
+def _flag_all(insights: list[dict], trace: list[dict] | None = None) -> dict[int, list[str]]:
     """Flag each insight independently so feedback can name exactly which slot is bad."""
     flagged = {}
     for i, ins in enumerate(insights, start=1):
         text = f"{ins.get('header', '')} {ins.get('explanation_web', '')} {ins.get('explanation_email', '')}"
         phrases = flag_unsupported_claims(text)
+        if trace:
+            phrases = filter_guardrails_with_recap(phrases, text, trace)
         if phrases:
             flagged[i] = phrases
     return flagged
@@ -117,7 +123,11 @@ def _insights(state: PipelineState, agent_runner) -> dict:
                 "backticks or add conversational filler."
             )
             continue
-        flagged = _merge_flags(_flag_all(insights), validate_insights(insights, extract_trace(messages)))
+        trace = extract_trace(messages)
+        flagged = _merge_flags(
+            _flag_all(insights, trace),
+            validate_insights(insights, trace),
+        )
         if not flagged:
             trace = extract_trace(messages)
             with Session(engine) as db:
@@ -135,9 +145,39 @@ def _insights(state: PipelineState, agent_runner) -> dict:
     )
 
 
+def _recap_task_appendix(year: int, round: int) -> str:
+    """Compact recap JSON for the agent task when Wikipedia recap is stored."""
+    with Session(engine) as db:
+        wid = _weekend_id(db, year, round)
+        if wid is None:
+            return ""
+        row = db.exec(select(WeekendRecap).where(WeekendRecap.weekend_id == wid)).first()
+        if row is None or not row.sessions_json:
+            return ""
+        sessions = {
+            k: v
+            for k, v in row.sessions_json.items()
+            if isinstance(v, dict) and v.get("present")
+        }
+        if not sessions:
+            return ""
+        payload = {
+            "source": "wikipedia",
+            "page_title": row.page_title,
+            "sessions": sessions,
+        }
+        return (
+            "\n\nStored weekend recap preview (call get_weekend_recap before citing event facts):\n"
+            + json.dumps(payload)
+        )
+
+
 def _default_agent_runner(year: int, round: int, feedback: str | None = None) -> list:
     agent = build_agent(year, round)
     task = f"Write the 3 insights for {year} round {round}."
+    recap = _recap_task_appendix(year, round)
+    if recap:
+        task = f"{task}{recap}"
     if feedback:
         task = f"{task}\n\n{feedback}"
     result = agent.invoke(

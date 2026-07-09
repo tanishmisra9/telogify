@@ -26,3 +26,4 @@ resend
 
 # Tests
 pytest
+httpx

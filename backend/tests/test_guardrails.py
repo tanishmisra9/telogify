@@ -1,6 +1,22 @@
 from telogify.agent.guardrails import flag_unsupported_claims
 
 
+def test_flags_retirement_incident_causation():
+    china = (
+        "Verstappen's retirement traces to a lap-19 turn 6 incident with Pierre Gasly, "
+        "when race control noted moving under braking."
+    )
+    flagged = flag_unsupported_claims(china)
+    assert "retirement traces" in flagged
+    assert any("traces to" in p or "incident" in p for p in flagged)
+
+
+def test_allows_retirement_without_incident_causation():
+    assert flag_unsupported_claims(
+        "Verstappen retired in 16th. Race control also noted a lap-19 incident with Gasly."
+    ) == []
+
+
 def test_flags_grid_row_labels():
     assert "front row" in flag_unsupported_claims("Both Ferraris locked out the front row")
     assert "second row" in flag_unsupported_claims("McLaren started from the second row")

@@ -93,6 +93,8 @@ _BLOCKLIST = [
     "retired with",
     "retired due to",
     "retired because",
+    # causal retirement narratives tied to steward-noted incidents (see validation.py too)
+    "retirement traces",
 ]
 
 _NUMBER_WORD = (
@@ -123,6 +125,14 @@ _REGEX_BLOCKLIST = [
     # a word repeated possessively ("Alpine's Alpine", "Ferrari's Ferrari") - the car-centric
     # voice occasionally doubles a constructor name; a prompt note did not reliably stop it.
     re.compile(r"\b(\w+)'s \1\b", re.IGNORECASE),
+    # retirement causally linked to a lap-N incident without collision/retirement RC kind
+    re.compile(
+        r"\b(?:retired|retirement|did not finish)\b[^.]{0,120}\b(?:traces to|due to|because of|"
+        r"caused by|following)\b[^.]{0,80}\bincident\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bafter (?:an |a )?incident\b[^.]{0,60}\b(?:retired|retirement)\b", re.IGNORECASE),
+    re.compile(r"\b(?:retired|retirement)\b[^.]{0,60}\bafter (?:an |a )?incident\b", re.IGNORECASE),
 ]
 
 _RC_LAP_CONTEXT = re.compile(
@@ -154,7 +164,34 @@ _FIX_HINTS: dict[str, str] = {
     "double win": "Do not claim a double win. State the sprint and race finishing positions separately.",
     "won both": "Do not claim a double win. State the sprint and race finishing positions separately.",
     "drs": "Do not mention DRS. Describe straights plainly.",
+    "retirement traces": (
+        "Do not link a retirement to a steward-noted incident. State retired/DNF and cite "
+        "incidents separately without causation unless race control shows a collision or retirement."
+    ),
 }
+
+_VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
+    (
+        "retirement causally linked",
+        "Do not attribute a retirement to a steward-noted incident. State retired/DNF; cite RC separately.",
+    ),
+    (
+        "practice sector_delta",
+        "Sector deficits from practice candidates cannot be cited as qualifying weaknesses.",
+    ),
+    (
+        "lowest-clip/deployment claim",
+        "Re-check get_deployment: another car has lower total_clip_m than the value you cited.",
+    ),
+    (
+        "shortest-clip claim",
+        "Re-check get_deployment: another car has lower max_clip_m than the value you cited.",
+    ),
+    (
+        "untraceable recap",
+        "Only cite retirement cause, mechanical failure, or retirement lap from get_weekend_recap facts.",
+    ),
+)
 
 
 def _flag_on_lap_phrases(low: str) -> list[str]:
@@ -177,6 +214,11 @@ def fix_hints_for_phrases(phrases: list[str]) -> list[str]:
     for phrase in phrases:
         key = phrase.lower()
         hint = _FIX_HINTS.get(key)
+        if hint is None:
+            for prefix, validation_hint in _VALIDATION_FIX_HINTS:
+                if prefix in key:
+                    hint = validation_hint
+                    break
         if hint is None:
             continue
         if hint in seen:

@@ -1,7 +1,17 @@
+import json
+
 from telogify.agent.validation import (
     extract_prose_quantities,
+    filter_guardrails_with_recap,
     flag_cross_insight_conflicts,
+    flag_false_deployment_superlative,
+    flag_false_retirement_causation,
+    flag_missed_recap_cause_chain,
+    flag_qualifying_practice_sector_mismatch,
+    flag_session_abbreviations,
     flag_untraceable_numbers,
+    flag_untraceable_recap_claims,
+    flag_weak_deployment_cluster,
     validate_insights,
 )
 
@@ -92,3 +102,194 @@ def test_validate_insights_merges_number_and_conflict_issues():
     flagged = validate_insights(insights, [{"tool": "t", "args": {}, "result": "{}"}])
     assert 1 in flagged
     assert any("999" in issue for issue in flagged[1])
+
+
+def test_flag_false_retirement_causation_china_case():
+    text = (
+        "Verstappen's retirement traces to a lap-19 turn 6 incident with Pierre Gasly, "
+        "when race control noted moving under braking."
+    )
+    trace = [
+        {
+            "tool": "get_race_control_events",
+            "args": {"driver": "VER"},
+            "result": json.dumps(
+                [{"lap": 19, "driver": "VER", "kind": "incident", "message": "NOTED - MOVING UNDER BRAKING"}]
+            ),
+        }
+    ]
+    issues = flag_false_retirement_causation(text, trace)
+    assert len(issues) == 1
+    assert "steward-noted" in issues[0]
+
+
+def test_flag_false_retirement_causation_allows_collision():
+    text = "Leclerc retired after a lap-57 collision with Russell."
+    trace = [
+        {
+            "tool": "get_race_control_events",
+            "args": {},
+            "result": json.dumps(
+                [{"lap": 57, "driver": "LEC", "kind": "collision", "message": "COLLISION"}]
+            ),
+        }
+    ]
+    assert flag_false_retirement_causation(text, trace) == []
+
+
+def test_flag_qualifying_practice_sector_mismatch():
+    text = (
+        "In qualifying Gasly was 0.767 seconds off in sector 2 while hitting 329 km/h on the speed trap."
+    )
+    trace = [
+        {
+            "tool": "get_candidate_insights",
+            "args": {"n": 10},
+            "result": json.dumps(
+                [
+                    {
+                        "rank": 1,
+                        "signal_type": "sector_delta",
+                        "source_refs": [
+                            {
+                                "type": "sector_delta",
+                                "sector": 2,
+                                "constructor": "Alpine",
+                                "deficit_s": 0.767,
+                            }
+                        ],
+                    }
+                ]
+            ),
+        }
+    ]
+    issues = flag_qualifying_practice_sector_mismatch(text, trace)
+    assert len(issues) == 1
+    assert "practice sector_delta" in issues[0]
+
+
+def test_flag_false_deployment_superlative():
+    text = "Antonelli posted the lowest Q clip in the field at 473.6 metres of ERS clipping."
+    trace = [
+        {
+            "tool": "get_deployment",
+            "args": {"session_type": "Q"},
+            "result": json.dumps(
+                [
+                    {"driver": "ANT", "total_clip_m": 473.6, "max_clip_m": 200.0},
+                    {"driver": "GAS", "total_clip_m": 470.9, "max_clip_m": 180.0},
+                ]
+            ),
+        }
+    ]
+    issues = flag_false_deployment_superlative(text, trace)
+    assert len(issues) == 1
+    assert "470.9" in issues[0]
+
+
+def test_flag_false_deployment_superlative_shortest_clip():
+    text = "Hamilton had the shortest clip among the top-four qualifiers at 186 metres."
+    trace = [
+        {
+            "tool": "get_deployment",
+            "args": {"session_type": "Q"},
+            "result": json.dumps(
+                [
+                    {"driver": "HAM", "total_clip_m": 300.0, "max_clip_m": 186.0},
+                    {"driver": "NOR", "total_clip_m": 280.0, "max_clip_m": 180.0},
+                ]
+            ),
+        }
+    ]
+    issues = flag_false_deployment_superlative(text, trace)
+    assert len(issues) == 1
+    assert "180" in issues[0]
+
+
+def test_filter_guardrails_with_recap_allows_retirement_lap():
+    trace = [
+        {
+            "tool": "get_weekend_recap",
+            "args": {},
+            "result": json.dumps(
+                {
+                    "sessions": {
+                        "R": {
+                            "present": True,
+                            "facts": [
+                                {
+                                    "kind": "retirement",
+                                    "lap": 45,
+                                    "drivers": ["VER"],
+                                    "text": "Verstappen retired on lap 45 with a coolant leak.",
+                                }
+                            ],
+                        }
+                    }
+                }
+            ),
+        }
+    ]
+    text = "Verstappen retired on lap 45 with a coolant leak."
+    phrases = ["on lap 45", "coolant"]
+    assert "on lap 45" not in filter_guardrails_with_recap(phrases, text, trace)
+
+
+def test_flag_untraceable_recap_claims_blocks_unsupported_mechanical():
+    trace = [
+        {
+            "tool": "get_weekend_recap",
+            "args": {},
+            "result": json.dumps({"sessions": {"R": {"present": True, "facts": []}}}),
+        }
+    ]
+    issues = flag_untraceable_recap_claims("He retired with an engine failure on lap 10.", trace)
+    assert any("engine failure" in i for i in issues)
+
+
+def test_flag_missed_recap_cause_chain():
+    text = "Antonelli finished 15th after a lap-47 track-limits penalty."
+    trace = [
+        {
+            "tool": "get_candidate_insights",
+            "result": json.dumps(
+                [
+                    {
+                        "source_refs": {
+                            "refs": [
+                                {
+                                    "type": "recap_outcome",
+                                    "driver": "ANT",
+                                    "grid": 1,
+                                    "finish": 15,
+                                    "recap_facts": [
+                                        {
+                                            "kind": "damage",
+                                            "text": "broken left-front wheel shield",
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+                ]
+            ),
+        }
+    ]
+    issues = flag_missed_recap_cause_chain(text, trace)
+    assert len(issues) == 1
+    assert "get_weekend_recap" in issues[0]
+
+
+def test_flag_weak_deployment_cluster():
+    text = (
+        "In qualifying deployment data, Antonelli recorded 1212 metres of clipping, "
+        "Leclerc 1160 metres, Russell 1157 metres and Hamilton 1153 metres before the braking zone."
+    )
+    issues = flag_weak_deployment_cluster(text, [])
+    assert len(issues) == 1
+
+
+def test_flag_session_abbreviations():
+    assert flag_session_abbreviations("The quick Q cars were giving up speed.")
+    assert not flag_session_abbreviations("The quick qualifying cars were giving up speed.")

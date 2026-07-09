@@ -203,6 +203,41 @@ def list_insights(year: int | None = None) -> None:
             typer.echo("")
 
 
+@app.command("fetch-recap")
+def fetch_recap_cmd(year: int, round: int) -> None:
+    """Fetch Wikipedia recap for a weekend and store it (no full re-ingest)."""
+    from sqlmodel import Session, select
+
+    from telogify.db import engine
+    from telogify.ingest.loader import WeekendData
+    from telogify.ingest.wikipedia import store_weekend_recap
+    from telogify.models import RaceWeekend, Session as SessionRow
+
+    with Session(engine) as db:
+        weekend = db.exec(
+            select(RaceWeekend).where(RaceWeekend.year == year, RaceWeekend.round == round)
+        ).first()
+        if weekend is None:
+            typer.echo(f"Weekend {year} R{round} not found. Run ingest first.")
+            raise typer.Exit(code=1)
+        sessions = {
+            row.session_type: None
+            for row in db.exec(select(SessionRow).where(SessionRow.weekend_id == weekend.id)).all()
+        }
+        data = WeekendData(weekend=weekend, sessions=sessions)
+        store_weekend_recap(data, db)
+        from telogify.models import WeekendRecap
+
+        recap = db.exec(select(WeekendRecap).where(WeekendRecap.weekend_id == weekend.id)).first()
+        if recap is None or not recap.sessions_json:
+            typer.echo("No recap stored (fetch disabled, failed, or page missing).")
+            raise typer.Exit(code=1)
+        typer.echo(f"Stored recap from Wikipedia page: {recap.page_title}")
+        for session, payload in recap.sessions_json.items():
+            if payload.get("present"):
+                typer.echo(f"  {session}: {len(payload.get('facts', []))} fact(s)")
+
+
 @app.command("send-digest")
 def send_digest(year: int, round: int) -> None:
     """Email the 3 insights for a weekend via Resend."""

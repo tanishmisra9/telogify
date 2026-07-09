@@ -8,6 +8,8 @@ import json
 import math
 import re
 
+from telogify.ingest.wikipedia_parse import _SURNAME_TO_CODE
+
 # Constructors the agent may name in prose (longest first for substring matching).
 _CONSTRUCTORS = (
     "Red Bull Racing",
@@ -44,6 +46,277 @@ _FAST_SPEED = (
 )
 
 # Numbers tied to a unit or parenthetical mph (skip bare ordinals like "21st").
+_SECTOR_DEFICIT = re.compile(
+    r"(\d+(?:\.\d+)?)\s*seconds?\s+(?:slow|off|behind|deficit)",
+    re.IGNORECASE,
+)
+
+_RETIREMENT_CAUSE_RC_KINDS = frozenset({"collision", "retirement", "forced_off"})
+
+_CAUSAL_RETIREMENT = re.compile(
+    r"\b(?:traces to|traced to|due to the|because of the|caused by the|following the|"
+    r"after (?:an |a )?incident)\b",
+    re.IGNORECASE,
+)
+
+_SUPERLATIVE_FIELD = re.compile(
+    r"\b(?:lowest|smallest|cleanest|fewest|minimum)\b[^.]{0,100}\b(?:in|of)\s+(?:the\s+)?(?:field|grid)\b",
+    re.IGNORECASE,
+)
+
+_CLIP_SUPERLATIVE = re.compile(
+    r"\b(?:lowest|smallest|cleanest|fewest|shortest)\b[^.]{0,80}\b(?:clip|deployment|ers)\b",
+    re.IGNORECASE,
+)
+
+_CLIP_METRES = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b", re.IGNORECASE)
+
+_SESSION_ABBREV = re.compile(r"\b(?:\bin\s+)?(?:SQ|Q)\b|\bin\s+R\b|\bSPRINT\b", re.IGNORECASE)
+
+_DAMAGE_TERMS = ("damage", "bodywork", "wheel shield", "broken", "problem with his car", "problem with her car")
+
+_QUALIFYING_CTX = re.compile(
+    r"\bqualifying\b|\bin q\b|q-lap|speed trap",
+    re.IGNORECASE,
+)
+
+_SECTOR_CTX = re.compile(
+    r"\bsector[- ]?\d|middle sector",
+    re.IGNORECASE,
+)
+
+_RECAP_MECHANICAL = (
+    "mechanical failure",
+    "mechanical issue",
+    "mechanical problem",
+    "engine failure",
+    "engine blew",
+    "power unit failure",
+    "brake failure",
+    "brakes failed",
+    "coolant",
+    "gearbox",
+    "hydraulic",
+    "suspension failure",
+    "retired with",
+    "retired due to",
+    "retired because",
+)
+
+_ON_LAP_PHRASE = re.compile(r"\bon lap (\d+)\b", re.IGNORECASE)
+
+
+def _parse_tool_results(trace: list[dict], tool_name: str) -> list:
+    rows: list = []
+    for entry in trace:
+        if entry.get("tool") != tool_name:
+            continue
+        result = entry.get("result")
+        if not result:
+            continue
+        try:
+            data = json.loads(result) if isinstance(result, str) else result
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(data, list):
+            rows.extend(data)
+        elif isinstance(data, dict):
+            rows.append(data)
+    return rows
+
+
+def _rc_events(trace: list[dict]) -> list[dict]:
+    return _parse_tool_results(trace, "get_race_control_events")
+
+
+def _deployments(trace: list[dict]) -> list[dict]:
+    return [row for row in _parse_tool_results(trace, "get_deployment") if "total_clip_m" in row]
+
+
+def _practice_sector_deficits(trace: list[dict]) -> set[float]:
+    deficits: set[float] = set()
+    for cand in _parse_tool_results(trace, "get_candidate_insights"):
+        refs = cand.get("source_refs") or []
+        if isinstance(refs, str):
+            try:
+                refs = json.loads(refs)
+            except json.JSONDecodeError:
+                continue
+        if not isinstance(refs, list):
+            continue
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            if ref.get("type") == "sector_delta" and "deficit_s" in ref:
+                deficits.add(round(float(ref["deficit_s"]), 3))
+    return deficits
+
+
+def flag_false_retirement_causation(text: str, trace: list[dict]) -> list[str]:
+    """Block linking a retirement/DNF to steward-noted incidents when RC has no real cause."""
+    low = text.lower()
+    retirement = bool(
+        re.search(r"\b(?:retired|retirement|did not finish|\bdnf\b)\b", low) or "retirement traces" in low
+    )
+    if not retirement:
+        return []
+    if not (_CAUSAL_RETIREMENT.search(low) or "retirement traces" in low):
+        return []
+    events = _rc_events(trace)
+    if not events:
+        return []
+    kinds = {e.get("kind") for e in events if e.get("kind")}
+    if kinds & _RETIREMENT_CAUSE_RC_KINDS:
+        return []
+    if kinds <= {"incident", "penalty", "safety_car"} and (
+        "incident" in kinds or re.search(r"\bincident\b", low)
+    ):
+        return [
+            "retirement causally linked to race control but events are steward-noted incidents only"
+        ]
+    return []
+
+
+def flag_qualifying_practice_sector_mismatch(text: str, trace: list[dict]) -> list[str]:
+    """Block citing a practice sector_delta deficit while framing it as a qualifying weakness."""
+    practice_deficits = _practice_sector_deficits(trace)
+    if not practice_deficits:
+        return []
+    for match in _SECTOR_DEFICIT.finditer(text):
+        deficit = float(match.group(1))
+        window = text[max(0, match.start() - 150) : min(len(text), match.end() + 150)]
+        low_window = window.lower()
+        if not _QUALIFYING_CTX.search(low_window):
+            continue
+        if re.search(r"\bpractice\b|\bfp[123]\b", low_window):
+            continue
+        if not _SECTOR_CTX.search(low_window):
+            continue
+        if not any(math.isclose(deficit, d, abs_tol=0.001) for d in practice_deficits):
+            continue
+        return [
+            "sector deficit cited in qualifying context but matching value is practice sector_delta only"
+        ]
+    return []
+
+
+def flag_false_deployment_superlative(text: str, trace: list[dict]) -> list[str]:
+    """Block lowest/shortest clip claims when deployment trace shows a lower value."""
+    low = text.lower()
+    claims_total_min = bool(_SUPERLATIVE_FIELD.search(text)) or bool(_CLIP_SUPERLATIVE.search(low))
+    claims_shortest = bool(re.search(r"\bshortest\b[^.]{0,80}\bclip\b", low))
+    if not claims_total_min and not claims_shortest:
+        return []
+    deployments = _deployments(trace)
+    if len(deployments) < 2:
+        return []
+    min_total = min(float(d["total_clip_m"]) for d in deployments)
+    min_max_clip = min(float(d["max_clip_m"]) for d in deployments)
+    for match in _CLIP_METRES.finditer(text):
+        cited = float(match.group(1))
+        if cited < 50:
+            continue
+        if claims_shortest and cited > min_max_clip + 0.5:
+            return [
+                f"shortest-clip claim ({cited}m) but field minimum max_clip_m is {min_max_clip}m in tool trace"
+            ]
+        if claims_total_min and cited > min_total + 0.5:
+            return [
+                f"lowest-clip/deployment claim ({cited}m) but field minimum total_clip_m is {min_total}m in tool trace"
+            ]
+    return []
+
+
+def _recap_facts(trace: list[dict]) -> list[dict]:
+    for entry in trace:
+        if entry.get("tool") != "get_weekend_recap":
+            continue
+        result = entry.get("result")
+        if not result:
+            continue
+        try:
+            data = json.loads(result) if isinstance(result, str) else result
+        except (json.JSONDecodeError, TypeError):
+            continue
+        sessions = data.get("sessions") or {}
+        facts: list[dict] = []
+        for session_data in sessions.values():
+            if not isinstance(session_data, dict) or not session_data.get("present"):
+                continue
+            for fact in session_data.get("facts") or []:
+                if isinstance(fact, dict):
+                    facts.append(fact)
+        return facts
+    return []
+
+
+def _recap_blob(facts: list[dict]) -> str:
+    parts: list[str] = []
+    for fact in facts:
+        parts.append(fact.get("text", ""))
+        if fact.get("lap") is not None:
+            parts.append(str(fact["lap"]))
+    return " ".join(parts).lower()
+
+
+def filter_guardrails_with_recap(phrases: list[str], text: str, trace: list[dict]) -> list[str]:
+    """Drop guardrail hits allowed when get_weekend_recap supports the claim."""
+    facts = _recap_facts(trace)
+    if not facts:
+        return phrases
+    blob = _recap_blob(facts)
+    laps = {int(f["lap"]) for f in facts if f.get("lap") is not None}
+    has_retirement = any(f.get("kind") == "retirement" for f in facts)
+    low_text = text.lower()
+    kept: list[str] = []
+    for phrase in phrases:
+        low = phrase.lower()
+        if low in blob:
+            continue
+        lap_match = _ON_LAP_PHRASE.match(low)
+        if lap_match:
+            lap = int(lap_match.group(1))
+            if lap in laps and re.search(r"\b(?:retired|retirement|dnf|did not finish)\b", low_text):
+                continue
+        if low in ("retired due to", "retired because", "retired with") and has_retirement:
+            continue
+        if any(term in low for term in _RECAP_MECHANICAL) and any(term in blob for term in _RECAP_MECHANICAL if term in low):
+            continue
+        if any(term in low and term in blob for term in _RECAP_MECHANICAL):
+            continue
+        kept.append(phrase)
+    return kept
+
+
+def _recap_tool_called(trace: list[dict]) -> bool:
+    return any(entry.get("tool") == "get_weekend_recap" for entry in trace)
+
+
+def flag_untraceable_recap_claims(text: str, trace: list[dict]) -> list[str]:
+    """Flag mechanical/retirement-lap claims not present in get_weekend_recap."""
+    if not _recap_tool_called(trace):
+        return []
+    facts = _recap_facts(trace)
+    blob = _recap_blob(facts)
+    laps = {int(f["lap"]) for f in facts if f.get("lap") is not None}
+    low = text.lower()
+    issues: list[str] = []
+
+    for term in _RECAP_MECHANICAL:
+        if term in low and term not in blob:
+            issues.append(f"untraceable recap: mechanical phrase '{term}' not in get_weekend_recap")
+            break
+
+    for match in _ON_LAP_PHRASE.finditer(low):
+        lap = int(match.group(1))
+        window = low[max(0, match.start() - 80) : match.end() + 80]
+        if re.search(r"\b(?:retired|retirement|dnf|did not finish)\b", window) and lap not in laps:
+            issues.append(f"untraceable recap: retirement lap {lap} not in get_weekend_recap")
+            break
+
+    return issues
+
+
 _QUANTITY_RE = re.compile(
     r"(\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%)"
     r"|(?:\(\s*(\d+(?:\.\d+)?)\s*mph\s*\))",
@@ -104,6 +377,101 @@ def extract_prose_quantities(text: str) -> list[float]:
         if raw is not None:
             found.append(float(raw))
     return found
+
+
+def _recap_outcome_candidates(trace: list[dict]) -> list[dict]:
+    outcomes: list[dict] = []
+    for candidate in _parse_tool_results(trace, "get_candidate_insights"):
+        refs = candidate.get("source_refs") or {}
+        for ref in refs.get("refs") or []:
+            if ref.get("type") == "recap_outcome":
+                outcomes.append(ref)
+    return outcomes
+
+
+def flag_missed_recap_cause_chain(text: str, trace: list[dict]) -> list[str]:
+    """Retry when recap_outcome has damage facts but insight cites only track-limits penalties."""
+    if _recap_tool_called(trace):
+        return []
+    outcomes = _recap_outcome_candidates(trace)
+    if not outcomes:
+        return []
+    low = text.lower()
+    if not re.search(r"track[- ]limits?", low):
+        return []
+    if any(term in low for term in _DAMAGE_TERMS):
+        return []
+    for outcome in outcomes:
+        facts = outcome.get("recap_facts") or []
+        has_damage = any(
+            f.get("kind") == "damage"
+            or "damage" in (f.get("text") or "").lower()
+            or "wheel shield" in (f.get("text") or "").lower()
+            for f in facts
+        )
+        if not has_damage:
+            continue
+        grid = outcome.get("grid")
+        finish = outcome.get("finish")
+        if grid is not None and finish is not None and grid <= 3 and finish >= 10:
+            driver = outcome.get("driver", "driver")
+            return [
+                f"missed recap: call get_weekend_recap for {driver} cause chain "
+                "(recap has damage; insight cites only track-limits penalty)"
+            ]
+    return []
+
+
+def flag_weak_deployment_cluster(text: str, trace: list[dict]) -> list[str]:
+    """Retry when deployment insight cites multiple leaders with clustered clip distances."""
+    del trace  # clip distances are validated from prose only
+    if not re.search(r"\bclip\b|deployment|braking zone", text, re.IGNORECASE):
+        return []
+    clips = [float(m.group(1)) for m in _CLIP_METRES.finditer(text)]
+    if len(clips) < 2:
+        return []
+    if max(clips) - min(clips) > 100:
+        return []
+    return [
+        "weak deployment: cited qualifiers clip within about 100 metres; choose a stronger finding"
+    ]
+
+
+def flag_session_abbreviations(text: str) -> list[str]:
+    """Retry when insight prose uses Q/SQ/R/SPRINT instead of plain session names."""
+    if _SESSION_ABBREV.search(text):
+        return ["language: use qualifying, sprint qualifying, the race, or the sprint; not Q/SQ/R/SPRINT"]
+    return []
+
+
+def flag_ignored_recap_outcome(insights: list[dict], trace: list[dict]) -> list[str]:
+    """Retry when a large-swing recap_outcome with damage never appears in any insight."""
+    outcomes = _recap_outcome_candidates(trace)
+    if not outcomes:
+        return []
+    all_text = " ".join(_insight_text(ins) for ins in insights).lower()
+    for outcome in outcomes:
+        grid = outcome.get("grid")
+        finish = outcome.get("finish")
+        if grid is None or finish is None or grid > 3 or finish < 10:
+            continue
+        facts = outcome.get("recap_facts") or []
+        has_damage = any(
+            f.get("kind") == "damage"
+            or "damage" in (f.get("text") or "").lower()
+            or "wheel shield" in (f.get("text") or "").lower()
+            for f in facts
+        )
+        if not has_damage:
+            continue
+        driver = outcome.get("driver", "")
+        surname = next((s for s, code in _SURNAME_TO_CODE.items() if code == driver), None)
+        if surname and surname not in all_text:
+            return [
+                f"ignored recap_outcome: {driver} started P{grid} and finished P{finish}; "
+                "use get_weekend_recap damage facts with race-control penalties if that beats telemetry-only findings"
+            ]
+    return []
 
 
 def flag_untraceable_numbers(text: str, trace: list[dict]) -> list[str]:
@@ -183,6 +551,22 @@ def validate_insights(insights: list[dict], trace: list[dict]) -> dict[int, list
         bad_nums = flag_untraceable_numbers(text, trace)
         if bad_nums:
             flagged.setdefault(i, []).append(f"untraceable number(s): {', '.join(bad_nums)}")
+        for issue in flag_false_retirement_causation(text, trace):
+            flagged.setdefault(i, []).append(issue)
+        for issue in flag_qualifying_practice_sector_mismatch(text, trace):
+            flagged.setdefault(i, []).append(issue)
+        for issue in flag_false_deployment_superlative(text, trace):
+            flagged.setdefault(i, []).append(issue)
+        for issue in flag_untraceable_recap_claims(text, trace):
+            flagged.setdefault(i, []).append(issue)
+        for issue in flag_missed_recap_cause_chain(text, trace):
+            flagged.setdefault(i, []).append(issue)
+        for issue in flag_weak_deployment_cluster(text, trace):
+            flagged.setdefault(i, []).append(issue)
+        for issue in flag_session_abbreviations(text):
+            flagged.setdefault(i, []).append(issue)
+    for issue in flag_ignored_recap_outcome(insights, trace):
+        flagged.setdefault(1, []).append(issue)
     for conflict in flag_cross_insight_conflicts(insights):
         # Attach cross-insight conflicts to every slot mentioned in the message.
         for slot in re.findall(r"\d+", conflict.split(" contradict")[0]):

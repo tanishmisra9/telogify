@@ -23,6 +23,7 @@ from telogify.models import (
     SessionResult,
     Stint,
     StraightSegment,
+    WeekendRecap,
 )
 
 
@@ -253,11 +254,13 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
 
     @tool
     def get_race_control_events(driver: str = "", session_type: str = "R") -> str:
-        """Official race control events (collisions, incidents, penalties, safety cars, forced-off,
-        retirements) for the race ("R") or sprint ("SPRINT"), each with the lap and the cars
-        involved. Pass a driver's 3-letter code to filter to that driver, or leave it blank for all.
-        ALWAYS call this before blaming a poor result on the car: an event here is the real cause,
-        not tyre wear or straight-line speed. Returns [] when nothing notable happened."""
+        """Official race control events (collisions, penalties, safety cars, forced-off moves, and
+        steward-noted incidents) for the race ("R") or sprint ("SPRINT"), each with kind, lap,
+        driver, and message. kind incident is NOTED or under investigation only, not a collision
+        and not a retirement cause. Pass a driver's 3-letter code to filter, or blank for all.
+        Call before attributing a finishing-position drop to car pace: only collision, forced-off,
+        or penalty kinds explain a result. Noted incidents may be cited on their lap but must not
+        be linked to a retirement or DNF. Returns [] when nothing notable happened."""
         with sf() as db:
             sid = _session_id(db, _weekend_id(db, year, round_num), session_type)
             if sid is None:
@@ -303,10 +306,34 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
                 ]
             )
 
+    @tool
+    def get_weekend_recap() -> str:
+        """Structured Wikipedia recap for this weekend's SQ, SPRINT (if run), Q, and R sessions.
+        Use for on-track EVENT context only: retirements with cause and lap, collisions,
+        penalties, safety/virtual safety car beats, and strategy turning points. NOT for pace,
+        top speeds, gaps, or grid/finish ordinals (use telemetry and get_session_results).
+        Telemetry wins if recap and telemetry disagree on car performance. Returns {} when
+        no recap is stored for a session."""
+        with sf() as db:
+            wid = _weekend_id(db, year, round_num)
+            if wid is None:
+                return json.dumps({})
+            row = db.exec(select(WeekendRecap).where(WeekendRecap.weekend_id == wid)).first()
+            if row is None or not row.sessions_json:
+                return json.dumps({})
+            return json.dumps(
+                {
+                    "source": "wikipedia",
+                    "page_title": row.page_title,
+                    "sessions": row.sessions_json,
+                }
+            )
+
     return [
         get_candidate_insights,
         get_race_control_events,
         get_deployment,
+        get_weekend_recap,
         get_straight_speed,
         get_corner_delta,
         get_lap_evolution,
