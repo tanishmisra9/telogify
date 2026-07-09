@@ -27,7 +27,7 @@ export function ThemeToggle() {
         type="button"
         onClick={() => setTheme(next)}
         aria-label={`Switch to ${next} mode`}
-        className="flex h-10 w-10 items-center justify-center border-[1.5px] border-ink text-ink transition-colors hover:bg-ink hover:text-bg"
+        className="flex h-10 w-10 items-center justify-center text-ink transition-colors hover:bg-ink hover:text-bg"
       >
         {theme === 'light' ? (
           // Moon: click to go dark.
