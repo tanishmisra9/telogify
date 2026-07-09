@@ -6,6 +6,7 @@ import { Insight } from '@/components/Insight'
 import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
 import { Results } from '@/components/Results'
+import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionTitle } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
 import {
@@ -127,6 +128,10 @@ export function WeekendPage() {
   const degradation = useApi<DegradationData>(`${base}/degradation`)
   const results = useApi<ResultRow[]>(`${base}/results`)
 
+  // One readiness signal for the header + insights block, so they blur in together the moment
+  // both are ready instead of each popping in independently as its own fetch happens to resolve.
+  const topReady = weekend.data !== null && !insights.loading
+
   const present = new Set(sessions.data?.map((s) => s.session_type) ?? [])
   const practiceHappened = PRACTICE_CODES.some((c) => present.has(c)) || present.has('SQ')
   const sprintHappened = present.has('SPRINT')
@@ -144,28 +149,26 @@ export function WeekendPage() {
 
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16">
-      <BlurFade>
-        <p className="kicker text-accent">
-          {year} · Round {round}
-        </p>
-        {weekend.data ? (
-          <>
-            <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
-              {weekend.data.event_name}
-            </h1>
-            <p className="mt-3 text-lg text-muted">{weekend.data.circuit_name}</p>
-          </>
-        ) : (
-          <>
-            <Skeleton className="mt-3 h-14 w-2/3 sm:h-20" />
-            <Skeleton className="mt-3 h-6 w-40" />
-          </>
-        )}
-      </BlurFade>
+      {!topReady ? (
+        <>
+          <Skeleton className="mt-3 h-14 w-2/3 sm:h-20" />
+          <Skeleton className="mt-3 h-6 w-40" />
+        </>
+      ) : (
+        <BlurFade>
+          <p className="kicker text-accent">
+            {year} · Round {round}
+          </p>
+          <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
+            {weekend.data!.event_name}
+          </h1>
+          <p className="mt-3 text-lg text-muted">{weekend.data!.circuit_name}</p>
+        </BlurFade>
+      )}
 
       <section className="mt-16">
         <SectionTitle>Your three insights</SectionTitle>
-        {insights.loading ? (
+        {!topReady ? (
           <div className="grid max-w-5xl gap-4">
             {[0, 1, 2].map((i) => (
               <SkeletonCard key={i} className="min-h-[150px]" />
@@ -207,16 +210,16 @@ export function WeekendPage() {
         ) : (
           <div className="grid gap-6">
             {sectors.data ? (
-              <BlurFade>
+              <ScrollReveal>
                 <PracticeSectors data={sectors.data} />
-              </BlurFade>
+              </ScrollReveal>
             ) : (
               <SkeletonCard className="min-h-[560px]" />
             )}
             {topspeeds.data ? (
-              <BlurFade delay={0.06}>
+              <ScrollReveal delay={0.06}>
                 <PracticeTopSpeeds data={topspeeds.data} />
-              </BlurFade>
+              </ScrollReveal>
             ) : (
               <SkeletonCard className="min-h-[300px]" />
             )}
@@ -228,9 +231,9 @@ export function WeekendPage() {
         <section className="mt-20">
           <SectionTitle>Sprint</SectionTitle>
           {sprintPace.data ? (
-            <BlurFade>
+            <ScrollReveal>
               <PaceSpreadChart pace={sprintPace.data} />
-            </BlurFade>
+            </ScrollReveal>
           ) : (
             <SkeletonCard className="min-h-[600px]" />
           )}
@@ -246,9 +249,9 @@ export function WeekendPage() {
             Qualifying hasn't run yet. The car-character comparison appears here once it has.
           </Upcoming>
         ) : qualiCharacter.data ? (
-          <BlurFade>
+          <ScrollReveal>
             <QualiCharacterTable data={qualiCharacter.data} />
-          </BlurFade>
+          </ScrollReveal>
         ) : (
           <SkeletonCard className="min-h-[520px]" />
         )}
@@ -270,28 +273,28 @@ export function WeekendPage() {
         ) : (
           <div className="grid gap-6">
             {pace.data ? (
-              <BlurFade>
+              <ScrollReveal>
                 <PaceSpreadChart pace={pace.data} />
-              </BlurFade>
+              </ScrollReveal>
             ) : (
               <SkeletonCard className="min-h-[600px]" />
             )}
             {degradation.data ? (
-              <BlurFade delay={0.06}>
+              <ScrollReveal delay={0.06}>
                 <DegradationChart data={degradation.data} />
-              </BlurFade>
+              </ScrollReveal>
             ) : (
               <SkeletonCard className="min-h-[540px]" />
             )}
             {results.data ? (
-              <BlurFade delay={0.1}>
+              <ScrollReveal delay={0.1}>
                 <div className="glass mx-auto w-full max-w-4xl rounded-[--radius-panel] p-6 sm:p-8">
                   <h3 className="mb-6 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
                     Finishing order
                   </h3>
                   <Results rows={results.data} />
                 </div>
-              </BlurFade>
+              </ScrollReveal>
             ) : (
               <SkeletonCard className="mx-auto min-h-[400px] w-full max-w-4xl" />
             )}
