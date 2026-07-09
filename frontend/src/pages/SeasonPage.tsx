@@ -88,25 +88,29 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   )
 }
 
-// A traded pair per team: what the car does best in the field, and where it falls short. Plain
-// typographic rows (no colored blocks), aligned to the ranking table's rhythm. A small up mark in
-// the accent flags the strength, a down mark in muted flags the shortfall.
+// What the car does best in the field, and where it falls short, up to 3 each. Plain typographic
+// rows (no colored blocks), aligned to the ranking table's rhythm. A small up mark in the accent
+// flags each strength, a down mark in muted flags each weakness.
 const FORM_GRID = 'grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-[1.1fr_1.4fr_1.4fr]'
 
-function TraitCell({ trait, kind }: { trait: Trait | null; kind: 'up' | 'down' }) {
-  if (!trait) return <span className="hidden text-sm text-muted sm:block">–</span>
+function TraitList({ traits, kind }: { traits: Trait[]; kind: 'up' | 'down' }) {
+  if (traits.length === 0) return null
   const mark = kind === 'up' ? '▲' : '▼'
   const markColor = kind === 'up' ? 'text-accent' : 'text-muted'
   return (
-    <span className="flex items-baseline gap-2 text-sm">
-      <span className={`text-[0.7em] ${markColor}`} aria-hidden>
-        {mark}
-      </span>
-      <span className="text-ink">
-        {trait.text}
-        {trait.detail && <span className="num ml-1.5 text-muted">{trait.detail}</span>}
-      </span>
-    </span>
+    <ul className="flex flex-col gap-1">
+      {traits.map((trait, i) => (
+        <li key={i} className="flex items-baseline gap-2 text-sm">
+          <span className={`text-[0.7em] ${markColor}`} aria-hidden>
+            {mark}
+          </span>
+          <span className="text-ink">
+            {trait.text}
+            {trait.detail && <span className="num ml-1.5 text-muted">{trait.detail}</span>}
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -117,8 +121,8 @@ function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
       <ul className={FORM_GRID}>
         <li className="contents" aria-hidden>
           <span className={`${HEAD} hidden sm:block`}>Team</span>
-          <span className={`${HEAD} hidden sm:block`}>Strength</span>
-          <span className={`${HEAD} hidden sm:block`}>Weakness</span>
+          <span className={`${HEAD} hidden sm:block`}>Strengths</span>
+          <span className={`${HEAD} hidden sm:block`}>Weaknesses</span>
         </li>
         {rows.map((r) => {
           const s = summary[r.constructor]
@@ -133,10 +137,10 @@ function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
                 <ConfidenceChip confidence={r.confidence} />
               </span>
               <span className="pt-1.5 sm:pt-3.5">
-                <TraitCell trait={s.strength} kind="up" />
+                <TraitList traits={s.strengths} kind="up" />
               </span>
               <span className="pb-1 pt-1.5 sm:pt-3.5">
-                <TraitCell trait={s.weakness} kind="down" />
+                <TraitList traits={s.weaknesses} kind="down" />
               </span>
             </li>
           )
@@ -198,9 +202,8 @@ function SeasonView({ year }: { year: number }) {
               <FormGuide rows={rows} />
             </BlurFade>
             <p className="mt-4 text-xs text-muted">
-              One traded pair per car: its strongest area in the field and its weakest, each ranked against
-              every other team with the real season-average figure. Even a front-runner shows where it gives
-              a little away.
+              Up to three real strengths and three weaknesses per car, each ranked against every other team
+              with the real season-average figure. Even a front-runner shows where it gives a little away.
             </p>
           </section>
 
