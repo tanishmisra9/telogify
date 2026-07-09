@@ -24,7 +24,7 @@ export function BarChart({
   domainMin = 0,
 }: {
   rows: BarChartRow[]
-  formatValue?: (v: number) => string
+  formatValue?: (v: number, row: BarChartRow) => string
   domainMin?: number
 }) {
   if (rows.length === 0) return null
@@ -38,6 +38,9 @@ export function BarChart({
   const bw = Math.min(30, step * 0.6)
   const center = (i: number) => step * i + step / 2
   const baseline = y(lo)
+  // A wide field (e.g. a ~20-driver practice session) doesn't leave enough horizontal room for
+  // centered value labels without them overlapping their neighbours; angle them instead.
+  const dense = rows.length > 10
 
   return (
     <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full" role="img" aria-label="Bar chart">
@@ -60,8 +63,17 @@ export function BarChart({
                 strokeWidth={1}
                 rx={2}
               />
-              <text x={cx} y={top - 7} textAnchor="middle" fill="var(--color-ink)" fontSize={13} fontWeight={600} className="num">
-                {formatValue(r.displayValue ?? r.value)}
+              <text
+                x={cx}
+                y={top - 6}
+                textAnchor={dense ? 'start' : 'middle'}
+                transform={dense ? `rotate(-60 ${cx} ${top - 6})` : undefined}
+                fill="var(--color-ink)"
+                fontSize={dense ? 11 : 13}
+                fontWeight={600}
+                className="num"
+              >
+                {formatValue(r.displayValue ?? r.value, r)}
               </text>
               <text x={cx} y={INNER_H + 21} textAnchor="middle" fill="var(--color-ink)" fontSize={13.5} fontWeight={600}>
                 {r.label}

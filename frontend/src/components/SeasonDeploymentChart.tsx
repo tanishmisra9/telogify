@@ -1,36 +1,24 @@
-import { resolveTeamColor, teamColorWithAlpha, teamShortName } from '@/lib/teamColors'
+import { TeamMark } from '@/components/TeamMark'
+import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { binBySpeed } from '@/lib/seasonAccel'
 import type { SeasonDeploymentScatter } from '@/lib/api'
 
 const WIDTH = 1100
 const HEIGHT = 460
-const MARGIN = { top: 16, right: 100, bottom: 52, left: 56 }
+const MARGIN = { top: 16, right: 24, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
-const LABEL_LINE_HEIGHT = 15
-
-/** Nudge apart end-of-line labels that would otherwise collide: many teams' lines converge to a
- * similar value at top speed, and direct labels there stack illegibly without this. Greedy
- * top-to-bottom pass keeps each label at least one line-height from the one above it. */
-function spreadLabelPositions(targetYs: number[]): number[] {
-  const order = targetYs.map((y, i) => ({ y, i })).sort((a, b) => a.y - b.y)
-  const resolved: number[] = new Array(targetYs.length)
-  let prev = -Infinity
-  for (const { y, i } of order) {
-    const placed = Math.max(y, prev + LABEL_LINE_HEIGHT)
-    resolved[i] = placed
-    prev = placed
-  }
-  return resolved
-}
 
 /** Season-wide ERS deployment/harvesting: longitudinal acceleration vs speed, full-throttle and
  * no-brake laps only. Raw points (a few hundred per team, pooled across the season) sit as a
- * faint texture; each team's binned-median trend line, directly labeled at its end, is the
- * actual story - the same visual language as the tyre-degradation chart, so a reader already
- * knows how to read it. */
+ * faint texture; each team's binned-median trend line is the actual story. Team identity comes
+ * from a legend below the chart (color swatch + name, same TeamMark used elsewhere in the app),
+ * not on-chart text: direct end-of-line labels broke down once several teams' lines converged to
+ * a similar value at top speed. */
 export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentScatter }) {
-  const teams = Object.keys(scatter).filter((t) => scatter[t].length > 0)
+  const teams = Object.keys(scatter)
+    .filter((t) => scatter[t].length > 0)
+    .sort((a, b) => a.localeCompare(b))
   if (teams.length === 0) return <p className="text-sm text-muted">No deployment data yet.</p>
 
   const allPoints = teams.flatMap((t) => scatter[t])
@@ -50,7 +38,6 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
   const trends = teams
     .map((team) => ({ team, bins: binBySpeed(scatter[team]) }))
     .filter((t) => t.bins.length >= 2)
-  const labelYs = spreadLabelPositions(trends.map((t) => y(t.bins[t.bins.length - 1].medianAccel)))
 
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4)
   const xTicks = Array.from({ length: 6 }, (_, i) => Math.round(xMin + ((xMax - xMin) * i) / 5))
@@ -90,21 +77,20 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
             )),
           )}
 
-          {trends.map(({ team, bins }, i) => {
+          {trends.map(({ team, bins }) => {
             const stroke = resolveTeamColor(team)
             const path = bins.map((b, j) => `${j === 0 ? 'M' : 'L'}${x(b.speedMid)},${y(b.medianAccel)}`).join(' ')
-            const last = bins[bins.length - 1]
-            return (
-              <g key={team}>
-                <path d={path} fill="none" stroke={stroke} strokeWidth={2.5} />
-                <text x={x(last.speedMid) + 8} y={labelYs[i]} dominantBaseline="middle" fill={stroke} fontSize={12} fontWeight={600}>
-                  {teamShortName(team)}
-                </text>
-              </g>
-            )
+            return <path key={team} d={path} fill="none" stroke={stroke} strokeWidth={2.5} />
           })}
         </g>
       </svg>
+
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-4">
+        {teams.map((team) => (
+          <TeamMark key={team} team={team} className="text-sm" />
+        ))}
+      </div>
+
       <p className="mt-4 text-xs text-muted">
         Every point is a full-throttle, no-braking sample from one representative race lap per driver per
         weekend, pooled across the season; cornering samples (lateral acceleration at or above 2 m/s²) are

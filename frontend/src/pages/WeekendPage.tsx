@@ -30,18 +30,19 @@ function PracticeSectorChart({ sector, rows }: { sector: number; rows: SectorBes
   if (sorted.length === 0) return null
 
   const fastest = sorted[0].best_time_s
-  const bars = sorted.map((r) => ({
+  const bars = sorted.map((r, i) => ({
     id: r.driver,
     label: r.driver,
     value: r.best_time_s - fastest,
-    displayValue: r.best_time_s,
+    // Only the leader shows its absolute time; everyone else falls back to `value` (the gap).
+    displayValue: i === 0 ? r.best_time_s : undefined,
     team: r.constructor,
   }))
 
   return (
     <div>
       <h3 className="mb-2 text-[1.35rem] font-semibold text-ink">Sector {sector}</h3>
-      <BarChart rows={bars} formatValue={(v) => `${v.toFixed(3)}s`} />
+      <BarChart rows={bars} formatValue={(v, row) => (row.displayValue != null ? `${v.toFixed(3)}s` : `+${v.toFixed(3)}s`)} />
     </div>
   )
 }
@@ -150,9 +151,20 @@ export function WeekendPage() {
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16">
       {!topReady ? (
+        // Plain, borderless placeholders only: no SectionTitle heading/rule and no .glass-bordered
+        // SkeletonCard here, since those are exactly what used to pop in and then vanish. Everything
+        // below (header text, section heading, insight cards) only exists once it can blur in as one.
         <>
           <Skeleton className="mt-3 h-14 w-2/3 sm:h-20" />
           <Skeleton className="mt-3 h-6 w-40" />
+          <div className="mt-16 max-w-5xl">
+            <Skeleton className="h-14 w-80" />
+            <div className="mt-8 grid gap-4">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="min-h-[150px]" />
+              ))}
+            </div>
+          </div>
         </>
       ) : (
         <BlurFade>
@@ -163,43 +175,37 @@ export function WeekendPage() {
             {weekend.data!.event_name}
           </h1>
           <p className="mt-3 text-lg text-muted">{weekend.data!.circuit_name}</p>
+
+          <section className="mt-16">
+            <SectionTitle>Your three insights</SectionTitle>
+            {!insights.data || insights.data.length === 0 ? (
+              <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
+            ) : (
+              <div className="max-w-5xl">
+                <div className="grid gap-4">
+                  {insights.data.map((item, i) => (
+                    <BlurFade key={item.slot} delay={0.06 * i}>
+                      <Insight item={item} />
+                    </BlurFade>
+                  ))}
+                </div>
+                <BlurFade delay={0.06 * insights.data.length + 0.06}>
+                  <div className="glass mt-6 rounded-[--radius-panel] p-6">
+                    <p className="font-display text-[1.35rem] font-semibold tracking-tight text-ink">How these are made</p>
+                    <p className="mt-3 text-sm leading-relaxed text-muted">
+                      Every figure above is read from official timing and car telemetry, then computed into a
+                      database by deterministic analysis, with nothing estimated. An agent then picks the three
+                      findings you could not get from the timing screen, favouring a weakness in one area
+                      (qualifying, straight-line speed, tyre wear, corner grip) that explains an outcome in another.
+                      Each number is traceable back to the exact data it came from.
+                    </p>
+                  </div>
+                </BlurFade>
+              </div>
+            )}
+          </section>
         </BlurFade>
       )}
-
-      <section className="mt-16">
-        <SectionTitle>Your three insights</SectionTitle>
-        {!topReady ? (
-          <div className="grid max-w-5xl gap-4">
-            {[0, 1, 2].map((i) => (
-              <SkeletonCard key={i} className="min-h-[150px]" />
-            ))}
-          </div>
-        ) : !insights.data || insights.data.length === 0 ? (
-          <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
-        ) : (
-          <div className="max-w-5xl">
-            <div className="grid gap-4">
-              {insights.data.map((item, i) => (
-                <BlurFade key={item.slot} delay={0.06 * i}>
-                  <Insight item={item} />
-                </BlurFade>
-              ))}
-            </div>
-            <BlurFade delay={0.06 * insights.data.length + 0.06}>
-              <div className="glass mt-6 rounded-[--radius-panel] p-6">
-                <p className="font-display text-[1.35rem] font-semibold tracking-tight text-ink">How these are made</p>
-                <p className="mt-3 text-sm leading-relaxed text-muted">
-                  Every figure above is read from official timing and car telemetry, then computed into a
-                  database by deterministic analysis, with nothing estimated. An agent then picks the three
-                  findings you could not get from the timing screen, favouring a weakness in one area
-                  (qualifying, straight-line speed, tyre wear, corner grip) that explains an outcome in another.
-                  Each number is traceable back to the exact data it came from.
-                </p>
-              </div>
-            </BlurFade>
-          </div>
-        )}
-      </section>
 
       <section className="mt-20">
         <SectionTitle>Practice</SectionTitle>

@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
 import { TeamMark } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
-import { resolveTeamColor, teamColorWithAlpha, teamShortName } from '@/lib/teamColors'
+import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { spring } from '@/lib/motion'
 import type { DegradationData } from '@/lib/api'
 
 const WIDTH = 1100
 const HEIGHT = 420
-const MARGIN = { top: 16, right: 96, bottom: 52, left: 56 }
+const MARGIN = { top: 16, right: 24, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
@@ -111,28 +111,16 @@ export function DegradationChart({ data }: { data: DegradationData }) {
               if (!range) return null
               const [lo, hi] = range
               const stroke = resolveTeamColor(f.constructor)
-              const endY = y(f.slope_s_per_lap * hi + f.intercept_s)
               return (
-                <g key={f.constructor}>
-                  <line
-                    x1={x(lo)}
-                    y1={y(f.slope_s_per_lap * lo + f.intercept_s)}
-                    x2={x(hi)}
-                    y2={endY}
-                    stroke={stroke}
-                    strokeWidth={f.flagged ? 3.5 : 2}
-                  />
-                  <text
-                    x={x(hi) + 8}
-                    y={endY}
-                    dominantBaseline="middle"
-                    fill={stroke}
-                    fontSize={12}
-                    fontWeight={f.flagged ? 700 : 500}
-                  >
-                    {teamShortName(f.constructor)}
-                  </text>
-                </g>
+                <line
+                  key={f.constructor}
+                  x1={x(lo)}
+                  y1={y(f.slope_s_per_lap * lo + f.intercept_s)}
+                  x2={x(hi)}
+                  y2={y(f.slope_s_per_lap * hi + f.intercept_s)}
+                  stroke={stroke}
+                  strokeWidth={f.flagged ? 3.5 : 2}
+                />
               )
             })}
           </g>
@@ -158,10 +146,10 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         ))}
       </ol>
       <p className="mt-4 text-xs text-muted">
-        Fuel-corrected lap time against tyre age, per team, ranked worst wear first. The slope is
-        the wear rate; a bold line and label mark a team whose slope is well above the field for
-        that compound. The cause is not asserted here, only the measured cost and, where the data
-        supports it, the strategic consequence.
+        Fuel-corrected lap time against tyre age, per team, ranked worst wear first below and colored
+        to match on the chart. The slope is the wear rate; a bold line marks a team whose slope is
+        well above the field for that compound. The cause is not asserted here, only the measured
+        cost and, where the data supports it, the strategic consequence.
       </p>
     </m.div>
   )
