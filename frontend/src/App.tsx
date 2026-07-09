@@ -13,7 +13,9 @@ import { SubscribePage } from '@/pages/SubscribePage'
 // clicked from partway down the list opens at its heading, not mid-page.
 function ScrollToTop() {
   const { pathname } = useLocation()
-  useEffect(() => window.scrollTo(0, 0), [pathname])
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
   return null
 }
 
