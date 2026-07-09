@@ -22,8 +22,9 @@ PACE_CEILING_QUANTILE = 0.10
 
 # Gap-to-car-ahead below this is "dirty air": aero wake measurably costs the trailing car lap
 # time, so its pace there doesn't reflect the car's true potential (Mirco Bartolozzi/fdataanalysis:
-# gap-to-car-ahead is "the best approach, and the simplest one" for isolating clean-air pace).
-DIRTY_AIR_GAP_S = 1.5
+# gap-to-car-ahead is "the best approach, and the simplest one" for isolating clean-air pace;
+# asked directly for a threshold, his answer was "0.5s is a good threshold for that").
+DIRTY_AIR_GAP_S = 0.5
 
 
 @dataclass
