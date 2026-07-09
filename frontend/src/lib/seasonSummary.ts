@@ -160,9 +160,13 @@ export function seasonSummary(rows: SeasonConstructorRow[]): Record<string, Team
         .slice(0, perSide)
         .filter((p) => p.norm <= STRENGTH_CEILING)
         .map((p) => traitFor(p, 'strength')),
+      // a team leading on more metrics than fit in the strength slice can have surplus rank-1
+      // metrics tie-broken into this back slice (rank 1 always normalizes to 0); "Only 1st-X"
+      // would be a contradiction, so an outright #1 never counts as a weakness
       weaknesses: positions
         .slice(positions.length - perSide)
         .reverse()
+        .filter((p) => p.rank > 1)
         .map((p) => traitFor(p, 'weakness')),
     }
   }

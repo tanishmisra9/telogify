@@ -107,4 +107,26 @@ describe('seasonSummary', () => {
     const weaknessTexts = new Set(mid.weaknesses.map((t) => t.text))
     for (const t of strengthTexts) expect(weaknessTexts.has(t)).toBe(false)
   })
+
+  it('never lists an outright #1 metric as a weakness, even when a team leads on every channel', () => {
+    // 'Dominant' ranks 1st on all 6 metrics. Rank-1 always normalizes to 0, so with more than
+    // MAX_TRAITS_PER_SIDE (3) tied-at-zero metrics, the surplus would land in the back
+    // (weakness) slice via the metric-order tie-break alone -- "Only 1st-X" is a contradiction,
+    // so none of those surplus #1s should ever surface as a weakness.
+    const dominant = [
+      row({
+        constructor: 'Dominant',
+        pace_gap: agg(0.1, 0.1), // lowest spread too, so it also leads the consistency metric
+        quali_gap_pct: agg(0.1),
+        top_speed_deficit_kmh: 0,
+        tyre_deg_s_per_lap: 0.01,
+        sector_dominance_count: 10,
+      }),
+      row({ constructor: 'B', pace_gap: agg(0.6, 0.2), quali_gap_pct: agg(0.5), top_speed_deficit_kmh: 5, tyre_deg_s_per_lap: 0.05, sector_dominance_count: 4 }),
+      row({ constructor: 'C', pace_gap: agg(1.1, 0.3), quali_gap_pct: agg(0.9), top_speed_deficit_kmh: 10, tyre_deg_s_per_lap: 0.09, sector_dominance_count: 0 }),
+    ]
+    const s = seasonSummary(dominant)
+    expect(s['Dominant'].weaknesses).toEqual([])
+    expect(s['Dominant'].strengths.length).toBe(3)
+  })
 })
