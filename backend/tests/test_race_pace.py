@@ -252,13 +252,13 @@ def test_driver_distributions_single_lap_per_driver():
 
 def test_clean_air_laps_drops_laps_below_threshold():
     times = [90.0, 90.5, 91.0, 91.5]
-    gaps = [None, 0.8, 2.0, 1.5]  # leader (None), dirty air, clean, exactly at threshold
+    gaps = [None, 0.3, 2.0, 0.5]  # leader (None), dirty air, clean, exactly at threshold
     assert clean_air_laps(times, gaps) == [90.0, 91.0, 91.5]
 
 
 def test_box_stats_clean_air_median_ignores_dirty_laps():
     values = [90.0, 91.0, 95.0]  # 95.0 is a dirty-air lap, would drag the plain median up
-    gaps = [None, 2.0, 0.5]
+    gaps = [None, 2.0, 0.3]
     s = box_stats(values, [], gaps=gaps)
     assert s.clean_air_n_laps == 2
     assert s.clean_air_median == pytest.approx(90.5)
