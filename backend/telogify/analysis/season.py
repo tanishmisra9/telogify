@@ -21,7 +21,7 @@ from telogify.analysis.degradation import fit_all_groups
 from telogify.analysis.quali_character import fastest_qualifier_per_constructor
 from telogify.analysis.race_pace import constructor_median_gaps
 from telogify.analysis.sectors import sector_dominance
-from telogify.models import QualiCharacter, RaceWeekend, SectorBest, Session, Stint
+from telogify.models import AccelSample, QualiCharacter, RaceWeekend, SectorBest, Session, Stint
 
 # Weighting locked with the user: race pace 60%, qualifying 40%.
 RACE_WEIGHT = 0.6
@@ -269,3 +269,26 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
         )
 
     return {"year": year, "rounds": rounds_meta, "constructors": rows}
+
+
+def build_season_accel_scatter(year: int, db: DBSession) -> dict[str, list[list[float]]]:
+    """Pooled (speed_kmh, longitudinal_accel_ms2) points per constructor across every ingested
+    race this season, from AccelSample (one representative race lap per driver per weekend,
+    already filtered to full-throttle/no-brake/low-lateral-g). Raw pooling, not a per-round
+    mean or trend line: the scatter's shape across the season IS the visualization."""
+    weekends = db.exec(select(RaceWeekend).where(RaceWeekend.year == year)).all()
+    out: dict[str, list[list[float]]] = defaultdict(list)
+    for w in weekends:
+        race = db.exec(
+            select(Session).where(Session.weekend_id == w.id, Session.session_type == "R")
+        ).first()
+        if race is None:
+            continue
+        samples = db.exec(select(AccelSample).where(AccelSample.session_id == race.id)).all()
+        for s in samples:
+            if not s.constructor:
+                continue
+            out[s.constructor].extend(
+                [sp, ac] for sp, ac in zip(s.speed_kmh_json or [], s.longitudinal_accel_ms2_json or [])
+            )
+    return dict(out)

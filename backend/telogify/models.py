@@ -179,6 +179,24 @@ class DeploymentTrace(SQLModel, table=True):
     straights_json: list = Field(default_factory=list, sa_column=Column(JSON))
 
 
+class AccelSample(SQLModel, table=True):
+    """Full-throttle, no-brake, low-lateral-g (speed, longitudinal acceleration) points from one
+    representative race lap per driver, for the season-wide ERS deployment/harvesting scatter.
+    Longitudinal accel is derived the same way as deployment.py's clip detector; lateral accel is
+    derived from position curvature (see analysis/kinematics.py) since FastF1 exposes neither
+    directly. Data selection follows Mirco Bartolozzi's (fdataanalysis) stated approach."""
+
+    __tablename__ = "accel_sample"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    driver: str = Field(index=True)
+    constructor: str | None = None
+    # Index-aligned (speed_kmh, longitudinal accel m/s^2) pairs.
+    speed_kmh_json: list = Field(default_factory=list, sa_column=Column(JSON))
+    longitudinal_accel_ms2_json: list = Field(default_factory=list, sa_column=Column(JSON))
+
+
 class Attribution(SQLModel, table=True):
     __tablename__ = "attribution"
 

@@ -26,6 +26,7 @@ from telogify.analysis.constructor_index import build_constructor_index
 from telogify.analysis.fingerprints import store_fingerprints
 from telogify.analysis.schedule import completed_rounds, fetch_season_schedule
 from telogify.db import engine
+from telogify.ingest.accel_samples import store_accel_samples
 from telogify.ingest.loader import load_weekend
 from telogify.ingest.quali_character import store_quali_character
 from telogify.ingest.deployment import store_deployment
@@ -56,6 +57,7 @@ def _ingest(state: PipelineState) -> dict:
         store_quali_character(data, db)
         store_race_control(data, db)
         store_deployment(data, db)
+        store_accel_samples(data, db)
         store_weekend_recap(data, db)
         return {"weekend_id": data.weekend.id}
 

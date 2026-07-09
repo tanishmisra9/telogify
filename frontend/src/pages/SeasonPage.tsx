@@ -1,11 +1,18 @@
 import { Navigate, useParams } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
+import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
 import { heatBg, rankAsc } from '@/lib/heat'
 import { seasonSummary, type Trait } from '@/lib/seasonSummary'
-import { useApi, type SeasonConstructorRow, type SeasonSnapshot, type WeekendSummary } from '@/lib/api'
+import {
+  useApi,
+  type SeasonConstructorRow,
+  type SeasonDeploymentScatter,
+  type SeasonSnapshot,
+  type WeekendSummary,
+} from '@/lib/api'
 
 const CONF_LABEL: Record<string, string> = { low: 'low data', med: 'partial data' }
 
@@ -141,6 +148,7 @@ function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
 
 function SeasonView({ year }: { year: number }) {
   const season = useApi<SeasonSnapshot>(`/season/${year}`)
+  const deployment = useApi<SeasonDeploymentScatter>(`/season/${year}/deployment`)
   const rows = season.data?.constructors ?? []
 
   return (
@@ -195,6 +203,15 @@ function SeasonView({ year }: { year: number }) {
               a little away.
             </p>
           </section>
+
+          {deployment.data && Object.keys(deployment.data).length > 0 && (
+            <section className="mt-20">
+              <SectionTitle>ERS deployment</SectionTitle>
+              <BlurFade>
+                <SeasonDeploymentChart scatter={deployment.data} />
+              </BlurFade>
+            </section>
+          )}
         </>
       )}
     </main>

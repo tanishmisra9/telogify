@@ -75,6 +75,17 @@ def _acceleration_ms2(speed_kmh: np.ndarray, time_s: np.ndarray) -> np.ndarray:
     return np.gradient(v, time_s)
 
 
+def smoothed_longitudinal_acceleration_ms2(speed_kmh: list[float], time_s: list[float]) -> np.ndarray:
+    """Low-pass-filtered longitudinal acceleration (m/s^2): the same speed-smooth -> gradient ->
+    accel-smooth recipe detect_clipping uses, exposed for other consumers (e.g. the season-wide
+    ERS deployment scatter, which needs the raw (speed, accel) pairs rather than clip decisions)."""
+    sp = np.asarray(speed_kmh, dtype=float)
+    t = np.asarray(time_s, dtype=float)
+    sample_dt = float(np.median(np.diff(t))) if len(t) > 1 else 0.1
+    sp_smooth = _lowpass(sp, sample_dt)
+    return _lowpass(_acceleration_ms2(sp_smooth, t), sample_dt)
+
+
 def _fit_segment_baseline(seg_sp: np.ndarray, seg_accel: np.ndarray) -> np.ndarray | None:
     """Fit a = c0 + c1*v^2 from the rising-speed portion of one WOT straight."""
     rising: list[int] = []
@@ -186,7 +197,7 @@ def detect_clipping(
     sample_dt = float(np.median(np.diff(t))) if len(t) > 1 else 0.1
 
     sp_smooth = _lowpass(sp, sample_dt)
-    accel = _lowpass(_acceleration_ms2(sp_smooth, t), sample_dt)
+    accel = smoothed_longitudinal_acceleration_ms2(sp, t)
 
     segments: list[tuple[int, int, str]] = []
     i = 0

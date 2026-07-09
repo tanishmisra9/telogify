@@ -192,6 +192,9 @@ export interface SeasonSnapshot {
   constructors: SeasonConstructorRow[]
 }
 
+/** {constructor: [[speed_kmh, longitudinal_accel_ms2], ...]}, pooled across the season. */
+export type SeasonDeploymentScatter = Record<string, [number, number][]>
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
   if (!res.ok) throw new Error(`${res.status}`)
