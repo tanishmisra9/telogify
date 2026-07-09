@@ -18,6 +18,14 @@
         if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t
       } catch (e) {}
     </script>
+    <style>
+      /* index.css's --color-bg only applies once the bundled stylesheet loads (it's imported
+         via the JS module, not linked here), so without this the browser paints its own default
+         white background first. These two lines mirror --color-bg for both themes so the very
+         first paint is already on-brand instead of a white flash. */
+      html, body { background-color: #fffdd0; }
+      html[data-theme='dark'], html[data-theme='dark'] body { background-color: oklch(0.192 0.009 55); }
+    </style>
   </head>
   <body>
     <div id="root"></div>
