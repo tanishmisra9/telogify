@@ -17,6 +17,7 @@ from telogify.ingest.loader import WeekendData
 from telogify.models import Session, SessionResult
 
 _RACE_LIKE = {"Race", "Sprint"}
+_QUALI_LIKE = {"Qualifying", "Sprint Qualifying", "Sprint Shootout"}
 
 
 @dataclass
@@ -28,6 +29,9 @@ class ResultRow:
     total_time_s: float | None
     laps: float | None
     status: str | None
+    q1_time_s: float | None = None
+    q2_time_s: float | None = None
+    q3_time_s: float | None = None
 
 
 # Championship points by finishing position for a race. The fastest-lap point was
@@ -165,9 +169,17 @@ def _float(value) -> float | None:
         return None
 
 
+def _segment_time_s(row, column: str) -> float | None:
+    value = row.get(column)
+    if value is None or pd.isna(value):
+        return None
+    return value.total_seconds()
+
+
 def extract_results(session) -> list[ResultRow]:
     res = session.results
     is_race = session.name in _RACE_LIKE
+    is_quali = session.name in _QUALI_LIKE
 
     leader_laps: float | None = None
     if is_race:
@@ -199,6 +211,9 @@ def extract_results(session) -> list[ResultRow]:
                 total_time_s=time_s if (is_race and pos == 1) else None,
                 laps=laps,
                 status=status,
+                q1_time_s=_segment_time_s(r, "Q1") if is_quali else None,
+                q2_time_s=_segment_time_s(r, "Q2") if is_quali else None,
+                q3_time_s=_segment_time_s(r, "Q3") if is_quali else None,
             )
         )
     rows.sort(key=lambda x: (x.position is None, x.position or 0))
@@ -226,6 +241,9 @@ def store_results(data: WeekendData, db: DBSession) -> None:
                     total_time_s=r.total_time_s,
                     laps=r.laps,
                     status=r.status,
+                    q1_time_s=r.q1_time_s,
+                    q2_time_s=r.q2_time_s,
+                    q3_time_s=r.q3_time_s,
                 )
             )
     db.commit()

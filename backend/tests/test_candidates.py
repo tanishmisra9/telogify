@@ -1,9 +1,12 @@
+import pytest
+
 from telogify.analysis.candidates import (
     EXPECTATION_FLOOR,
     OBVIOUSNESS_DISCOUNT,
     Signal,
     correlate,
     expectation_factors,
+    linear_regression,
     normalize_and_score,
     rank,
 )
@@ -129,3 +132,21 @@ def test_recap_outcome_correlates_with_position_swing():
     combined = next(s for s in merged if s.subject == "Mercedes" and s.signal_type == "cross_session")
     assert combined.robustness > swing.robustness
     assert combined.robustness > recap.robustness
+
+
+def test_linear_regression_recovers_known_line():
+    xs = [300.0, 310.0, 320.0, 330.0]
+    ys = [90.0, 89.0, 88.0, 87.0]  # exact line: y = -0.1x + 120
+    fit = linear_regression(xs, ys)
+    assert fit is not None
+    slope, intercept = fit
+    assert slope == pytest.approx(-0.1)
+    assert intercept == pytest.approx(120.0)
+
+
+def test_linear_regression_none_without_x_spread():
+    assert linear_regression([300.0, 300.0, 300.0], [90.0, 89.0, 91.0]) is None
+
+
+def test_linear_regression_none_with_fewer_than_two_points():
+    assert linear_regression([300.0], [90.0]) is None

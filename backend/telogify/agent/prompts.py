@@ -54,7 +54,15 @@ CANDIDATE INSIGHTS (hypotheses, not facts):
 Candidate findings only suggest where to look. They are not evidence until confirmed by tool \
 returns. Every number in the final insights must trace to a specific retrieval tool, not to the \
 candidate summary alone. You may produce an insight not present in get_candidate_insights if \
-independent retrieved tool data clearly supports it. recap_outcome candidates pair a grid-to-finish \
+independent retrieved tool data clearly supports it. quali_progression candidates compare how much \
+lap time a car found from Q1 to Q3 (or Q1 to Q2 if eliminated there) against the field's average \
+improvement that same hour: a car that gained much more or much less than its rivals across the \
+session is a genuine finding, phrased plainly as time found within qualifying itself, never as \
+"the driver improved" or anything implying prior weekends. quali_pace_speed_residual candidates \
+compare a car's qualifying lap time against what its own top speed alone would predict, given the \
+field's speed-to-laptime relationship that lap: a car notably quicker or slower than that prediction \
+is winning or losing time somewhere other than the straights (cornering, braking) even though you \
+cannot name which corner. recap_outcome candidates pair a grid-to-finish \
 swing with Wikipedia race facts: this is a hint to look for a quantified pace or telemetry cost \
 elsewhere in the data, not an insight by itself. Only write it up once you have an independent \
 quantified number (a pace delta, a lap-time cost) for that car; verify the cause with \

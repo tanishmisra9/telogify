@@ -102,6 +102,11 @@ class SessionResult(SQLModel, table=True):
     total_time_s: float | None = None  # winner's total race time; None for everyone else
     laps: float | None = None
     status: str | None = None
+    # Qualifying-segment best times (Q/SQ sessions only; None everywhere else, and None for a
+    # segment a driver did not reach, e.g. a Q1-eliminated driver has no q2/q3_time_s).
+    q1_time_s: float | None = None
+    q2_time_s: float | None = None
+    q3_time_s: float | None = None
 
 
 class SectorBest(SQLModel, table=True):

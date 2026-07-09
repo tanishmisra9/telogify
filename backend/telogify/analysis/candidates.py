@@ -518,6 +518,174 @@ def _mine_quali_character(db, sessions):
     return out
 
 
+_QUALI_PROGRESSION_MIN_DEVIATION_S = 0.05
+
+
+def _mine_quali_progression_for_session(db, session: Session) -> list[Signal]:
+    """Q1->Q3 (or Q1->Q2, if eliminated in Q2) improvement per constructor's fastest car,
+    compared against the field average improvement: a car that found unusually more or less
+    time across the hour than its rivals is a genuine session-to-session story."""
+    rows = db.exec(select(SessionResult).where(SessionResult.session_id == session.id)).all()
+    candidates: list[dict] = []
+    for r in rows:
+        if r.constructor is None or r.q1_time_s is None:
+            continue
+        if r.q3_time_s is not None:
+            delta, reached = r.q1_time_s - r.q3_time_s, "Q3"
+        elif r.q2_time_s is not None:
+            delta, reached = r.q1_time_s - r.q2_time_s, "Q2"
+        else:
+            continue
+        candidates.append(
+            {
+                "constructor": r.constructor,
+                "driver": r.driver,
+                "delta_s": delta,
+                "reached": reached,
+                "q1_time_s": r.q1_time_s,
+                "q2_time_s": r.q2_time_s,
+                "q3_time_s": r.q3_time_s,
+            }
+        )
+    if len(candidates) < 3:
+        return []
+
+    best_per_constructor: dict[str, dict] = {}
+    for c in candidates:
+        final_time = c["q3_time_s"] if c["q3_time_s"] is not None else c["q2_time_s"]
+        existing = best_per_constructor.get(c["constructor"])
+        existing_final = (
+            existing["q3_time_s"] if existing and existing["q3_time_s"] is not None else (existing["q2_time_s"] if existing else None)
+        )
+        if existing is None or final_time < existing_final:
+            best_per_constructor[c["constructor"]] = c
+    reps = list(best_per_constructor.values())
+    if len(reps) < 3:
+        return []
+
+    field_avg = mean(r["delta_s"] for r in reps)
+    out: list[Signal] = []
+    for r in reps:
+        deviation = r["delta_s"] - field_avg
+        if abs(deviation) < _QUALI_PROGRESSION_MIN_DEVIATION_S:
+            continue
+        out.append(
+            Signal(
+                signal_type="quali_progression",
+                category="quali_character",
+                magnitude=abs(deviation),
+                confidence=0.8,
+                subject=r["constructor"],
+                session_type=session.session_type,
+                source_refs=[
+                    {
+                        "type": "quali_progression",
+                        "constructor": r["constructor"],
+                        "driver": r["driver"],
+                        "q1_time_s": r["q1_time_s"],
+                        "q2_time_s": r["q2_time_s"],
+                        "q3_time_s": r["q3_time_s"],
+                        "improvement_s": r["delta_s"],
+                        "field_average_improvement_s": field_avg,
+                        "reached": r["reached"],
+                        "session_type": session.session_type,
+                    }
+                ],
+            )
+        )
+    return out
+
+
+def _mine_quali_progression(db, sessions):
+    out: list[Signal] = []
+    for session_type in ("Q", "SQ"):
+        session = pick_session(sessions, (session_type,))
+        if session is not None:
+            out.extend(_mine_quali_progression_for_session(db, session))
+    return out
+
+
+def linear_regression(xs: list[float], ys: list[float]) -> tuple[float, float] | None:
+    """Ordinary least squares slope/intercept for y ~ x. None if x has no spread."""
+    n = len(xs)
+    if n < 2:
+        return None
+    mean_x, mean_y = mean(xs), mean(ys)
+    denom = sum((x - mean_x) ** 2 for x in xs)
+    if denom == 0:
+        return None
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denom
+    intercept = mean_y - slope * mean_x
+    return slope, intercept
+
+
+_QUALI_RESIDUAL_MIN_S = 0.05
+
+
+def _mine_quali_pace_speed_correlation_for_session(db, session: Session) -> list[Signal]:
+    """Residual of lap time regressed against top speed, per constructor's fastest qualifier: a
+    car whose lap time is much quicker or slower than its top speed alone predicts is winning or
+    losing that lap somewhere other than the straights."""
+    rows = db.exec(select(QualiCharacter).where(QualiCharacter.session_id == session.id)).all()
+    driver_rows = [
+        {
+            "constructor": r.constructor,
+            "driver": r.driver,
+            "lap_time_s": r.lap_time_s,
+            "top_speed_kmh": r.top_speed_kmh,
+        }
+        for r in rows
+        if r.constructor and r.lap_time_s is not None and r.top_speed_kmh is not None
+    ]
+    reps = fastest_qualifier_per_constructor(driver_rows)
+    if len(reps) < 4:
+        return []
+
+    fit = linear_regression([r["top_speed_kmh"] for r in reps], [r["lap_time_s"] for r in reps])
+    if fit is None:
+        return []
+    slope, intercept = fit
+
+    out: list[Signal] = []
+    for r in reps:
+        predicted = slope * r["top_speed_kmh"] + intercept
+        residual = r["lap_time_s"] - predicted
+        if abs(residual) < _QUALI_RESIDUAL_MIN_S:
+            continue
+        out.append(
+            Signal(
+                signal_type="quali_pace_speed_residual",
+                category="quali_character",
+                magnitude=abs(residual),
+                confidence=0.75,
+                subject=r["constructor"],
+                session_type=session.session_type,
+                source_refs=[
+                    {
+                        "type": "quali_pace_speed_residual",
+                        "constructor": r["constructor"],
+                        "driver": r["driver"],
+                        "lap_time_s": r["lap_time_s"],
+                        "top_speed_kmh": r["top_speed_kmh"],
+                        "predicted_lap_time_s": predicted,
+                        "residual_s": residual,
+                        "session_type": session.session_type,
+                    }
+                ],
+            )
+        )
+    return out
+
+
+def _mine_quali_pace_speed_correlation(db, sessions):
+    out: list[Signal] = []
+    for session_type in ("Q", "SQ"):
+        session = pick_session(sessions, (session_type,))
+        if session is not None:
+            out.extend(_mine_quali_pace_speed_correlation_for_session(db, session))
+    return out
+
+
 def _mine_degradation_for_session(
     db, session: Session, dc_map: dict[str, str], signal_type: str
 ) -> list[Signal]:
@@ -838,6 +1006,8 @@ def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
         + _mine_recap_outcomes(db, weekend_id, sessions, dc_map)
         + _mine_sector_deltas(db, sessions, dc_map)
         + _mine_quali_character(db, sessions)
+        + _mine_quali_progression(db, sessions)
+        + _mine_quali_pace_speed_correlation(db, sessions)
         + _mine_deployment(db, sessions)
         + _mine_degradation(db, sessions, dc_map)
         + _mine_sprint_vs_race_pace(db, sessions, dc_map)

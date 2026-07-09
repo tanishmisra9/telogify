@@ -205,3 +205,11 @@ def test_flags_retired_after_lap_number_regex():
 
 def test_flags_before_retiring_phrase():
     assert "before retiring" in flag_unsupported_claims("He lost ground before retiring from the race")
+
+
+def test_allows_within_session_qualifying_progression():
+    text = (
+        "The Williams found 0.612 seconds from Q1 to Q3, more than any other constructor gained "
+        "across the same hour, while the field average improvement was 0.310 seconds."
+    )
+    assert flag_unsupported_claims(text) == []

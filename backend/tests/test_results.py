@@ -1,6 +1,9 @@
+import pandas as pd
+
 from telogify.ingest.results import (
     compound_letter,
     compute_gap,
+    extract_results,
     format_gap_label,
     format_total_time,
     is_lapped,
@@ -10,6 +13,69 @@ from telogify.ingest.results import (
     sprint_points,
     strategy_string,
 )
+
+
+class _FakeSession:
+    def __init__(self, name: str, results: pd.DataFrame):
+        self.name = name
+        self.results = results
+
+
+def test_extract_results_captures_quali_segment_times():
+    results = pd.DataFrame(
+        [
+            {
+                "Position": 1,
+                "Abbreviation": "VER",
+                "TeamName": "Red Bull Racing",
+                "Time": pd.NaT,
+                "Laps": pd.NA,
+                "Status": "",
+                "Q1": pd.Timedelta(seconds=90.123),
+                "Q2": pd.Timedelta(seconds=89.456),
+                "Q3": pd.Timedelta(seconds=88.789),
+            },
+            {
+                "Position": 16,
+                "Abbreviation": "STR",
+                "TeamName": "Aston Martin",
+                "Time": pd.NaT,
+                "Laps": pd.NA,
+                "Status": "",
+                "Q1": pd.Timedelta(seconds=91.5),
+                "Q2": pd.NaT,
+                "Q3": pd.NaT,
+            },
+        ]
+    )
+    rows = extract_results(_FakeSession("Qualifying", results))
+    ver = next(r for r in rows if r.driver == "VER")
+    stroll = next(r for r in rows if r.driver == "STR")
+    assert ver.q1_time_s == 90.123
+    assert ver.q2_time_s == 89.456
+    assert ver.q3_time_s == 88.789
+    assert stroll.q1_time_s == 91.5
+    assert stroll.q2_time_s is None
+    assert stroll.q3_time_s is None
+
+
+def test_extract_results_no_quali_segments_for_race_session():
+    results = pd.DataFrame(
+        [
+            {
+                "Position": 1,
+                "Abbreviation": "VER",
+                "TeamName": "Red Bull Racing",
+                "Time": pd.Timedelta(seconds=5400),
+                "Laps": 58.0,
+                "Status": "Finished",
+            }
+        ]
+    )
+    rows = extract_results(_FakeSession("Race", results))
+    assert rows[0].q1_time_s is None
+    assert rows[0].q2_time_s is None
+    assert rows[0].q3_time_s is None
 
 
 def test_race_points_by_position():
