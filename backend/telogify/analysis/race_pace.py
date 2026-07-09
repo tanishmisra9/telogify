@@ -20,6 +20,11 @@ from statistics import mean
 # read: a comfortable winner who cruised shows a ceiling well below its median.
 PACE_CEILING_QUANTILE = 0.10
 
+# Gap-to-car-ahead below this is "dirty air": aero wake measurably costs the trailing car lap
+# time, so its pace there doesn't reflect the car's true potential (Mirco Bartolozzi/fdataanalysis:
+# gap-to-car-ahead is "the best approach, and the simplest one" for isolating clean-air pace).
+DIRTY_AIR_GAP_S = 1.5
+
 
 @dataclass
 class BoxStats:
@@ -33,6 +38,12 @@ class BoxStats:
     n_laps: int
     compounds: list[str]
     pace_ceiling: float
+    # Median of only the laps run with a car-ahead gap >= DIRTY_AIR_GAP_S (or no car ahead at
+    # all, e.g. the leader). None when no gap data was supplied or no lap qualifies. This is an
+    # additional read alongside `median`, not a replacement: the median-anchor ranking this app
+    # already validated across 2026 R1-8 is unchanged.
+    clean_air_median: float | None = None
+    clean_air_n_laps: int = 0
 
 
 @dataclass
@@ -58,8 +69,29 @@ def _quantile(sorted_vals: list[float], p: float) -> float:
     return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * frac
 
 
-def box_stats(values: list[float], compounds: list[str]) -> BoxStats:
-    """Compute box-plot statistics over a list of lap times (seconds)."""
+def clean_air_laps(
+    lap_times: list[float], gaps: list[float | None], threshold: float = DIRTY_AIR_GAP_S
+) -> list[float]:
+    """Lap times run with no car ahead, or a car ahead at least `threshold` seconds away.
+
+    lap_times and gaps must be the same length and index-aligned (Stint.lap_times_json /
+    Stint.gaps_to_car_ahead_json). A None gap means "no car ahead known" (e.g. the leader),
+    which counts as clean.
+    """
+    return [t for t, g in zip(lap_times, gaps) if g is None or g >= threshold]
+
+
+def box_stats(
+    values: list[float],
+    compounds: list[str],
+    *,
+    gaps: list[float | None] | None = None,
+) -> BoxStats:
+    """Compute box-plot statistics over a list of lap times (seconds).
+
+    gaps, if provided, must be index-aligned with values (gap to car ahead per lap) and adds
+    the clean_air_median/clean_air_n_laps fields; the ranking-relevant `median` is unaffected.
+    """
     if not values:
         raise ValueError("no laps")
     s = sorted(values)
@@ -73,6 +105,15 @@ def box_stats(values: list[float], compounds: list[str]) -> BoxStats:
     whisker_low = in_fence[0] if in_fence else s[0]
     whisker_high = in_fence[-1] if in_fence else s[-1]
     outliers = [v for v in s if v < fence_lo or v > fence_hi]
+
+    clean_air_median: float | None = None
+    clean_air_n = 0
+    if gaps is not None and len(gaps) == len(values):
+        clean = clean_air_laps(values, gaps)
+        clean_air_n = len(clean)
+        if clean:
+            clean_air_median = _quantile(sorted(clean), 0.5)
+
     return BoxStats(
         mean=mean(s),
         median=median,
@@ -84,6 +125,8 @@ def box_stats(values: list[float], compounds: list[str]) -> BoxStats:
         n_laps=len(s),
         compounds=compounds,
         pace_ceiling=_quantile(s, PACE_CEILING_QUANTILE),
+        clean_air_median=clean_air_median,
+        clean_air_n_laps=clean_air_n,
     )
 
 
@@ -113,6 +156,7 @@ class _Group:
     team: str | None
     laps: list[float] = field(default_factory=list)
     compounds: list[str | None] = field(default_factory=list)
+    gaps: list[float | None] = field(default_factory=list)
 
 
 def _pace_key(row: PaceRow, rank_by: str) -> float:
@@ -124,12 +168,13 @@ def _build_rows(groups: dict[str, _Group], *, rank_by: str = "median") -> list[P
     for gid, g in groups.items():
         if not g.laps:
             continue
+        gaps = g.gaps if len(g.gaps) == len(g.laps) else None
         rows.append(
             PaceRow(
                 id=gid,
                 label=gid,
                 team=g.team,
-                stats=box_stats(g.laps, _compound_tags(g.compounds)),
+                stats=box_stats(g.laps, _compound_tags(g.compounds), gaps=gaps),
                 gap_to_fastest_s=0.0,
             )
         )
@@ -156,7 +201,8 @@ def driver_distributions(stints: list[dict]) -> list[PaceRow]:
     """Per-driver PaceRows from a list of stint dicts.
 
     Each dict must have: driver (str), constructor (str|None), compound (str|None),
-    lap_times (list[float]).
+    lap_times (list[float]), and optionally gaps_to_car_ahead (list[float|None],
+    index-aligned with lap_times) for the clean_air_median stat.
     """
     groups: dict[str, _Group] = {}
     for st in stints:
@@ -164,6 +210,7 @@ def driver_distributions(stints: list[dict]) -> list[PaceRow]:
         g = groups.setdefault(driver, _Group(team=st.get("constructor")))
         g.laps.extend(st.get("lap_times") or [])
         g.compounds.append(st.get("compound"))
+        g.gaps.extend(st.get("gaps_to_car_ahead") or [])
     return _build_rows(groups)
 
 
@@ -175,6 +222,7 @@ def constructor_distributions(stints: list[dict]) -> list[PaceRow]:
         g = groups.setdefault(key, _Group(team=st.get("constructor")))
         g.laps.extend(st.get("lap_times") or [])
         g.compounds.append(st.get("compound"))
+        g.gaps.extend(st.get("gaps_to_car_ahead") or [])
     return _build_rows(groups)
 
 

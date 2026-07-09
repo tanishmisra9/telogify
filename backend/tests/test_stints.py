@@ -1,4 +1,6 @@
-from telogify.ingest.stints import summarize_stint
+import pytest
+
+from telogify.ingest.stints import compute_gaps_to_car_ahead, fuel_effect_for_race, summarize_stint
 
 
 def _lap(n, t, *, out=False, inn=False, acc=True, deleted=False, compound="MEDIUM", track_status="1", tyre_age=None):
@@ -109,3 +111,38 @@ def test_summarize_stint_tyre_age_missing_is_none():
     laps = [_lap(1, 90.0)]  # tyre_age defaults to None
     s = summarize_stint(1, laps)
     assert s.tyre_ages == [None]
+
+
+def test_fuel_effect_for_race_matches_kg_and_cost_per_kg():
+    # 70kg race allowance (2026 regs) at 0.025 s/kg over a 70-lap race -> 1kg/lap -> 0.025 s/lap.
+    assert fuel_effect_for_race(70) == pytest.approx(0.025)
+    # A shorter race burns fuel faster per lap, so the same total kg costs more time per lap.
+    assert fuel_effect_for_race(35) == pytest.approx(0.05)
+
+
+def _gap_lap(driver, lap_number, position, session_time_s):
+    return dict(driver=driver, lap_number=lap_number, position=position, session_time_s=session_time_s)
+
+
+def test_compute_gaps_to_car_ahead_leader_is_none():
+    laps = [
+        _gap_lap("VER", 10, 1, 1000.0),
+        _gap_lap("HAM", 10, 2, 1002.5),
+        _gap_lap("LEC", 10, 3, 1005.0),
+    ]
+    gaps = compute_gaps_to_car_ahead(laps)
+    assert gaps[("VER", 10)] is None
+    assert gaps[("HAM", 10)] == pytest.approx(2.5)
+    assert gaps[("LEC", 10)] == pytest.approx(2.5)
+
+
+def test_compute_gaps_to_car_ahead_skips_missing_position_or_time():
+    laps = [
+        _gap_lap("VER", 5, 1, 500.0),
+        _gap_lap("HAM", 5, None, 503.0),  # missing position, e.g. retired/no classification
+        _gap_lap("LEC", 5, 2, None),  # missing time
+    ]
+    gaps = compute_gaps_to_car_ahead(laps)
+    assert ("HAM", 5) not in gaps
+    assert ("LEC", 5) not in gaps
+    assert gaps[("VER", 5)] is None

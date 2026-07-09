@@ -31,11 +31,14 @@ class Settings(BaseSettings):
 
     web_base_url: str = "http://localhost:5173"
 
-    # Fuel-load correction: seconds per lap shed as fuel burns off.
-    # Industry heuristic used by most public F1 pace analyses (~0.065 s/lap for a
-    # typical 70-kg load over 60 laps). Multiply by (total_laps - lap_number) to
-    # estimate the extra time carried at that lap vs an empty tank.
-    fuel_effect_s_per_lap: float = 0.065
+    # Fuel-load correction: corrected = raw - fuel_time_cost_s_per_kg * burn_rate_kg_per_lap *
+    # (total_laps - lap_number), computed per race in ingest/stints.py since burn rate depends on
+    # that circuit's lap count. fuel_kg_per_race is the 2026 FIA race fuel allowance (down from
+    # 110kg pre-2026, https://www.formula1.com/en/latest/article/more-efficient-less-fuel-and-carbon-net-zero-7-things-you-need-to-know-about.ZhtzvU3cPCv8QO7jtFxQR).
+    # fuel_time_cost_s_per_kg is Mirco Bartolozzi's (fdataanalysis) stated per-kg cost, replacing
+    # the earlier flat 0.065 s/lap heuristic (which implied ~0.056 s/kg, over double this value).
+    fuel_kg_per_race: float = 70.0
+    fuel_time_cost_s_per_kg: float = 0.025
 
     wikipedia_recap_enabled: bool = True
     wikipedia_user_agent: str = (

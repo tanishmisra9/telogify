@@ -25,7 +25,6 @@ from telogify.analysis.candidates import compute_candidates
 from telogify.analysis.constructor_index import build_constructor_index
 from telogify.analysis.fingerprints import store_fingerprints
 from telogify.analysis.schedule import completed_rounds, fetch_season_schedule
-from telogify.config import settings
 from telogify.db import engine
 from telogify.ingest.loader import load_weekend
 from telogify.ingest.quali_character import store_quali_character
@@ -50,7 +49,7 @@ def _ingest(state: PipelineState) -> dict:
     with Session(engine) as db:
         data = load_weekend(state["year"], state["round"], db)
         store_straights(data, db)
-        store_stints(data, db, fuel_effect=settings.fuel_effect_s_per_lap)
+        store_stints(data, db)
         store_results(data, db)
         store_fingerprints(data, db)
         store_sector_bests(data, db)

@@ -9,6 +9,7 @@ from telogify.analysis.race_pace import (
     box_stats,
     chart_constructor_distributions,
     chart_driver_distributions,
+    clean_air_laps,
     constructor_distributions,
     constructor_median_gaps,
     driver_distributions,
@@ -244,3 +245,43 @@ def test_driver_distributions_single_lap_per_driver():
     assert len(rows) == 1
     assert rows[0].stats.n_laps == 1
     assert rows[0].stats.median == 89.5
+
+
+# --- clean-air pace --------------------------------------------------------
+
+
+def test_clean_air_laps_drops_laps_below_threshold():
+    times = [90.0, 90.5, 91.0, 91.5]
+    gaps = [None, 0.8, 2.0, 1.5]  # leader (None), dirty air, clean, exactly at threshold
+    assert clean_air_laps(times, gaps) == [90.0, 91.0, 91.5]
+
+
+def test_box_stats_clean_air_median_ignores_dirty_laps():
+    values = [90.0, 91.0, 95.0]  # 95.0 is a dirty-air lap, would drag the plain median up
+    gaps = [None, 2.0, 0.5]
+    s = box_stats(values, [], gaps=gaps)
+    assert s.clean_air_n_laps == 2
+    assert s.clean_air_median == pytest.approx(90.5)
+    # The unfiltered median (ranking-relevant) is unaffected by clean-air filtering.
+    assert s.median == 91.0
+
+
+def test_box_stats_clean_air_median_none_without_gaps():
+    s = box_stats([90.0, 91.0], [])
+    assert s.clean_air_median is None
+    assert s.clean_air_n_laps == 0
+
+
+def test_driver_distributions_populates_clean_air_median():
+    stints = [
+        {
+            "driver": "VER",
+            "constructor": "Red Bull",
+            "compound": "SOFT",
+            "lap_times": [90.0, 95.0],
+            "gaps_to_car_ahead": [None, 0.4],
+        }
+    ]
+    rows = driver_distributions(stints)
+    assert rows[0].stats.clean_air_median == 90.0
+    assert rows[0].stats.clean_air_n_laps == 1

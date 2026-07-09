@@ -88,6 +88,9 @@ class Stint(SQLModel, table=True):
     # Tyre age (laps on the current set) aligned index-for-index with lap_times_json,
     # so degradation analysis can regress fuel-corrected time against actual tyre age.
     tyre_ages_json: list = Field(default_factory=list, sa_column=Column(JSON))
+    # Gap to the car ahead in seconds (None if unknown, e.g. race leader), aligned
+    # index-for-index with lap_times_json, so clean-air pace can exclude dirty-air laps.
+    gaps_to_car_ahead_json: list = Field(default_factory=list, sa_column=Column(JSON))
 
 
 class SessionResult(SQLModel, table=True):

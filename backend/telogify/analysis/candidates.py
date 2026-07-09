@@ -263,6 +263,7 @@ def _mine_race_pace_for_session(
             "constructor": dc_map.get(st.driver),
             "compound": st.compound,
             "lap_times": st.lap_times_json or [],
+            "gaps_to_car_ahead": st.gaps_to_car_ahead_json or [],
         }
         for st in stints
         if dc_map.get(st.driver)
@@ -937,6 +938,7 @@ def _mine_recap_outcomes(
             "constructor": dc_map.get(st.driver),
             "compound": st.compound,
             "lap_times": st.lap_times_json or [],
+            "gaps_to_car_ahead": st.gaps_to_car_ahead_json or [],
         }
         for st in stints
         if dc_map.get(st.driver)
