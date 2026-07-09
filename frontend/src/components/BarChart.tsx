@@ -4,6 +4,9 @@ export interface BarChartRow {
   id: string
   label: string
   value: number
+  /** Shown above the bar instead of `value` when set (e.g. an absolute time while `value`
+   * drives bar height as a gap-to-fastest). */
+  displayValue?: number
   team?: string | null
 }
 
@@ -58,7 +61,7 @@ export function BarChart({
                 rx={2}
               />
               <text x={cx} y={top - 7} textAnchor="middle" fill="var(--color-ink)" fontSize={13} fontWeight={600} className="num">
-                {formatValue(r.value)}
+                {formatValue(r.displayValue ?? r.value)}
               </text>
               <text x={cx} y={INNER_H + 21} textAnchor="middle" fill="var(--color-ink)" fontSize={13.5} fontWeight={600}>
                 {r.label}

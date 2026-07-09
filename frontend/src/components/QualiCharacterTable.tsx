@@ -18,7 +18,7 @@ function HeadCell({ label, hint, align = 'right' }: { label: React.ReactNode; hi
   return (
     <th className={`px-4 py-2.5 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
       <Tooltip label={hint}>
-        <span tabIndex={0} className="cursor-help underline decoration-dotted decoration-muted/60 underline-offset-4">{label}</span>
+        <span tabIndex={0} className="cursor-help">{label}</span>
       </Tooltip>
     </th>
   )
@@ -61,14 +61,14 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
           <thead>
             <tr className="text-left text-xs text-muted">
               <th className="px-4 py-2.5 font-medium">Team</th>
-              <HeadCell label="Lap time" hint="Best single-lap qualifying time" />
-              <HeadCell label="Top speed" hint="Highest speed reached on the lap (km/h)" />
-              <HeadCell label="Min speed" hint="Slowest point on the lap, in the tightest corner: a read on mechanical grip" />
+              <HeadCell label="Lap time (s)" hint="Best single-lap qualifying time" />
+              <HeadCell label="Top speed (km/h)" hint="Highest speed reached on the lap" />
+              <HeadCell label="Min speed (km/h)" hint="Slowest point on the lap, in the tightest corner: a read on mechanical grip" />
               <HeadCell
-                label={`Fastest corner${data.fastest_corner_number != null ? ` (T${data.fastest_corner_number})` : ''}`}
+                label={`Fastest corner (km/h)${data.fastest_corner_number != null ? ` (T${data.fastest_corner_number})` : ''}`}
                 hint="Speed carried through the lap's fastest corner: a read on downforce"
               />
-              <HeadCell label="Full throttle" hint="Share of the lap spent at full throttle" />
+              <HeadCell label="Full throttle (%)" hint="Share of the lap spent at full throttle" />
             </tr>
           </thead>
           <tbody>
@@ -96,12 +96,30 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
       </div>
 
       {data.sector_dominance.length > 0 && (
-        <p className="mt-5 text-xs text-muted">
-          Sector dominance:{' '}
-          {data.sector_dominance
-            .map((d) => `S${d.sector} ${d.constructor}${d.margin_s != null ? ` (+${d.margin_s.toFixed(3)}s)` : ''}`)
-            .join(', ')}
-        </p>
+        <div className="mt-6 border-t border-border pt-5">
+          <p className="kicker text-muted">Sector dominance</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {data.sector_dominance.map((d) => (
+              <div key={d.sector} className="rounded-[--radius-panel] border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted">Sector {d.sector}</span>
+                  {d.constructor && <TeamRule team={d.constructor} />}
+                </div>
+                {d.constructor ? (
+                  <>
+                    <p className="mt-1 text-sm font-medium text-ink">{d.constructor}</p>
+                    <p className="num mt-0.5 text-sm text-muted">
+                      {d.best_time_s.toFixed(3)}s
+                      {d.margin_s != null && <span className="text-accent"> +{d.margin_s.toFixed(3)}s</span>}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-muted">No clear best</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
       <p className="mt-2 text-xs text-muted">
         Every figure is from each team's fastest representative lap in this session; cells shade toward the accent as a

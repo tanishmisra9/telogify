@@ -12,7 +12,9 @@ export function bindMetricSpaces(text: string): string {
   return text.replace(re, '$1\u00a0$2')
 }
 
-const NUM_RE = /(\d[\d.,]*(?:st|nd|rd|th|\s?(?:seconds?|metres?|meters?|km\/h|mph|°C|%|km|m|s))?)/g
+// The trailing (?![a-zA-Z]) stops the bare "s"/"m" unit alternatives from swallowing the first
+// letter of the next word ("lap 7, served" must not match "7, s" out of "served").
+const NUM_RE = /(\d[\d.,]*(?:st|nd|rd|th|\s?(?:seconds?|metres?|meters?|km\/h|mph|°C|%|km|m|s)(?![a-zA-Z]))?)/g
 
 export function emphasize(text: string): ReactNode[] {
   return text.split(NUM_RE).map((part, i) =>

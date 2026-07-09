@@ -30,6 +30,9 @@ describe('emphasize', () => {
     expect(accents('gained 0.22 seconds a lap')).toEqual(['0.22 seconds'])
     expect(accents('a gap of +2 positions')).toEqual(['2'])
   })
+  it('does not swallow the first letter of the next word after a bare number', () => {
+    expect(accents('on lap 7, served notice that it could win')).toEqual(['7,'])
+  })
 })
 
 describe('bindMetricSpaces', () => {

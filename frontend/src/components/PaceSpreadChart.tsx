@@ -133,9 +133,11 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                       <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
                         {s.mean.toFixed(2)}
                       </text>
-                      <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
-                        +{row.gap_to_fastest_s.toFixed(2)}s
-                      </text>
+                      {row.gap_to_fastest_s > 0 && (
+                        <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
+                          +{row.gap_to_fastest_s.toFixed(2)}s
+                        </text>
+                      )}
                       <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
@@ -148,9 +150,11 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                       <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
                         {s.mean.toFixed(2)}
                       </text>
-                      <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
-                        +{row.gap_to_fastest_s.toFixed(2)}s
-                      </text>
+                      {row.gap_to_fastest_s > 0 && (
+                        <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
+                          +{row.gap_to_fastest_s.toFixed(2)}s
+                        </text>
+                      )}
                       <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>

@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
 import { TeamMark } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
-import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
+import { resolveTeamColor, teamColorWithAlpha, teamShortName } from '@/lib/teamColors'
 import { spring } from '@/lib/motion'
 import type { DegradationData } from '@/lib/api'
 
 const WIDTH = 1100
 const HEIGHT = 420
-const MARGIN = { top: 16, right: 16, bottom: 52, left: 56 }
+const MARGIN = { top: 16, right: 96, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
@@ -44,20 +44,9 @@ export function DegradationChart({ data }: { data: DegradationData }) {
       : [p.tyre_age, p.tyre_age]
   }
 
-  const rankedFits = [...fits].sort((a, b) => a.slope_s_per_lap - b.slope_s_per_lap)
-  // Split so the ranking reads down column 1 (best wear) then down column 2 (worst).
-  const mid = Math.ceil(rankedFits.length / 2)
-  const renderFit = (f: (typeof rankedFits)[number]) => (
-    <li key={f.constructor} className="flex items-center gap-2 text-sm">
-      <TeamMark team={f.constructor} className="w-32 font-medium" />
-      <span className="num text-xs text-muted">{f.slope_s_per_lap >= 0 ? '+' : ''}{f.slope_s_per_lap.toFixed(3)}s/lap</span>
-      {data.reference_age_laps != null && (
-        <span className="num text-xs text-muted">
-          ({f.cost_at_reference_s >= 0 ? '+' : ''}{f.cost_at_reference_s.toFixed(2)}s over {data.reference_age_laps} laps)
-        </span>
-      )}
-    </li>
-  )
+  // Ranked worst-wear-first (steepest slope first) so the chart's most-flagged line and the
+  // list's top row are the same story read two ways, not two columns whose order is ambiguous.
+  const rankedFits = [...fits].sort((a, b) => b.slope_s_per_lap - a.slope_s_per_lap)
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4)
   const xTickCount = Math.min(6, xMax + 1)
   const xTicks = Array.from({ length: xTickCount }, (_, i) => Math.round((xMax * i) / (xTickCount - 1 || 1)))
@@ -112,8 +101,9 @@ export function DegradationChart({ data }: { data: DegradationData }) {
               Tyre age (laps)
             </text>
 
+            {/* Raw laps sit as a faint texture; the labeled fit line is the actual finding. */}
             {points.map((p, i) => (
-              <circle key={i} cx={x(p.tyre_age)} cy={y(p.lap_time_s)} r={1.5} fill={teamColorWithAlpha(p.constructor, 0.3)} />
+              <circle key={i} cx={x(p.tyre_age)} cy={y(p.lap_time_s)} r={1.5} fill={teamColorWithAlpha(p.constructor, 0.16)} />
             ))}
 
             {fits.map((f) => {
@@ -121,30 +111,57 @@ export function DegradationChart({ data }: { data: DegradationData }) {
               if (!range) return null
               const [lo, hi] = range
               const stroke = resolveTeamColor(f.constructor)
+              const endY = y(f.slope_s_per_lap * hi + f.intercept_s)
               return (
-                <line
-                  key={f.constructor}
-                  x1={x(lo)}
-                  y1={y(f.slope_s_per_lap * lo + f.intercept_s)}
-                  x2={x(hi)}
-                  y2={y(f.slope_s_per_lap * hi + f.intercept_s)}
-                  stroke={stroke}
-                  strokeWidth={f.flagged ? 3.5 : 2}
-                />
+                <g key={f.constructor}>
+                  <line
+                    x1={x(lo)}
+                    y1={y(f.slope_s_per_lap * lo + f.intercept_s)}
+                    x2={x(hi)}
+                    y2={endY}
+                    stroke={stroke}
+                    strokeWidth={f.flagged ? 3.5 : 2}
+                  />
+                  <text
+                    x={x(hi) + 8}
+                    y={endY}
+                    dominantBaseline="middle"
+                    fill={stroke}
+                    fontSize={12}
+                    fontWeight={f.flagged ? 700 : 500}
+                  >
+                    {teamShortName(f.constructor)}
+                  </text>
+                </g>
               )
             })}
           </g>
         </svg>
       )}
 
-      <div className="mt-5 grid gap-x-6 sm:grid-cols-2">
-        <ol className="grid content-start gap-1.5">{rankedFits.slice(0, mid).map(renderFit)}</ol>
-        <ol className="grid content-start gap-1.5">{rankedFits.slice(mid).map(renderFit)}</ol>
-      </div>
+      <ol className="mt-5 grid gap-1.5">
+        {rankedFits.map((f, i) => (
+          <li key={f.constructor} className="flex items-center gap-2 text-sm">
+            <span className="num w-4 text-xs text-muted">{i + 1}</span>
+            <TeamMark team={f.constructor} className="w-32 font-medium" />
+            <span className="num text-xs text-muted">
+              {f.slope_s_per_lap >= 0 ? '+' : ''}
+              {f.slope_s_per_lap.toFixed(3)}s/lap
+            </span>
+            {data.reference_age_laps != null && (
+              <span className="num text-xs text-muted">
+                ({f.cost_at_reference_s >= 0 ? '+' : ''}
+                {f.cost_at_reference_s.toFixed(2)}s over {data.reference_age_laps} laps)
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
       <p className="mt-4 text-xs text-muted">
-        Fuel-corrected lap time against tyre age, per team. The slope is the wear rate; a bold line
-        marks a team whose slope is well above the field for that compound. The cause is not asserted
-        here, only the measured cost and, where the data supports it, the strategic consequence.
+        Fuel-corrected lap time against tyre age, per team, ranked worst wear first. The slope is
+        the wear rate; a bold line and label mark a team whose slope is well above the field for
+        that compound. The cause is not asserted here, only the measured cost and, where the data
+        supports it, the strategic consequence.
       </p>
     </m.div>
   )

@@ -33,13 +33,14 @@ function PracticeSectorChart({ sector, rows }: { sector: number; rows: SectorBes
     id: r.driver,
     label: r.driver,
     value: r.best_time_s - fastest,
+    displayValue: r.best_time_s,
     team: r.constructor,
   }))
 
   return (
     <div>
       <h3 className="mb-2 text-[1.35rem] font-semibold text-ink">Sector {sector}</h3>
-      <BarChart rows={bars} formatValue={(v) => v.toFixed(3)} />
+      <BarChart rows={bars} formatValue={(v) => `${v.toFixed(3)}s`} />
     </div>
   )
 }
@@ -182,8 +183,8 @@ export function WeekendPage() {
               ))}
             </div>
             <BlurFade delay={0.06 * insights.data.length + 0.06}>
-              <div className="mt-6 rounded-[--radius-panel] border border-border p-6">
-                <p className="kicker text-accent">How these are made</p>
+              <div className="glass mt-6 rounded-[--radius-panel] p-6">
+                <p className="font-display text-[1.35rem] font-semibold tracking-tight text-ink">How these are made</p>
                 <p className="mt-3 text-sm leading-relaxed text-muted">
                   Every figure above is read from official timing and car telemetry, then computed into a
                   database by deterministic analysis, with nothing estimated. An agent then picks the three
