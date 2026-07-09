@@ -1,8 +1,8 @@
 import type { SeasonConstructorRow } from '@/lib/api'
 
-// Every car gets a field-relative read: its strongest area and its weakest, each quantified as a
-// GAP to the field leader on that metric, so the number agrees exactly with the ranking table
-// above it (which is anchored to the leader too). A genuinely poor car keeps its weakness but
+// Every car gets a field-relative read: up to its 3 strongest areas and 3 weakest, each quantified
+// as a GAP to the field leader on that metric, so the numbers agree exactly with the ranking table
+// above it (which is anchored to the leader too). A genuinely poor car keeps its weaknesses but
 // shows no strength rather than dressing up a bottom-third rank with an up-mark. Templated, not
 // generated: the model has no role here, same register as qualiInsights.ts.
 
@@ -11,9 +11,14 @@ export interface Trait {
   detail: string // the gap to the leader, e.g. "+0.21s" (may be empty)
 }
 export interface TeamSummary {
-  strength: Trait | null
-  weakness: Trait | null
+  strengths: Trait[] // best-first, up to MAX_TRAITS_PER_SIDE; empty when nothing qualifies
+  weaknesses: Trait[] // worst-first, up to MAX_TRAITS_PER_SIDE
 }
+
+// A car can legitimately show more than one real strength/weakness (6 metrics are ranked below),
+// so this isn't capped at a token single line per side; 3 is a ceiling to keep the card scannable,
+// not a target every team is expected to fill.
+const MAX_TRAITS_PER_SIDE = 3
 
 const ordinal = (n: number) => {
   const s = ['th', 'st', 'nd', 'rd']
@@ -141,19 +146,24 @@ export function seasonSummary(rows: SeasonConstructorRow[]): Record<string, Team
     const positions: Pos[] = ranked
       .filter(({ r }) => r![team])
       .map(({ m, order, r }) => ({ m, order, ...r![team] }))
-    if (positions.length === 0) {
-      out[team] = { strength: null, weakness: null }
-      continue
-    }
-    // best relative area first, worst last; tie-break by metric order so strength and weakness
-    // never collapse to the same metric when a team ranks identically across channels.
+    // best relative area first, worst last; tie-break by metric order so the same metric never
+    // gets picked for both sides when a team ranks identically across several channels.
     positions.sort((a, b) => a.norm - b.norm || a.order - b.order)
-    const bestPos = positions[0]
-    const worstPos = positions[positions.length - 1]
+
+    // Split without overlap: a front slice for strengths, a back slice for weaknesses. A team with
+    // only 1-2 ranked metrics can't fill three deep on both sides, and any metric left in the
+    // middle (neither clearly a strength nor a weakness) is dropped rather than forced onto a side.
+    const perSide = Math.min(MAX_TRAITS_PER_SIDE, Math.floor(positions.length / 2))
     out[team] = {
       // don't dress up a bottom-third best as a strength; a genuinely poor car shows none
-      strength: bestPos !== worstPos && bestPos.norm <= STRENGTH_CEILING ? traitFor(bestPos, 'strength') : null,
-      weakness: worstPos !== bestPos ? traitFor(worstPos, 'weakness') : null,
+      strengths: positions
+        .slice(0, perSide)
+        .filter((p) => p.norm <= STRENGTH_CEILING)
+        .map((p) => traitFor(p, 'strength')),
+      weaknesses: positions
+        .slice(positions.length - perSide)
+        .reverse()
+        .map((p) => traitFor(p, 'weakness')),
     }
   }
   return out
