@@ -27,6 +27,7 @@ from telogify.analysis.sectors import best_across_sessions
 from telogify.analysis.sessions import pick_session
 from telogify.ingest.wikipedia_parse import fact_mentions_driver
 from telogify.models import (
+    AccelSample,
     Attribution,
     CandidateInsight,
     DeploymentTrace,
@@ -895,6 +896,71 @@ def _mine_deployment(db, sessions):
     return out
 
 
+_ERS_HARVEST_BAND_KMH = (150.0, 250.0)  # deployment.py's clip-detector consistency range
+_ERS_MIN_BAND_POINTS = 8
+_ERS_SLOPE_MIN_DEVIATION = 0.01  # m/s^2 per km/h; below this, teams read as indistinguishable
+
+
+def _mine_ers_character(db: DBSession, sessions: list[Session], dc_map: dict[str, str]) -> list[Signal]:
+    """Race-pace ERS deployment CHARACTER: how much a car's full-throttle acceleration rises with
+    speed through the harvesting-dominant band (150-250 km/h), from AccelSample. A steep slope
+    means harvesting ramps up hard with speed (Red Bull-style, per fdataanalysis); a flat slope
+    means the car deploys/harvests near-constantly across that range (Mercedes-style). This is a
+    measured acceleration-vs-speed shape, not an inferred battery strategy."""
+    race = pick_session(sessions, ("R",))
+    if race is None:
+        return []
+    samples = db.exec(select(AccelSample).where(AccelSample.session_id == race.id)).all()
+    by_constructor: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for s in samples:
+        if not s.constructor:
+            continue
+        by_constructor[s.constructor].extend(zip(s.speed_kmh_json or [], s.longitudinal_accel_ms2_json or []))
+    if len(by_constructor) < 3:
+        return []
+
+    lo, hi = _ERS_HARVEST_BAND_KMH
+    slopes: dict[str, tuple[float, int]] = {}
+    for constructor, points in by_constructor.items():
+        band = [(sp, ac) for sp, ac in points if lo <= sp <= hi]
+        if len(band) < _ERS_MIN_BAND_POINTS:
+            continue
+        fit = linear_regression([p[0] for p in band], [p[1] for p in band])
+        if fit is None:
+            continue
+        slopes[constructor] = (fit[0], len(band))
+    if len(slopes) < 3:
+        return []
+
+    field_avg = mean(v[0] for v in slopes.values())
+    out: list[Signal] = []
+    for constructor, (slope, n_points) in slopes.items():
+        deviation = slope - field_avg
+        if abs(deviation) < _ERS_SLOPE_MIN_DEVIATION:
+            continue
+        out.append(
+            Signal(
+                signal_type="ers_deployment_character",
+                category="deployment",
+                magnitude=abs(deviation),
+                confidence=0.7,
+                subject=constructor,
+                session_type="R",
+                source_refs=[
+                    {
+                        "type": "ers_deployment_character",
+                        "constructor": constructor,
+                        "harvesting_slope_ms2_per_kmh": slope,
+                        "field_average_slope": field_avg,
+                        "n_points": n_points,
+                        "band_kmh": list(_ERS_HARVEST_BAND_KMH),
+                    }
+                ],
+            )
+        )
+    return out
+
+
 _RECAP_KIND_WEIGHT: dict[str, float] = {
     "damage": 1.0,
     "retirement": 0.95,
@@ -1011,6 +1077,7 @@ def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
         + _mine_quali_progression(db, sessions)
         + _mine_quali_pace_speed_correlation(db, sessions)
         + _mine_deployment(db, sessions)
+        + _mine_ers_character(db, sessions, dc_map)
         + _mine_degradation(db, sessions, dc_map)
         + _mine_sprint_vs_race_pace(db, sessions, dc_map)
     )

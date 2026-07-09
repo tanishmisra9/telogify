@@ -207,6 +207,14 @@ def test_flags_before_retiring_phrase():
     assert "before retiring" in flag_unsupported_claims("He lost ground before retiring from the race")
 
 
+def test_allows_measured_ers_deployment_character_language():
+    text = (
+        "The Red Bull's acceleration rose 0.32 metres per second squared for every 1 km/h through "
+        "the 150 to 250 km/h range, far steeper than the field average of 0.08."
+    )
+    assert flag_unsupported_claims(text) == []
+
+
 def test_allows_within_session_qualifying_progression():
     text = (
         "The Williams found 0.612 seconds from Q1 to Q3, more than any other constructor gained "

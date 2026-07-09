@@ -8,11 +8,15 @@ Returns are JSON strings so the tool output is auditable verbatim in source_tool
 """
 
 import json
+from collections import defaultdict
+from statistics import mean
 
 from sqlmodel import Session, select
 
+from telogify.analysis.candidates import _ERS_HARVEST_BAND_KMH, _ERS_MIN_BAND_POINTS, linear_regression
 from telogify.db import engine
 from telogify.models import (
+    AccelSample,
     Attribution,
     CandidateInsight,
     ConstructorIndex,
@@ -307,6 +311,54 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
             )
 
     @tool
+    def get_race_deployment_character(constructor: str = "") -> str:
+        """Race-pace ERS deployment/harvesting character per constructor: how much full-throttle
+        acceleration rises with speed through the 150-250 km/h harvesting-dominant band, from
+        full-throttle/no-brake/low-lateral-g samples on one representative race lap per driver.
+        harvesting_slope_ms2_per_kmh: a steep positive slope means harvesting ramps up hard with
+        speed; a flat slope near the field average means the car deploys/harvests near-constantly
+        across that range. This is a measured acceleration-vs-speed shape only: do not infer
+        battery state, harvesting strategy, or software behavior from it. Pass a constructor name
+        to filter, blank for all. Returns [] when there are too few cars with data this weekend."""
+        with sf() as db:
+            wid = _weekend_id(db, year, round_num)
+            sid = _session_id(db, wid, "R") if wid is not None else None
+            if sid is None:
+                return json.dumps([])
+            samples = db.exec(select(AccelSample).where(AccelSample.session_id == sid)).all()
+            by_constructor: dict[str, list[tuple[float, float]]] = defaultdict(list)
+            for s in samples:
+                if s.constructor:
+                    by_constructor[s.constructor].extend(
+                        zip(s.speed_kmh_json or [], s.longitudinal_accel_ms2_json or [])
+                    )
+            lo, hi = _ERS_HARVEST_BAND_KMH
+            slopes: dict[str, tuple[float, int]] = {}
+            for c, points in by_constructor.items():
+                band = [(sp, ac) for sp, ac in points if lo <= sp <= hi]
+                if len(band) < _ERS_MIN_BAND_POINTS:
+                    continue
+                fit = linear_regression([p[0] for p in band], [p[1] for p in band])
+                if fit is not None:
+                    slopes[c] = (fit[0], len(band))
+            if len(slopes) < 3:
+                return json.dumps([])
+            field_avg = mean(v[0] for v in slopes.values())
+            rows = [
+                {
+                    "constructor": c,
+                    "harvesting_slope_ms2_per_kmh": round(slope, 4),
+                    "field_average_slope": round(field_avg, 4),
+                    "n_points": n,
+                    "band_kmh": list(_ERS_HARVEST_BAND_KMH),
+                }
+                for c, (slope, n) in slopes.items()
+                if not constructor or c == constructor
+            ]
+            rows.sort(key=lambda r: r["harvesting_slope_ms2_per_kmh"])
+            return json.dumps(rows)
+
+    @tool
     def get_weekend_recap() -> str:
         """Structured Wikipedia recap for this weekend's SQ, SPRINT (if run), Q, and R sessions.
         Use for on-track EVENT context only: retirements with cause and lap, collisions,
@@ -333,6 +385,7 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
         get_candidate_insights,
         get_race_control_events,
         get_deployment,
+        get_race_deployment_character,
         get_weekend_recap,
         get_straight_speed,
         get_corner_delta,

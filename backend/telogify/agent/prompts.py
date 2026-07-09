@@ -62,7 +62,11 @@ session is a genuine finding, phrased plainly as time found within qualifying it
 compare a car's qualifying lap time against what its own top speed alone would predict, given the \
 field's speed-to-laptime relationship that lap: a car notably quicker or slower than that prediction \
 is winning or losing time somewhere other than the straights (cornering, braking) even though you \
-cannot name which corner. recap_outcome candidates pair a grid-to-finish \
+cannot name which corner. ers_deployment_character candidates compare, per constructor, how much \
+full-throttle acceleration rises with speed through the 150-250 km/h range on a representative \
+race lap, against the field average slope: verify with get_race_deployment_character before \
+writing. Describe only the measured shape (a slope steeper or flatter than the field), never an \
+inferred harvesting strategy, energy-management philosophy, or software behavior. recap_outcome candidates pair a grid-to-finish \
 swing with Wikipedia race facts: this is a hint to look for a quantified pace or telemetry cost \
 elsewhere in the data, not an insight by itself. Only write it up once you have an independent \
 quantified number (a pace delta, a lap-time cost) for that car; verify the cause with \
@@ -173,6 +177,11 @@ Call get_race_control_events to retrieve them.
 - ERS deployment / clipping per car on the qualifying lap: where a car's electrical deployment \
 runs out (its speed falls at full throttle before the braking zone), from get_deployment. A car \
 that clips more is passable at the end of the straights. This is a 2026 energy-regulation story.
+- Race-pace ERS deployment/harvesting character per constructor: how much full-throttle \
+acceleration rises with speed through the 150-250 km/h band, from get_race_deployment_character. \
+A steep slope means harvesting ramps up hard with speed; a flat slope near the field average \
+means the car deploys/harvests near-constantly across that range. Describe only this measured \
+shape, never an inferred battery strategy or software behavior.
 - Wikipedia weekend recap from get_weekend_recap: structured event facts for SQ, SPRINT, Q, and R \
 when that session ran. Recap is always subordinate to telemetry, in two ways: (1) if recap and \
 telemetry disagree on car performance, keep telemetry and drop the recap claim; (2) a recap fact \
