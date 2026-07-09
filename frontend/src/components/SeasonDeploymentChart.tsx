@@ -5,7 +5,7 @@ import type { SeasonDeploymentScatter } from '@/lib/api'
 
 const WIDTH = 1100
 const HEIGHT = 460
-const MARGIN = { top: 16, right: 24, bottom: 52, left: 56 }
+const MARGIN = { top: 24, right: 24, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
@@ -62,12 +62,7 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
           <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
             Speed (km/h)
           </text>
-          <text
-            transform={`translate(${-40}, ${INNER_H / 2}) rotate(-90)`}
-            textAnchor="middle"
-            fill="var(--color-muted)"
-            fontSize={12}
-          >
+          <text x={0} y={-8} textAnchor="start" fill="var(--color-muted)" fontSize={12}>
             Longitudinal acceleration (m/s²)
           </text>
 

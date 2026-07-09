@@ -33,7 +33,9 @@ function PracticeSectorChart({ sector, rows }: { sector: number; rows: SectorBes
   const bars = sorted.map((r, i) => ({
     id: r.driver,
     label: r.driver,
-    value: r.best_time_s - fastest,
+    // No driver can be faster than `fastest` by definition; clamp away the floating-point noise
+    // that otherwise shows up as e.g. "-0.000s" on the leader's own row or the axis's zero tick.
+    value: Math.max(0, r.best_time_s - fastest),
     // Only the leader shows its absolute time; everyone else falls back to `value` (the gap).
     displayValue: i === 0 ? r.best_time_s : undefined,
     team: r.constructor,

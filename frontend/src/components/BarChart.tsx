@@ -11,7 +11,11 @@ export interface BarChartRow {
   team?: string | null
 }
 
-const MARGIN = { top: 16, right: 12, bottom: 34, left: 56 }
+// Real breathing room on every edge, not just enough for the average case: an <svg> element
+// clips at its own viewBox edge by default, so a wide axis tick (e.g. "+1.293s"), the last bar's
+// hover label, or the tallest bar's hover label (it sits right above the top gridline) all get
+// visibly truncated without this margin.
+const MARGIN = { top: 28, right: 36, bottom: 34, left: 64 }
 const WIDTH = 1200
 const HEIGHT = 260
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
@@ -69,8 +73,9 @@ export function BarChart({
               onMouseEnter={() => setHoveredId(r.id)}
               onMouseLeave={() => setHoveredId((h) => (h === r.id ? null : h))}
             >
-              {/* Full column-width hit area so hovering near a thin bar still triggers it. */}
-              <rect x={i * step} y={0} width={step} height={INNER_H} fill="transparent" />
+              {/* Full column-width AND full chart-height (margins included) hit area, so hovering
+                 anywhere above/below a short bar, or over its label, still triggers it. */}
+              <rect x={i * step} y={-MARGIN.top} width={step} height={HEIGHT} fill="transparent" />
               <rect
                 x={cx - bw / 2}
                 y={top}

@@ -12,10 +12,14 @@ const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
 type Metric = 'pace' | 'quali' | 'cumulative'
 const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualifying', cumulative: 'Cumulative' }
+// 100 = that round's fastest team on this metric, increasing downward as the gap grows. For
+// qualifying this is a literal percentage of the fastest lap time; for pace (a seconds gap) and
+// cumulative (a raw score) it's the same index convention applied for a consistent axis across
+// all three tabs, not a true percentage of those units.
 const UNIT: Record<Metric, (v: number) => string> = {
-  pace: (v) => `+${v.toFixed(1)}s`,
+  pace: (v) => `${(100 + v).toFixed(1)}%`,
   quali: (v) => `${(100 + v).toFixed(1)}%`,
-  cumulative: (v) => v.toFixed(2),
+  cumulative: (v) => `${(100 + v).toFixed(1)}%`,
 }
 
 // One line per constructor: gap to the round's fastest team, round by round. Lower is
@@ -118,8 +122,10 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         ))}
       </div>
       <p className="mt-3 text-xs text-muted">
-        Gap to each round's fastest team, round by round. Lower is better, so a line near the
-        top ran at the front all season and a line dropping away lost ground as the season went on.
+        Gap to each round's fastest team, round by round. 100% is that round's fastest team on
+        this metric; higher is further behind, so a line near the top ran at the front all season
+        and a line dropping away lost ground. For race pace and cumulative, the percentage is an
+        index for a consistent axis across tabs, not a literal percentage of seconds or score.
       </p>
     </m.div>
   )

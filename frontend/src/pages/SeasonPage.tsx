@@ -206,7 +206,7 @@ function SeasonView({ year }: { year: number }) {
 
           {deployment.data && Object.keys(deployment.data).length > 0 && (
             <section className="mt-20">
-              <SectionTitle>ERS deployment</SectionTitle>
+              <SectionTitle>Deployment</SectionTitle>
               <BlurFade>
                 <SeasonDeploymentChart scatter={deployment.data} />
               </BlurFade>
