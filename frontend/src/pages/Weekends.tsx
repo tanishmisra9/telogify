@@ -7,7 +7,7 @@ export function Weekends() {
   const weekends = [...(data ?? [])].sort((a, b) => a.year - b.year || a.round - b.round)
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
+    <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
       <BlurFade>
         <div className="flex items-end justify-between gap-4 border-b-2 border-ink pb-3">
           <h1 className="font-display text-6xl leading-[0.95] tracking-tight sm:text-7xl">
@@ -42,7 +42,15 @@ export function Weekends() {
                     {w.country ? ` · ${w.country}` : ''}
                   </span>
                 </span>
-                <span className="num pr-6 text-sm text-muted">{w.year}</span>
+                <span className="num text-sm text-muted">{w.year}</span>
+                {/* Affordance: rows are links; the arrow arrives on hover in the same
+                    direction the title nudges, so the whole row reads as one gesture. */}
+                <span
+                  aria-hidden
+                  className="w-6 pr-1 text-xl text-accent opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-100"
+                >
+                  →
+                </span>
               </Link>
             </li>
           </BlurFade>

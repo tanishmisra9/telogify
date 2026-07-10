@@ -66,7 +66,7 @@ function LiveInsight() {
 
 export function Landing() {
   return (
-    <main className="mx-auto max-w-6xl px-6 py-20 sm:py-28">
+    <main className="mx-auto max-w-[1312px] px-6 py-20 sm:py-28">
       <section>
         <BlurFade>
           <h1 className="font-display text-6xl leading-[1.04] tracking-tight sm:text-7xl xl:text-8xl">

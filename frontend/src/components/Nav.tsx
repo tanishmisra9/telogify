@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
+import { LogoMark } from '@/components/Logo'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Tooltip } from '@/components/Tooltip'
 
@@ -12,10 +13,11 @@ export function Nav() {
   const { pathname } = useLocation()
   return (
     <header className="sticky top-0 z-40 border-b-[1.5px] border-ink bg-glass backdrop-blur-md">
-      <nav className="mx-auto flex max-w-6xl flex-col items-start gap-2 px-6 py-3 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:py-0">
+      <nav className="mx-auto flex max-w-[1312px] flex-col items-start gap-2 px-6 py-3 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:py-0">
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <Link to="/" className="group flex items-baseline gap-2" aria-label="Telogify home">
+          <Link to="/" className="group flex items-center gap-2.5 text-ink" aria-label="Telogify home">
+            <LogoMark />
             <span className="font-display text-3xl leading-none tracking-tight">
               Telo<span className="text-accent">gify</span>
             </span>
@@ -30,9 +32,9 @@ export function Nav() {
                   to={l.to}
                   aria-current={active ? 'page' : undefined}
                   aria-label={l.label}
-                  className={`kicker border px-3 py-2 transition-colors ${
+                  className={`kicker border-b-2 px-3 py-2 transition-colors ${
                     active
-                      ? 'border-ink bg-ink text-bg'
+                      ? 'border-accent font-semibold text-ink'
                       : 'border-transparent text-muted hover:border-ink hover:text-ink'
                   }`}
                 >

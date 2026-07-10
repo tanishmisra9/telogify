@@ -20,7 +20,10 @@ export function SubscribePage() {
   }
 
   return (
-    <main className="mx-auto max-w-lg px-6 py-24">
+    // Outer container matches every other page so the heading's left edge lines up
+    // sitewide; the lg cap keeps the form itself at a comfortable reading width.
+    <main className="mx-auto max-w-[1312px] px-6 py-24">
+      <div className="max-w-lg">
       <BlurFade>
         <p className="kicker text-accent">The digest</p>
         <h1 className="mt-4 font-display text-6xl leading-[0.95] tracking-tight">
@@ -67,6 +70,7 @@ export function SubscribePage() {
           </form>
         </BlurFade>
       )}
+      </div>
     </main>
   )
 }

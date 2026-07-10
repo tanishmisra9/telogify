@@ -1,5 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#1a1b22"/>
-  <circle cx="16" cy="16" r="7" fill="none" stroke="#f0b34a" stroke-width="3"/>
-  <circle cx="16" cy="16" r="2.5" fill="#f0b34a"/>
+  <!-- Telogify mark, identical geometry to components/Logo.tsx: telemetry noise resolving
+       into a clean signal line. Ink flips with the OS scheme; the accent stays the brand red. -->
+  <style>
+    .ink { stroke: #37322d; }
+    @media (prefers-color-scheme: dark) {
+      .ink { stroke: #f2ede4; }
+    }
+  </style>
+  <g fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path class="ink" d="M2 16 L6 7 L10 25 L13 11 L16 20 L18 16" />
+    <path d="M18 16 L30 16" stroke="#e10600" />
+  </g>
 </svg>
