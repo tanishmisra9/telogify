@@ -30,14 +30,20 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
   --color-bg: oklch(0.192 0.009 55);        /* warm espresso, not cold black */
-  --color-surface: oklch(0.238 0.011 55);   /* lifted card */
+  --color-surface: oklch(0.27 0.012 55);    /* lifted card: a real step up from bg, not a
+                                                near-match, so panels visibly separate before
+                                                the shadow even reads */
   --color-glass: oklch(0.192 0.009 55 / 74%);
   --color-ink: oklch(0.938 0.009 82);       /* warm paper-white */
   --color-muted: oklch(0.668 0.013 72);
   --color-accent: oklch(0.64 0.232 28);     /* the red, nudged brighter to glow on dark */
   --color-accent-ink: oklch(0.98 0.01 82);
   --color-border: oklch(0.938 0.009 82 / 16%);
-  --color-shadow: oklch(0.085 0.006 55);    /* near-black: depth, not a bright bar */
+  /* Was oklch(0.085 ...), nearly the same lightness as --color-bg (0.192): the signature hard
+     offset shadow all but disappeared at night, flattening the printed-card look that reads
+     strongly by day. Pushed close to true black so the offset silhouette is unmistakable again,
+     the same brutalist move carried through instead of going quiet in the dark. */
+  --color-shadow: oklch(0.03 0.004 55);
 }
 
 @layer base {
