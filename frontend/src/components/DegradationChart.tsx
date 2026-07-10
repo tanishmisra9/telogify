@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { m, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { TeamMark } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
@@ -12,17 +12,42 @@ const MARGIN = { top: 16, right: 24, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
+// Ease-out-quint: a clean "drawing" feel for the line reveal, no bounce.
+const DRAW_TRANSITION = {
+  pathLength: { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const },
+  opacity: { duration: 0.2 },
+}
+
 export function DegradationChart({ data }: { data: DegradationData }) {
   const reduce = useReducedMotion()
   const compounds = Array.from(new Set(data.fits.map((f) => f.compound))).sort()
   const [compound, setCompound] = useState<string | null>(compounds[0] ?? null)
+  // Empty = show every team (today's default). Not reset on compound switch,
+  // so a comparison survives moving between Hard/Medium/Soft.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   if (!compound) {
     return <p className="text-sm text-muted">No race tyre data yet.</p>
   }
 
+  const toggleTeam = (team: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(team)) next.delete(team)
+      else next.add(team)
+      return next
+    })
+
   const fits = data.fits.filter((f) => f.compound === compound)
   const points = data.points.filter((p) => p.compound === compound)
+  // Selection persists across compound tabs, but a team's selection can be meaningless for a
+  // compound it never ran (no entry in `fits`). If every selected team is absent here, fall back
+  // to showing the full field for this compound rather than an empty chart — the established
+  // "nothing selected = show everyone" behavior, just reached a different way. The selection
+  // itself is untouched, so it resumes if the user switches back to a compound it does apply to.
+  const isFiltering = selected.size > 0 && fits.some((f) => selected.has(f.constructor))
+  const visibleFits = isFiltering ? fits.filter((f) => selected.has(f.constructor)) : fits
+  const visiblePoints = isFiltering ? points.filter((p) => selected.has(p.constructor)) : points
 
   const ages = points.map((p) => p.tyre_age)
   const times = points.map((p) => p.lap_time_s)
@@ -102,63 +127,82 @@ export function DegradationChart({ data }: { data: DegradationData }) {
             </text>
 
             {/* Raw laps sit as a faint texture; the labeled fit line is the actual finding. */}
-            {points.map((p, i) => (
+            {visiblePoints.map((p, i) => (
               <circle key={i} cx={x(p.tyre_age)} cy={y(p.lap_time_s)} r={1.5} fill={teamColorWithAlpha(p.constructor, 0.16)} />
             ))}
 
-            {fits.map((f) => {
-              const range = ageRangeByConstructor[f.constructor]
-              if (!range) return null
-              const [lo, hi] = range
-              const stroke = resolveTeamColor(f.constructor)
-              return (
-                <line
-                  key={f.constructor}
-                  x1={x(lo)}
-                  y1={y(f.slope_s_per_lap * lo + f.intercept_s)}
-                  x2={x(hi)}
-                  y2={y(f.slope_s_per_lap * hi + f.intercept_s)}
-                  stroke={stroke}
-                  strokeWidth={f.flagged ? 3.5 : 2}
-                />
-              )
-            })}
+            <AnimatePresence>
+              {visibleFits.map((f) => {
+                const range = ageRangeByConstructor[f.constructor]
+                if (!range) return null
+                const [lo, hi] = range
+                const stroke = resolveTeamColor(f.constructor)
+                return (
+                  <m.line
+                    key={f.constructor}
+                    x1={x(lo)}
+                    y1={y(f.slope_s_per_lap * lo + f.intercept_s)}
+                    x2={x(hi)}
+                    y2={y(f.slope_s_per_lap * hi + f.intercept_s)}
+                    stroke={stroke}
+                    strokeWidth={f.flagged ? 3.5 : 2}
+                    initial={reduce ? false : { pathLength: 0, opacity: 0 }}
+                    animate={{ pathLength: 1, opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={reduce ? { duration: 0 } : DRAW_TRANSITION}
+                  />
+                )
+              })}
+            </AnimatePresence>
           </g>
         </svg>
       )}
 
-      {/* Compact ranked block, worst wear first, in the same kicker-labeled grammar as the
-          Car character panel's sector dominance. The reference-lap context is stated once in
-          the label instead of being repeated in every row. */}
+      {/* Ranked worst wear first. Native CSS multi-column, not a grid: a grid with
+          sm:grid-cols-2/xl:grid-cols-3 fills row-major (rank 1, 2, 3 across the top, then 4,
+          5, 6), so the eye zigzags instead of reading straight down the ranking. Columns fill
+          top-to-bottom automatically, which is both the correct reading order and the compact,
+          space-efficient shape a single top-down list can't give an 11-team field. Column count
+          is driven by available width (up to 3, each at least 15rem), so it collapses to one
+          column on mobile with no breakpoint classes needed.
+
+          Also the click-to-isolate control for the chart above: each row is a real button, since
+          it's the de facto legend. Clicking toggles that team into `selected`; the chart filters
+          to just the selected teams (or everyone, when nothing's selected) and the newly-shown
+          line draws itself in. */}
       <div className="mt-6 border-t border-border pt-5">
-        <p className="kicker text-muted">
-          Wear rate, worst first
-          {data.reference_age_laps != null && ` · cost over ${data.reference_age_laps} laps`}
-        </p>
-        <ol className="mt-3 grid gap-x-10 gap-y-2 sm:grid-cols-2 xl:grid-cols-3">
-          {rankedFits.map((f, i) => (
-            <li key={f.constructor} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_auto] items-center gap-x-3 text-sm">
-              <span className="num text-xs text-muted">{i + 1}</span>
-              <TeamMark team={f.constructor} className="font-medium" />
-              <span className="num text-xs text-ink">
-                {f.slope_s_per_lap >= 0 ? '+' : ''}
-                {f.slope_s_per_lap.toFixed(3)}s/lap
-              </span>
-              {data.reference_age_laps != null ? (
-                <span className="num text-xs text-muted">
-                  {f.cost_at_reference_s >= 0 ? '+' : ''}
-                  {f.cost_at_reference_s.toFixed(2)}s
-                </span>
-              ) : (
-                <span />
-              )}
-            </li>
-          ))}
+        <ol className="[column-count:3] [column-width:15rem] gap-x-10">
+          {rankedFits.map((f, i) => {
+            const isSelected = selected.has(f.constructor)
+            const isDimmed = isFiltering && !isSelected
+            return (
+              <li key={f.constructor}>
+                <button
+                  type="button"
+                  onClick={() => toggleTeam(f.constructor)}
+                  aria-pressed={isSelected}
+                  aria-label={`${isSelected ? 'Show every team again' : `Isolate ${f.constructor}'s wear line`}`}
+                  className={`grid min-h-11 w-full cursor-pointer [break-inside:avoid] grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1 text-left text-sm shadow-[inset_0_0_0_1.5px_transparent] transition-[opacity,box-shadow] duration-150 hover:shadow-[inset_0_0_0_1.5px_var(--color-ink)] ${
+                    isDimmed ? 'opacity-40' : ''
+                  }`}
+                  style={{ backgroundColor: teamColorWithAlpha(f.constructor, isSelected ? 0.2 : 0.09) }}
+                >
+                  <span className="num text-xs text-muted">{i + 1}</span>
+                  <TeamMark team={f.constructor} className={isSelected ? 'font-semibold' : 'font-medium'} />
+                  <span className="num text-xs text-ink">
+                    {f.slope_s_per_lap >= 0 ? '+' : ''}
+                    {f.slope_s_per_lap.toFixed(3)}s/lap
+                  </span>
+                </button>
+              </li>
+            )
+          })}
         </ol>
       </div>
       <p className="mt-4 text-xs text-muted">
-        Fuel-corrected lap time against tyre age. The slope is the wear rate; a bold line marks
-        wear well above the field on that compound.
+        Fuel-corrected lap time against tyre age; a bold line marks wear well above the field.
+        Ranked worst wear first below — click a team to isolate its line, click again to bring it
+        back.
       </p>
     </m.div>
   )
