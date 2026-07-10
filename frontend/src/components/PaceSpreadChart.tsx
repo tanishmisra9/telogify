@@ -127,7 +127,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
 
                   {viewMode === 'drivers' ? (
                     <>
-                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={500}>
+                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={500} className="font-display">
                         {row.label}
                       </text>
                       <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
@@ -144,7 +144,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                     </>
                   ) : (
                     <>
-                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={600} className="uppercase tracking-wide">
+                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={600} className="font-display uppercase tracking-wide">
                         {teamShortName(row.team)}
                       </text>
                       <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">

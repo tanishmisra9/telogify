@@ -108,9 +108,11 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
                 {d.constructor ? (
                   <>
                     <p className="mt-1 text-sm font-medium text-ink">{d.constructor}</p>
+                    {/* margin_s is the cushion OVER the next-best team; "+X.XXXs" reads as a
+                        deficit everywhere else on the site, so phrase it as an advantage. */}
                     <p className="num mt-0.5 text-sm text-muted">
                       {d.best_time_s.toFixed(3)}s
-                      {d.margin_s != null && <span className="text-accent"> +{d.margin_s.toFixed(3)}s</span>}
+                      {d.margin_s != null && <span className="text-accent"> {d.margin_s.toFixed(3)}s clear</span>}
                     </p>
                   </>
                 ) : (

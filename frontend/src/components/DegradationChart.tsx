@@ -127,29 +127,38 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         </svg>
       )}
 
-      <ol className="mt-5 grid gap-1.5">
-        {rankedFits.map((f, i) => (
-          <li key={f.constructor} className="flex items-center gap-2 text-sm">
-            <span className="num w-4 text-xs text-muted">{i + 1}</span>
-            <TeamMark team={f.constructor} className="w-32 font-medium" />
-            <span className="num text-xs text-muted">
-              {f.slope_s_per_lap >= 0 ? '+' : ''}
-              {f.slope_s_per_lap.toFixed(3)}s/lap
-            </span>
-            {data.reference_age_laps != null && (
-              <span className="num text-xs text-muted">
-                ({f.cost_at_reference_s >= 0 ? '+' : ''}
-                {f.cost_at_reference_s.toFixed(2)}s over {data.reference_age_laps} laps)
+      {/* Compact ranked block, worst wear first, in the same kicker-labeled grammar as the
+          Car character panel's sector dominance. The reference-lap context is stated once in
+          the label instead of being repeated in every row. */}
+      <div className="mt-6 border-t border-border pt-5">
+        <p className="kicker text-muted">
+          Wear rate, worst first
+          {data.reference_age_laps != null && ` · cost over ${data.reference_age_laps} laps`}
+        </p>
+        <ol className="mt-3 grid gap-x-10 gap-y-2 sm:grid-cols-2 xl:grid-cols-3">
+          {rankedFits.map((f, i) => (
+            <li key={f.constructor} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_auto] items-center gap-x-3 text-sm">
+              <span className="num text-xs text-muted">{i + 1}</span>
+              <TeamMark team={f.constructor} className="font-medium" />
+              <span className="num text-xs text-ink">
+                {f.slope_s_per_lap >= 0 ? '+' : ''}
+                {f.slope_s_per_lap.toFixed(3)}s/lap
               </span>
-            )}
-          </li>
-        ))}
-      </ol>
+              {data.reference_age_laps != null ? (
+                <span className="num text-xs text-muted">
+                  {f.cost_at_reference_s >= 0 ? '+' : ''}
+                  {f.cost_at_reference_s.toFixed(2)}s
+                </span>
+              ) : (
+                <span />
+              )}
+            </li>
+          ))}
+        </ol>
+      </div>
       <p className="mt-4 text-xs text-muted">
-        Fuel-corrected lap time against tyre age, per team, ranked worst wear first below and colored
-        to match on the chart. The slope is the wear rate; a bold line marks a team whose slope is
-        well above the field for that compound. The cause is not asserted here, only the measured
-        cost and, where the data supports it, the strategic consequence.
+        Fuel-corrected lap time against tyre age. The slope is the wear rate; a bold line marks
+        wear well above the field on that compound.
       </p>
     </m.div>
   )
