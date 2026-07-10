@@ -17,11 +17,8 @@ export function SubscribePage() {
       </BlurFade>
 
       <BlurFade delay={0.06}>
-        <p className="glass lift mt-12 rounded-[--radius-panel] p-6 text-ink">
-          <span className="kicker text-accent">Coming soon</span>
-          <span className="mt-2 block text-muted">
-            The email digest is still in the works. Check back soon to subscribe.
-          </span>
+        <p className="glass lift mt-12 rounded-[--radius-panel] p-8 font-display text-3xl tracking-tight text-ink">
+          Coming soon
         </p>
       </BlurFade>
       </div>

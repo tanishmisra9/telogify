@@ -6,6 +6,7 @@ import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
 import { heatBg, rankAsc } from '@/lib/heat'
 import { seasonSummary, type Trait } from '@/lib/seasonSummary'
+import { teamColorWithAlpha } from '@/lib/teamColors'
 import {
   useApi,
   type SeasonConstructorRow,
@@ -64,10 +65,13 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
       </li>
       {rows.map((r, i) => {
         const b = i > 0 ? 'border-t border-border' : ''
+        // Only the rank + team columns carry the team-color wash; the metric cells already use
+        // heatBg to shade by rank, and layering a second color meaning there would muddy both.
+        const wash = { backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }
         return (
           <li key={r.constructor} className="contents">
-            <span className={`num py-3 text-sm text-muted ${b}`}>{r.overall_rank ?? '–'}</span>
-            <span className={`flex items-center gap-2 py-3 font-medium text-ink ${b}`}>
+            <span className={`num py-3 pl-2 text-sm text-muted ${b}`} style={wash}>{r.overall_rank ?? '–'}</span>
+            <span className={`flex items-center gap-2 py-3 pr-2 font-medium text-ink ${b}`} style={wash}>
               <TeamRule team={r.constructor} />
               {r.constructor}
               <ConfidenceChip confidence={r.confidence} />
@@ -126,7 +130,10 @@ function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
           const s = summary[r.constructor]
           return (
             <li key={r.constructor} className={`py-7 ${i > 0 ? 'border-t border-border' : ''}`}>
-              <div className="flex items-center gap-2.5">
+              <div
+                className="inline-flex items-center gap-2.5 rounded-[--radius-panel] px-3 py-1.5"
+                style={{ backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }}
+              >
                 <TeamRule team={r.constructor} className="h-[1.1em]" />
                 <h3 className="font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
                   {r.constructor}
