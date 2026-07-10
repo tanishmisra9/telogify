@@ -69,7 +69,7 @@ export function Landing() {
     <main className="mx-auto max-w-6xl px-6 py-20 sm:py-28">
       <section>
         <BlurFade>
-          <h1 className="font-display text-6xl leading-[1.04] tracking-tight sm:text-8xl xl:text-[9rem]">
+          <h1 className="font-display text-6xl leading-[1.04] tracking-tight sm:text-7xl xl:text-8xl">
             Every weekend,
             <br />
             cut the <span className="text-accent">noise</span>.
@@ -77,15 +77,15 @@ export function Landing() {
         </BlurFade>
 
         <BlurFade delay={0.08}>
-          <div className="mt-10">
-            <CTAs />
-          </div>
+          <p className="mt-8 max-w-2xl font-display text-3xl leading-tight tracking-tight text-ink sm:text-4xl">
+            The result tells you who won. The number tells you why.
+          </p>
         </BlurFade>
 
         <BlurFade delay={0.14}>
-          <p className="mt-10 max-w-2xl font-display text-3xl leading-tight tracking-tight text-ink sm:text-4xl">
-            The result tells you who won. The number tells you why.
-          </p>
+          <div className="mt-10">
+            <CTAs />
+          </div>
         </BlurFade>
       </section>
 
