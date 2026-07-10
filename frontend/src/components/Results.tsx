@@ -10,31 +10,33 @@ export function Results({ rows }: { rows: ResultRow[] }) {
   if (rows.length === 0) return <p className="text-sm text-muted">No results.</p>
 
   return (
-    <ol className={GRID} aria-label="Finishing order">
-      <li className="contents" aria-hidden>
-        <span className={HEAD} />
-        <span className={HEAD}>Driver</span>
-        <span className={HEAD}>Team</span>
-        <span className={HEAD}>Tyres</span>
-        <span className={`${HEAD} text-right`}>Pts</span>
-        <span className={`${HEAD} text-right`}>Time</span>
-      </li>
-      {rows.map((r, i) => {
-        const b = i > 0 ? 'border-t border-border' : ''
-        return (
-          <li key={`${r.position}-${r.driver}`} className="contents">
-            <span className={`num px-2 py-3 text-sm text-muted ${b}`}>{r.position ?? '–'}</span>
-            <span className={`flex items-center gap-2 px-2 py-3 font-medium text-ink ${b}`}>
-              <TeamRule team={r.constructor} />
-              {r.driver}
-            </span>
-            <span className={`px-2 py-3 text-sm text-ink ${b}`}>{r.constructor}</span>
-            <span className={`num px-2 py-3 text-sm tracking-wide text-ink ${b}`}>{r.strategy}</span>
-            <span className={`num px-2 py-3 text-right text-sm font-medium text-ink ${b}`}>{r.points > 0 ? r.points : ''}</span>
-            <span className={`num px-2 py-3 text-right text-sm text-ink ${b}`}>{r.gap_label}</span>
-          </li>
-        )
-      })}
-    </ol>
+    <div className="overflow-x-auto">
+      <ol className={`${GRID} min-w-[480px]`} aria-label="Finishing order">
+        <li className="contents" aria-hidden>
+          <span className={HEAD} />
+          <span className={HEAD}>Driver</span>
+          <span className={HEAD}>Team</span>
+          <span className={HEAD}>Tyres</span>
+          <span className={`${HEAD} text-right`}>Pts</span>
+          <span className={`${HEAD} text-right`}>Time</span>
+        </li>
+        {rows.map((r, i) => {
+          const b = i > 0 ? 'border-t border-border' : ''
+          return (
+            <li key={`${r.position}-${r.driver}`} className="contents">
+              <span className={`num px-2 py-3 text-sm text-muted ${b}`}>{r.position ?? '–'}</span>
+              <span className={`flex items-center gap-2 px-2 py-3 font-medium text-ink ${b}`}>
+                <TeamRule team={r.constructor} />
+                {r.driver}
+              </span>
+              <span className={`px-2 py-3 text-sm text-ink ${b}`}>{r.constructor}</span>
+              <span className={`num px-2 py-3 text-sm tracking-wide text-ink ${b}`}>{r.strategy}</span>
+              <span className={`num px-2 py-3 text-right text-sm font-medium text-ink ${b}`}>{r.points > 0 ? r.points : ''}</span>
+              <span className={`num px-2 py-3 text-right text-sm text-ink ${b}`}>{r.gap_label}</span>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }

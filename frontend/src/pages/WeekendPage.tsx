@@ -109,7 +109,7 @@ function Upcoming({ children }: { children: React.ReactNode }) {
 // Reserve the practice block's footprint so the page doesn't grow when the two charts land.
 function PracticeSkeleton() {
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
       <SkeletonCard className="min-h-[560px]" />
       <SkeletonCard className="min-h-[300px]" />
     </div>
@@ -216,7 +216,7 @@ export function WeekendPage() {
         ) : !practiceHappened ? (
           <Upcoming>Practice hasn't run yet. Best sectors and top speeds appear here once it has.</Upcoming>
         ) : (
-          <div className="grid gap-6">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {sectors.data ? (
               <ScrollReveal>
                 <PracticeSectors data={sectors.data} />
@@ -268,7 +268,7 @@ export function WeekendPage() {
       <section className="mt-20">
         <SectionTitle>Race</SectionTitle>
         {!sessionsLoaded ? (
-          <div className="grid gap-6">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
             <SkeletonCard className="min-h-[600px]" />
             <SkeletonCard className="min-h-[540px]" />
             <SkeletonCard className="min-h-[400px]" />
@@ -279,7 +279,7 @@ export function WeekendPage() {
             it has.
           </Upcoming>
         ) : (
-          <div className="grid gap-6">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {pace.data ? (
               <ScrollReveal>
                 <PaceSpreadChart pace={pace.data} />
