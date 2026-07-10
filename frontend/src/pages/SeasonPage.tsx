@@ -19,7 +19,7 @@ const CONF_LABEL: Record<string, string> = { low: 'low data', med: 'partial data
 function ConfidenceChip({ confidence }: { confidence: string }) {
   if (confidence === 'high') return null
   return (
-    <span className="whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs text-muted">
+    <span className="whitespace-nowrap rounded-[--radius-panel] border border-border px-2 py-0.5 text-xs text-muted">
       {CONF_LABEL[confidence] ?? confidence}
     </span>
   )
@@ -35,7 +35,7 @@ function gapCells(values: (number | null)[], fmtGap: (d: number) => string): (st
 }
 
 const renderCell = (text: string | null) =>
-  text == null ? '–' : text === 'leader' ? <span className="text-ink">leader</span> : text
+  text == null ? '–' : text === 'leader' ? <span className="font-semibold text-ink">leader</span> : text
 
 const RANK_GRID = 'grid grid-cols-[2rem_1.6fr_1.3fr_1fr_1fr] items-center gap-x-4'
 const HEAD = 'border-b border-border pb-2 text-sm font-semibold text-ink'
@@ -88,23 +88,26 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   )
 }
 
-// What the car does best in the field, and where it falls short, up to 3 each. Plain typographic
-// rows (no colored blocks), aligned to the ranking table's rhythm. A small up mark in the accent
-// flags each strength, a down mark in muted flags each weakness.
-const FORM_GRID = 'grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-[1.1fr_1.4fr_1.4fr]'
-
+// A team's car is the subject; strengths and weaknesses are its supporting detail, not table
+// columns of equal weight. Each team gets a real heading (name at display size, own row) with
+// its two trait lists indented underneath, so the list reads as a sequence of short editorial
+// entries instead of a spreadsheet.
 function TraitList({ traits, kind }: { traits: Trait[]; kind: 'up' | 'down' }) {
-  if (traits.length === 0) return null
+  if (traits.length === 0) {
+    // A genuinely poor car legitimately has zero real strengths (seasonSummary.ts won't dress
+    // one up); say so instead of leaving the cell blank, which reads as broken rather than honest.
+    return <p className="text-sm text-muted">{kind === 'up' ? 'No standout strength yet' : '–'}</p>
+  }
   const mark = kind === 'up' ? '▲' : '▼'
   const markColor = kind === 'up' ? 'text-accent' : 'text-muted'
   return (
-    <ul className="flex flex-col gap-1">
+    <ul className="flex flex-col gap-2">
       {traits.map((trait, i) => (
-        <li key={i} className="flex items-baseline gap-2 text-sm">
-          <span className={`text-[0.7em] ${markColor}`} aria-hidden>
+        <li key={i} className="flex items-center gap-3 text-sm">
+          <span className={`shrink-0 text-[0.7em] ${markColor}`} aria-hidden>
             {mark}
           </span>
-          <span className="text-ink">
+          <span className="min-w-0 flex-1 text-ink">
             {trait.text}
             {trait.detail && <span className="num ml-1.5 text-muted">{trait.detail}</span>}
           </span>
@@ -117,31 +120,29 @@ function TraitList({ traits, kind }: { traits: Trait[]; kind: 'up' | 'down' }) {
 function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
   const summary = seasonSummary(rows)
   return (
-    <div className="glass rounded-[--radius-panel] p-6">
-      <ul className={FORM_GRID}>
-        <li className="contents" aria-hidden>
-          <span className={`${HEAD} hidden sm:block`}>Team</span>
-          <span className={`${HEAD} hidden sm:block`}>Strengths</span>
-          <span className={`${HEAD} hidden sm:block`}>Weaknesses</span>
-        </li>
-        {rows.map((r) => {
+    <div className="glass rounded-[--radius-panel] p-6 sm:p-8">
+      <ul>
+        {rows.map((r, i) => {
           const s = summary[r.constructor]
           return (
-            <li
-              key={r.constructor}
-              className="contents [&>*]:border-border sm:[&>*]:border-t sm:[&>*]:py-3.5"
-            >
-              <span className="flex items-center gap-2 pt-5 font-medium text-ink sm:pt-3.5">
-                <TeamRule team={r.constructor} />
-                {r.constructor}
+            <li key={r.constructor} className={`py-7 ${i > 0 ? 'border-t border-border' : ''}`}>
+              <div className="flex items-center gap-2.5">
+                <TeamRule team={r.constructor} className="h-[1.1em]" />
+                <h3 className="font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
+                  {r.constructor}
+                </h3>
                 <ConfidenceChip confidence={r.confidence} />
-              </span>
-              <span className="pt-1.5 sm:pt-3.5">
-                <TraitList traits={s.strengths} kind="up" />
-              </span>
-              <span className="pb-1 pt-1.5 sm:pt-3.5">
-                <TraitList traits={s.weaknesses} kind="down" />
-              </span>
+              </div>
+              <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 sm:pl-[22px]">
+                <div>
+                  <p className="kicker mb-2.5 text-accent">Strengths</p>
+                  <TraitList traits={s.strengths} kind="up" />
+                </div>
+                <div>
+                  <p className="kicker mb-2.5 text-muted">Weaknesses</p>
+                  <TraitList traits={s.weaknesses} kind="down" />
+                </div>
+              </div>
             </li>
           )
         })}

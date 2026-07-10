@@ -24,7 +24,12 @@ describe('heatBg', () => {
     expect(heatBg(1, 1)).toBe('transparent')
   })
   it('gives the top rank the strongest mix and the last rank none', () => {
-    expect(heatBg(1, 4)).toBe('color-mix(in oklch, var(--color-accent) 50%, transparent)')
+    expect(heatBg(1, 4)).toBe('color-mix(in oklch, var(--color-accent) 22%, transparent)')
     expect(heatBg(4, 4)).toBe('color-mix(in oklch, var(--color-accent) 0%, transparent)')
+  })
+  it('falls off faster than linear, so mid-pack ranks stay near-transparent', () => {
+    // Rank 2 of 4 is halfway down the linear scale but should read as much fainter,
+    // not "almost as strong as the leader".
+    expect(heatBg(2, 4)).toBe('color-mix(in oklch, var(--color-accent) 7%, transparent)')
   })
 })
