@@ -16,10 +16,31 @@ const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualif
 // qualifying this is a literal percentage of the fastest lap time; for pace (a seconds gap) and
 // cumulative (a raw score) it's the same index convention applied for a consistent axis across
 // all three tabs, not a true percentage of those units.
-const UNIT: Record<Metric, (v: number) => string> = {
-  pace: (v) => `${(100 + v).toFixed(1)}%`,
-  quali: (v) => `${(100 + v).toFixed(1)}%`,
-  cumulative: (v) => `${(100 + v).toFixed(1)}%`,
+//
+// Pace and qualifying get a fixed, whole-percent axis (100-105% / 100-106%) since their gaps
+// span several points and round numbers read easier than computed decimals. Cumulative's gap
+// is naturally much smaller (it's a season-long average, not one round), so it keeps a dynamic
+// axis sized to its own data with finer decimal ticks rather than being squeezed into the same
+// 1%-per-tick scale.
+const FIXED_AXIS_MAX: Partial<Record<Metric, number>> = { pace: 5, quali: 6 }
+
+// Catmull-Rom to cubic-Bezier: turns the same round-by-round points into a smooth curve instead
+// of straight polyline segments, without pulling in a shape/interpolation library.
+function smoothPath(points: { x: number; y: number }[]): string {
+  if (points.length < 2) return points.map((p) => `M${p.x},${p.y}`).join('')
+  let d = `M${points[0].x},${points[0].y}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i === 0 ? i : i - 1]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[i + 2 === points.length ? i + 1 : i + 2]
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    const cp2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`
+  }
+  return d
 }
 
 // One line per constructor: gap to the round's fastest team, round by round. Lower is
@@ -42,11 +63,17 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
     return <p className="text-sm text-muted">No trend data yet.</p>
   }
 
-  const yMax = Math.max(...values) * 1.05 || 1
+  const dataMax = Math.max(...values)
+  const fixedMax = FIXED_AXIS_MAX[metric]
+  const yMax = fixedMax != null ? Math.max(fixedMax, Math.ceil(dataMax)) : dataMax * 1.05 || 1
   const x = (v: number) => (xMax === xMin ? INNER_W / 2 : ((v - xMin) / (xMax - xMin)) * INNER_W)
   const y = (v: number) => INNER_H * (v / yMax) // 0 at the top (fastest team on top)
 
-  const yTicks = Array.from({ length: 5 }, (_, i) => (yMax * i) / 4)
+  const yTicks =
+    fixedMax != null
+      ? Array.from({ length: yMax + 1 }, (_, i) => i)
+      : Array.from({ length: 5 }, (_, i) => (yMax * i) / 4)
+  const formatTick = (v: number) => (fixedMax != null ? `${100 + v}%` : `${(100 + v).toFixed(1)}%`)
 
   return (
     <m.div
@@ -80,7 +107,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
             <g key={t}>
               <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
               <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={13}>
-                {UNIT[metric](t)}
+                {formatTick(t)}
               </text>
             </g>
           ))}
@@ -97,17 +124,14 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
             const color = resolveTeamColor(s.team)
             const pts = [...s.points].sort((a, b) => a.round - b.round)
             return (
-              <g key={s.team}>
-                <polyline
-                  points={pts.map((p) => `${x(p.round)},${y(p.value)}`).join(' ')}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={2}
-                />
-                {pts.map((p) => (
-                  <circle key={p.round} cx={x(p.round)} cy={y(p.value)} r={2} fill={color} />
-                ))}
-              </g>
+              <path
+                key={s.team}
+                d={smoothPath(pts.map((p) => ({ x: x(p.round), y: y(p.value) })))}
+                fill="none"
+                stroke={color}
+                strokeWidth={2}
+                strokeLinecap="round"
+              />
             )
           })}
         </g>
