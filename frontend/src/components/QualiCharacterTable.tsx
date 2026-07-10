@@ -4,6 +4,7 @@ import { emphasize } from '@/lib/emphasize'
 import { heatBg, rankAsc, rankDesc } from '@/lib/heat'
 import { driverName } from '@/lib/drivers'
 import { qualiInsights } from '@/lib/qualiInsights'
+import { teamColorWithAlpha } from '@/lib/teamColors'
 import type { QualiCharacterData } from '@/lib/api'
 
 function Cell({ children, bg }: { children: React.ReactNode; bg: string }) {
@@ -45,7 +46,11 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
       {insights.length > 0 && (
         <div className="mt-5 grid gap-4 border-b border-border pb-6 sm:grid-cols-2">
           {insights.map((ins) => (
-            <div key={ins.kicker} className="rounded-[--radius-panel] border border-border p-5">
+            <div
+              key={ins.kicker}
+              className="rounded-[--radius-panel] border border-border p-5"
+              style={{ backgroundColor: teamColorWithAlpha(ins.team, 0.09) }}
+            >
               <div className="flex items-center gap-2">
                 <TeamRule team={ins.team} />
                 <p className="kicker text-accent">{ins.kicker}</p>
@@ -100,7 +105,11 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
           <p className="kicker text-muted">Sector dominance</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             {data.sector_dominance.map((d) => (
-              <div key={d.sector} className="rounded-[--radius-panel] border border-border p-3">
+              <div
+                key={d.sector}
+                className="rounded-[--radius-panel] border border-border p-3"
+                style={d.constructor ? { backgroundColor: teamColorWithAlpha(d.constructor, 0.09) } : undefined}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted">Sector {d.sector}</span>
                   {d.constructor && <TeamRule team={d.constructor} />}

@@ -64,6 +64,11 @@ const TEAM_SHORT: Record<string, string> = {
   'Williams Racing': 'Williams',
   'Scuderia AlphaTauri': 'AlphaTauri',
   'Kick Sauber': 'Sauber',
+  // Full names overlap under the pace-chart's per-bar axis labels; these two are long
+  // enough to collide with their neighbors, so they get the same 2-letter codes as
+  // teamCode() rather than a text-overlap bug.
+  'Aston Martin': 'AM',
+  'Racing Bulls': 'RB',
 }
 
 export function teamShortName(teamName: string | null | undefined): string {

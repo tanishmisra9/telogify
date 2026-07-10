@@ -6,6 +6,10 @@ describe('teamShortName', () => {
     expect(teamShortName('Red Bull Racing')).toBe('Red Bull')
     expect(teamShortName('Haas F1 Team')).toBe('Haas')
   })
+  it('codes the two names that overlap under the pace-chart axis labels', () => {
+    expect(teamShortName('Aston Martin')).toBe('AM')
+    expect(teamShortName('Racing Bulls')).toBe('RB')
+  })
   it('passes short names through and handles null', () => {
     expect(teamShortName('Ferrari')).toBe('Ferrari')
     expect(teamShortName(null)).toBe('Unknown')

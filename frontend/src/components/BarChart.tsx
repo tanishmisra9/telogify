@@ -87,7 +87,7 @@ export function BarChart({
                 rx={2}
                 className="pointer-events-none"
               />
-              <text x={cx} y={INNER_H + 21} textAnchor="middle" fill="var(--color-ink)" fontSize={13.5} fontWeight={600} className="pointer-events-none">
+              <text x={cx} y={INNER_H + 21} textAnchor="middle" fill="var(--color-ink)" fontSize={13.5} fontWeight={600} className="pointer-events-none font-display">
                 {r.label}
               </text>
             </g>
