@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
-import { TeamMark } from '@/components/TeamMark'
+import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { Tooltip } from '@/components/Tooltip'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
-import { spring } from '@/lib/motion'
+import { drawTransition, spring } from '@/lib/motion'
 import type { DegradationData } from '@/lib/api'
 
 const WIDTH = 1100
@@ -11,12 +11,6 @@ const HEIGHT = 420
 const MARGIN = { top: 16, right: 24, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
-
-// Ease-out-quint: a clean "drawing" feel for the line reveal, no bounce.
-const DRAW_TRANSITION = {
-  pathLength: { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const },
-  opacity: { duration: 0.2 },
-}
 
 export function DegradationChart({ data }: { data: DegradationData }) {
   const reduce = useReducedMotion()
@@ -149,7 +143,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
                     initial={reduce ? false : { pathLength: 0, opacity: 0 }}
                     animate={{ pathLength: 1, opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={reduce ? { duration: 0 } : DRAW_TRANSITION}
+                    transition={reduce ? { duration: 0 } : drawTransition}
                   />
                 )
               })}
@@ -158,46 +152,18 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         </svg>
       )}
 
-      {/* Ranked worst wear first. Native CSS multi-column, not a grid: a grid with
-          sm:grid-cols-2/xl:grid-cols-3 fills row-major (rank 1, 2, 3 across the top, then 4,
-          5, 6), so the eye zigzags instead of reading straight down the ranking. Columns fill
-          top-to-bottom automatically, which is both the correct reading order and the compact,
-          space-efficient shape a single top-down list can't give an 11-team field. Column count
-          is driven by available width (up to 3, each at least 15rem), so it collapses to one
-          column on mobile with no breakpoint classes needed.
-
-          Also the click-to-isolate control for the chart above: each row is a real button, since
-          it's the de facto legend. Clicking toggles that team into `selected`; the chart filters
-          to just the selected teams (or everyone, when nothing's selected) and the newly-shown
-          line draws itself in. */}
+      {/* Ranked worst wear first — also the click-to-isolate control for the chart above (see
+          TeamSelectLegend). */}
       <div className="mt-6 border-t border-border pt-5">
-        <ol className="[column-count:3] [column-width:15rem] gap-x-10">
-          {rankedFits.map((f, i) => {
-            const isSelected = selected.has(f.constructor)
-            const isDimmed = isFiltering && !isSelected
-            return (
-              <li key={f.constructor}>
-                <button
-                  type="button"
-                  onClick={() => toggleTeam(f.constructor)}
-                  aria-pressed={isSelected}
-                  aria-label={`${isSelected ? 'Show every team again' : `Isolate ${f.constructor}'s wear line`}`}
-                  className={`grid min-h-11 w-full cursor-pointer [break-inside:avoid] grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1 text-left text-sm shadow-[inset_0_0_0_1.5px_transparent] transition-[opacity,box-shadow] duration-150 hover:shadow-[inset_0_0_0_1.5px_var(--color-ink)] ${
-                    isDimmed ? 'opacity-40' : ''
-                  }`}
-                  style={{ backgroundColor: teamColorWithAlpha(f.constructor, isSelected ? 0.2 : 0.09) }}
-                >
-                  <span className="num text-xs text-muted">{i + 1}</span>
-                  <TeamMark team={f.constructor} className={isSelected ? 'font-semibold' : 'font-medium'} />
-                  <span className="num text-xs text-ink">
-                    {f.slope_s_per_lap >= 0 ? '+' : ''}
-                    {f.slope_s_per_lap.toFixed(3)}s/lap
-                  </span>
-                </button>
-              </li>
-            )
-          })}
-        </ol>
+        <TeamSelectLegend
+          rows={rankedFits.map((f) => ({
+            team: f.constructor,
+            value: `${f.slope_s_per_lap >= 0 ? '+' : ''}${f.slope_s_per_lap.toFixed(3)}s/lap`,
+          }))}
+          selected={selected}
+          onToggle={toggleTeam}
+          isFiltering={isFiltering}
+        />
       </div>
       <p className="mt-4 text-xs text-muted">
         Fuel-corrected lap time against tyre age; a bold line marks wear well above the field.

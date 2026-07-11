@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { m, useReducedMotion } from 'framer-motion'
-import { resolveTeamColor, teamCode } from '@/lib/teamColors'
-import { spring } from '@/lib/motion'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
+import { TeamSelectLegend } from '@/components/TeamSelectLegend'
+import { resolveTeamColor } from '@/lib/teamColors'
+import { drawTransition, spring } from '@/lib/motion'
 import type { SeasonConstructorRow, SeasonRound } from '@/lib/api'
 
 const WIDTH = 1100
@@ -49,6 +50,17 @@ function smoothPath(points: { x: number; y: number }[]): string {
 export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[]; rounds: SeasonRound[] }) {
   const reduce = useReducedMotion()
   const [metric, setMetric] = useState<Metric>('pace')
+  // Empty = show every team (default). Not reset on metric switch, so a comparison survives
+  // moving between Race pace/Qualifying/Cumulative.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggleTeam = (team: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(team)) next.delete(team)
+      else next.add(team)
+      return next
+    })
 
   const series = rows
     .map((r) => ({ team: r.constructor, points: r.trend[metric] }))
@@ -62,6 +74,13 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   if (series.length === 0 || values.length === 0) {
     return <p className="text-sm text-muted">No trend data yet.</p>
   }
+
+  // Selection persists across metric tabs, but a team's selection can be meaningless for a
+  // metric it has no data for. If every selected team is absent here, fall back to showing the
+  // full field for this metric rather than an empty chart (same recipe as DegradationChart's
+  // compound-switch fallback).
+  const isFiltering = selected.size > 0 && series.some((s) => selected.has(s.team))
+  const visibleSeries = isFiltering ? series.filter((s) => selected.has(s.team)) : series
 
   const dataMax = Math.max(...values)
   const fixedMax = FIXED_AXIS_MAX[metric]
@@ -120,36 +139,43 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
             Round
           </text>
 
-          {series.map((s) => {
-            const color = resolveTeamColor(s.team)
-            const pts = [...s.points].sort((a, b) => a.round - b.round)
-            return (
-              <path
-                key={s.team}
-                d={smoothPath(pts.map((p) => ({ x: x(p.round), y: y(p.value) })))}
-                fill="none"
-                stroke={color}
-                strokeWidth={2}
-                strokeLinecap="round"
-              />
-            )
-          })}
+          <AnimatePresence>
+            {visibleSeries.map((s) => {
+              const color = resolveTeamColor(s.team)
+              const pts = [...s.points].sort((a, b) => a.round - b.round)
+              return (
+                <m.path
+                  key={s.team}
+                  d={smoothPath(pts.map((p) => ({ x: x(p.round), y: y(p.value) })))}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  initial={reduce ? false : { pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={reduce ? { duration: 0 } : drawTransition}
+                />
+              )
+            })}
+          </AnimatePresence>
         </g>
       </svg>
 
-      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
-        {series.map((s) => (
-          <span key={s.team} className="inline-flex items-center gap-1.5 text-xs text-muted">
-            <span aria-hidden className="h-[3px] w-4 rounded-[2px]" style={{ backgroundColor: resolveTeamColor(s.team) }} />
-            {teamCode(s.team)}
-          </span>
-        ))}
+      <div className="mt-6 border-t border-border pt-5">
+        <TeamSelectLegend
+          rows={series.map((s) => ({ team: s.team }))}
+          selected={selected}
+          onToggle={toggleTeam}
+          isFiltering={isFiltering}
+        />
       </div>
-      <p className="mt-3 text-xs text-muted">
+      <p className="mt-4 text-xs text-muted">
         Gap to each round's fastest team, round by round. 100% is that round's fastest team on
         this metric; higher is further behind, so a line near the top ran at the front all season
         and a line dropping away lost ground. For race pace and cumulative, the percentage is an
         index for a consistent axis across tabs, not a literal percentage of seconds or score.
+        Click a team to isolate its line, click again to bring it back.
       </p>
     </m.div>
   )
