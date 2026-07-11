@@ -29,6 +29,7 @@ from telogify.db import engine
 from telogify.ingest.accel_samples import store_accel_samples
 from telogify.ingest.loader import load_weekend
 from telogify.ingest.quali_character import store_quali_character
+from telogify.ingest.quali_trace import store_quali_traces
 from telogify.ingest.deployment import store_deployment
 from telogify.ingest.race_control import store_race_control
 from telogify.ingest.results import store_results
@@ -55,6 +56,7 @@ def _ingest(state: PipelineState) -> dict:
         store_fingerprints(data, db)
         store_sector_bests(data, db)
         store_quali_character(data, db)
+        store_quali_traces(data, db)
         store_race_control(data, db)
         store_deployment(data, db)
         store_accel_samples(data, db)
