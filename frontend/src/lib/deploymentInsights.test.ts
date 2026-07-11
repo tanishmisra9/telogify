@@ -32,7 +32,7 @@ describe('deploymentInsights', () => {
 
     const merc = rows[0].text
     expect(merc).toContain('Strongest mid-range deployment (+5.0 m/s² through 250-290 km/h)')
-    expect(merc).toContain('sheds the most once deployment runs out (+5.0 mid-range down to +1.0 m/s² past 290)')
+    expect(merc).toContain('sheds the most once deployment runs out (+5.0 mid-range down to +1.0 m/s² past 290 km/h)')
 
     const fer = rows[1].text
     expect(fer).toContain('Holds its deployment best at top speed (+2.0 m/s² past 290 km/h)')

@@ -23,6 +23,10 @@ describe('emphasize', () => {
   it('keeps ordinals whole', () => {
     expect(accents('finished 11th, up from 22nd')).toEqual(['11th', '22nd'])
   })
+  it('keeps an acceleration and its m/s² unit whole (deployment verdicts)', () => {
+    expect(accents('deployment (+4.6 m/s² through 250-290 km/h)')).toEqual(['4.6 m/s²', '250', '290 km/h'])
+    expect(accents('run dry up top (-0.1 m/s² past 290 km/h)')).toEqual(['0.1 m/s²', '290 km/h'])
+  })
   it('emphasizes nothing when there are no figures', () => {
     expect(accents('a clean lap')).toEqual([])
   })

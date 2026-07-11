@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
+import { TeamRule } from '@/components/TeamMark'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { binBySpeed } from '@/lib/seasonAccel'
+import { deploymentInsights } from '@/lib/deploymentInsights'
+import { emphasize } from '@/lib/emphasize'
 import { drawTransition } from '@/lib/motion'
 import { smoothPath } from '@/lib/svgPath'
 import type { SeasonDeploymentScatter } from '@/lib/api'
@@ -60,8 +63,35 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4)
   const xTicks = Array.from({ length: 6 }, (_, i) => Math.round(xMin + ((xMax - xMin) * i) / 5))
 
+  // The chart is mute without a read; these are deterministic per-power-unit verdicts computed
+  // from the exact scatter below (lib/deploymentInsights.ts), so a reader gets the story before
+  // the picture. Empty when fewer than 3 PU groups have rankable data.
+  const verdicts = deploymentInsights(scatter)
+
   return (
     <div className="glass w-full rounded-[--radius-panel] p-5">
+      {verdicts.length > 0 && (
+        <ol className="mb-5 border-b border-border pb-2">
+          {verdicts.map((v, i) => (
+            <li
+              key={v.name}
+              className={`grid gap-x-6 gap-y-1 py-3 sm:grid-cols-[11.5rem_minmax(0,1fr)] ${i > 0 ? 'border-t border-border' : ''}`}
+            >
+              <span className="min-w-0">
+                <span className="flex items-center gap-2 font-display font-semibold text-ink">
+                  <TeamRule team={v.worksTeam} />
+                  {v.name} power
+                </span>
+                {/* Full names, not teamShortName: its AM/RB codes exist for the cramped
+                    pace-chart axis and read as ciphers in a row with this much width. */}
+                <span className="mt-0.5 block pl-[11px] text-xs text-muted">{v.teams.join(' · ')}</span>
+              </span>
+              <span className="text-sm leading-relaxed text-ink">{emphasize(v.text)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Season ERS deployment: longitudinal acceleration vs speed">
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {yTicks.map((t) => (
@@ -127,8 +157,9 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
         weekend, pooled across the season; cornering samples (lateral acceleration at or above 2 m/s²) are
         excluded so only straight-line deployment and harvesting show. Each line is that team's median
         acceleration at each speed. A line that drops toward or below zero at high speed shows the car's
-        electrical deployment running out (clipping); a flatter, higher line at low-to-mid speed shows
-        stronger harvesting there instead. Click a team to isolate its line, click again to bring it back.
+        electrical deployment running out (clipping); a lower full-throttle acceleration at low-to-mid
+        speed shows energy being harvested rather than deployed there. Click a team to isolate its line,
+        click again to bring it back.
       </p>
     </div>
   )

@@ -136,7 +136,7 @@ export function deploymentInsights(scatter: SeasonDeploymentScatter): PuVerdict[
         // Both fade templates cite punch AND hold, so "most constant" can never dress up a
         // profile that is simply weak everywhere; the low numbers are right there.
         if (f.rank === f.total)
-          cands.push({ order: 2, extremity: 1, clause: `sheds the most once deployment runs out (${fmt(m.punch)} mid-range down to ${fmt(m.hold)} m/s² past ${MID_HI})` })
+          cands.push({ order: 2, extremity: 1, clause: `sheds the most once deployment runs out (${fmt(m.punch)} mid-range down to ${fmt(m.hold)} m/s² past ${MID_HI} km/h)` })
         else if (f.rank === 1)
           cands.push({ order: 2, extremity: 1, clause: `most constant deployment across the range (${fmt(m.punch)} mid-range vs ${fmt(m.hold)} up top)` })
       }
