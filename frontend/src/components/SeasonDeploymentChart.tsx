@@ -125,8 +125,8 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
             <path
               key={`dots-${team}`}
               d={scatter[team].map(([sp, ac]) => `M${x(sp)},${y(ac)}h0.01`).join('')}
-              stroke={teamColorWithAlpha(team, 0.14)}
-              strokeWidth={3.6}
+              stroke={teamColorWithAlpha(team, 0.2)}
+              strokeWidth={2.6}
               strokeLinecap="round"
               fill="none"
             />
