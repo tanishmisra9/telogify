@@ -77,16 +77,23 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
           {verdicts.map((v, i) => (
             <li
               key={v.name}
-              className={`grid gap-x-6 gap-y-1 py-3 sm:grid-cols-[11.5rem_minmax(0,1fr)] ${i > 0 ? 'border-t border-border' : ''}`}
+              className={`grid gap-x-6 gap-y-2 py-4 sm:grid-cols-[11.5rem_minmax(0,1fr)] ${i > 0 ? 'border-t border-border' : ''}`}
             >
               <span className="min-w-0">
-                <span className="flex items-center gap-2 font-display font-semibold text-ink">
+                {/* Same team-color-washed pill FormGuide uses for its team headers
+                    (SeasonPage.tsx): the works team's identity as one self-contained chip,
+                    not a thin edge tick easy to miss on content this dense. */}
+                <span
+                  className="inline-flex items-center gap-2 rounded-[--radius-panel] px-3 py-1.5 font-display font-semibold text-ink"
+                  style={{ backgroundColor: teamColorWithAlpha(v.worksTeam, 0.09) }}
+                >
                   <TeamRule team={v.worksTeam} />
                   {v.name} power
                 </span>
                 {/* Full names, not teamShortName: its AM/RB codes exist for the cramped
-                    pace-chart axis and read as ciphers in a row with this much width. */}
-                <span className="mt-0.5 block pl-[11px] text-xs text-muted">{v.teams.join(' · ')}</span>
+                    pace-chart axis and read as ciphers in a row with this much width.
+                    Indent matches the pill's own px-3 so it visually hangs off the chip. */}
+                <span className="mt-2 block pl-3 text-xs text-muted">{v.teams.join(' · ')}</span>
               </span>
               <span className="text-sm leading-relaxed text-ink">{emphasize(v.text)}</span>
             </li>
