@@ -177,9 +177,7 @@ function SeasonView({ year }: { year: number }) {
           <span className="kicker whitespace-nowrap text-muted">{year} season</span>
         </div>
         <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
-          Every team's season so far, rolled up from the weekend pages. The ranking blends race pace and
-          one-lap qualifying pace (weighted 60/40); the Gap by round chart tracks how each car's deficit
-          shifted from race to race.
+          Every team's season so far, rolled up from the weekend pages.
         </p>
       </BlurFade>
 
