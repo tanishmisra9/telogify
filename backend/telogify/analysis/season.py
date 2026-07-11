@@ -271,11 +271,30 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
     return {"year": year, "rounds": rounds_meta, "constructors": rows}
 
 
+# Serving budget per constructor for the season scatter. With multiple representative laps per
+# driver per weekend stored (ingest/accel_samples._LAPS_PER_DRIVER), a full season pools far
+# more points than the chart needs or the payload should carry (9 rounds x ~2 drivers x 5 laps
+# x ~150 surviving samples is ~15k/team). A deterministic every-Kth stride keeps the cloud's
+# speed/round spread while bounding the response; the DB keeps full precision for anything that
+# wants it later.
+_MAX_SCATTER_POINTS_PER_TEAM = 2000
+
+
+def _stride_cap(points: list, max_n: int) -> list:
+    """Deterministically thin `points` to at most `max_n` via an even stride, preserving order.
+    Pure so it's unit-testable without a DB session."""
+    if len(points) <= max_n:
+        return points
+    stride = -(-len(points) // max_n)  # ceil division: smallest stride that fits within max_n
+    return points[::stride]
+
+
 def build_season_accel_scatter(year: int, db: DBSession) -> dict[str, list[list[float]]]:
     """Pooled (speed_kmh, longitudinal_accel_ms2) points per constructor across every ingested
-    race this season, from AccelSample (one representative race lap per driver per weekend,
-    already filtered to full-throttle/no-brake/low-lateral-g). Raw pooling, not a per-round
-    mean or trend line: the scatter's shape across the season IS the visualization."""
+    race this season, from AccelSample (up to a handful of representative race laps per driver
+    per weekend, already filtered to full-throttle/no-brake/low-lateral-g). Raw pooling capped
+    by a deterministic stride, not a per-round mean or trend line: the scatter's shape across
+    the season IS the visualization."""
     weekends = db.exec(select(RaceWeekend).where(RaceWeekend.year == year)).all()
     out: dict[str, list[list[float]]] = defaultdict(list)
     for w in weekends:
@@ -291,4 +310,4 @@ def build_season_accel_scatter(year: int, db: DBSession) -> dict[str, list[list[
             out[s.constructor].extend(
                 [sp, ac] for sp, ac in zip(s.speed_kmh_json or [], s.longitudinal_accel_ms2_json or [])
             )
-    return dict(out)
+    return {team: _stride_cap(pts, _MAX_SCATTER_POINTS_PER_TEAM) for team, pts in out.items()}

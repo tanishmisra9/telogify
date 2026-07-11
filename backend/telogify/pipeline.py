@@ -210,6 +210,15 @@ def run_weekend(year: int, round: int, agent_runner=None) -> PipelineState:
     )
 
 
+def run_ingest(year: int, round: int) -> PipelineState:
+    """Ingest-only entry point: re-run the FastF1 ingest node for one weekend, with no
+    analysis, no candidates, and no LLM call (zero API spend). Every extractor is idempotent
+    (delete + reinsert per session) and FastF1's disk cache makes re-runs CPU-bound, so this
+    is the cheap path after an ingest extractor changes."""
+    state: PipelineState = {"year": year, "round": round}
+    return {**state, **_ingest(state)}
+
+
 @dataclass
 class RoundResult:
     round: int

@@ -148,6 +148,53 @@ def run_insights_cmd(
     _echo_season_final_summary(summary)
 
 
+@app.command("ingest")
+def ingest_cmd(
+    year: int,
+    round: int | None = typer.Argument(
+        None, help="Round number; omit to ingest all completed rounds for the year."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="List completed rounds only; do not ingest."
+    ),
+) -> None:
+    """Re-run FastF1 ingest only: no analysis, no candidates, no LLM spend.
+
+    Rewrites every ingest extractor's tables idempotently from the FastF1 cache; use after an
+    ingest extractor changes. Omitting ROUND ingests every completed round on the schedule."""
+    from telogify.pipeline import run_ingest, season_rounds
+
+    if round is not None:
+        _progress(f"Ingesting {year} round {round}...")
+        run_ingest(year, round)
+        _progress("Done.")
+        return
+
+    rounds = season_rounds(year)
+    if not rounds:
+        _progress(f"No completed rounds found for {year}.")
+        return
+
+    if dry_run:
+        _progress(f"{year} completed rounds ({len(rounds)}): {', '.join(str(r) for r in rounds)}")
+        return
+
+    _progress(f"Ingesting season {year}: {len(rounds)} completed round(s)...")
+    failures = 0
+    for i, rnd in enumerate(rounds, start=1):
+        _progress(f"  round {rnd} ({i}/{len(rounds)}): ingesting...")
+        try:
+            run_ingest(year, rnd)
+            _progress(f"  round {rnd} ({i}/{len(rounds)}): ok")
+        except Exception as exc:
+            failures += 1
+            _progress(f"  round {rnd} ({i}/{len(rounds)}): failed - {exc}")
+    if failures:
+        _progress(f"\n{failures} round(s) failed.")
+        raise typer.Exit(code=1)
+    _progress(f"\nDone: {len(rounds)} round(s) ingested.")
+
+
 @app.command("diagnose")
 def diagnose(year: int, round: int) -> None:
     """Print per-constructor clean-lap counts and mean attribution confidence."""

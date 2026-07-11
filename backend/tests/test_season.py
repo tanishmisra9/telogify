@@ -7,11 +7,33 @@ import pytest
 
 from telogify.analysis.season import (
     _reference_compound,
+    _stride_cap,
     _tyre_deg_on_ref,
     aggregate,
     confidence,
     overall_ranking,
 )
+
+
+# --- _stride_cap -----------------------------------------------------------
+
+
+def test_stride_cap_below_limit_is_unchanged():
+    assert _stride_cap([1, 2, 3], 10) == [1, 2, 3]
+
+
+def test_stride_cap_at_limit_is_unchanged():
+    assert _stride_cap(list(range(10)), 10) == list(range(10))
+
+
+def test_stride_cap_thins_evenly_and_keeps_order():
+    result = _stride_cap(list(range(21)), 10)
+    assert result == list(range(0, 21, 3))
+    assert len(result) <= 10
+
+
+def test_stride_cap_empty():
+    assert _stride_cap([], 10) == []
 
 
 # --- aggregate -----------------------------------------------------------
