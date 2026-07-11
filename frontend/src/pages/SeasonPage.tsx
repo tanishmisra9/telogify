@@ -173,7 +173,7 @@ function SeasonView({ year }: { year: number }) {
             the WEEKENDS/SEASON nav links, instead of the season year stacking above as its own
             line and pushing the heading down. */}
         <div className="flex flex-col gap-1 border-b-2 border-ink pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          <h1 className="font-display text-6xl leading-[0.95] tracking-tight sm:text-7xl">Season Snapshot</h1>
+          <h1 className="font-display text-6xl leading-[0.95] tracking-tight sm:text-7xl">Season at a glance</h1>
           <span className="kicker whitespace-nowrap text-muted">{year} season</span>
         </div>
         <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
