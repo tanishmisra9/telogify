@@ -179,6 +179,33 @@ class DeploymentTrace(SQLModel, table=True):
     straights_json: list = Field(default_factory=list, sa_column=Column(JSON))
 
 
+class QualiTrace(SQLModel, table=True):
+    """Per-driver distance-resampled telemetry from the MAIN Qualifying session (Q only, never
+    SQ) representative lap, for "The fight to pole". Stores every driver's trace, not just
+    P1/P2: the API and frontend currently only serve/render the top two qualifiers, but this
+    keeps the door open for comparing more or different drivers later without re-ingesting.
+
+    grid_m/corners_json are duplicated verbatim on every driver row for a session rather than
+    normalized into a session-level table, matching this codebase's existing self-contained-row
+    style (see DeploymentTrace.straights_json above) -- a session has ~20 rows with a ~100-float
+    array each, not worth a join.
+    """
+
+    __tablename__ = "quali_trace"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    driver: str = Field(index=True)
+    constructor: str | None = None
+    lap_time_s: float | None = None
+    is_pole: bool = False
+    grid_m: list = Field(default_factory=list, sa_column=Column(JSON))
+    corners_json: list = Field(default_factory=list, sa_column=Column(JSON))  # [{number, distance_m}]
+    speed_kmh: list = Field(default_factory=list, sa_column=Column(JSON))
+    throttle_pct: list = Field(default_factory=list, sa_column=Column(JSON))
+    delta_s: list = Field(default_factory=list, sa_column=Column(JSON))  # 0.0 throughout for the pole row
+
+
 class AccelSample(SQLModel, table=True):
     """Full-throttle, no-brake, low-lateral-g (speed, longitudinal acceleration) points from one
     representative race lap per driver, for the season-wide ERS deployment/harvesting scatter.
