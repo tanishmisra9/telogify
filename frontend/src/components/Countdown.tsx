@@ -53,7 +53,7 @@ export function Countdown() {
 
         <div className="mt-10 grid grid-cols-4 gap-4 sm:gap-6" aria-live="polite" aria-atomic="true">
           {parts(target).map(([label, value]) => (
-            <div key={label} className="border-t-2 border-ink pt-3">
+            <div key={label}>
               <span className="num block text-5xl leading-none tracking-tight text-ink tabular-nums sm:text-7xl xl:text-8xl">
                 {pad(value)}
               </span>
