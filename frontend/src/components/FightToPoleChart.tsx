@@ -81,9 +81,12 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
     return <p className="text-sm text-muted">Not enough qualifying laps yet.</p>
   }
 
-  const sameTeam = !!p1.constructor && p1.constructor === p2.constructor
   const p1Color = resolveTeamColor(p1.constructor)
   const p2Color = resolveTeamColor(p2.constructor)
+  // Keyed off the resolved colors, not the raw constructor strings: two drivers with missing
+  // team data both fall back to the same muted color and need the same disambiguation a real
+  // same-team pair does.
+  const sameTeam = p1Color === p2Color
 
   const maxDist = data.grid_m[data.grid_m.length - 1] || 1
   const x = (m: number) => (m / maxDist) * INNER_W
