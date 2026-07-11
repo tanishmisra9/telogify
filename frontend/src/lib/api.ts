@@ -134,6 +134,28 @@ export interface QualiCharacterData {
   sector_dominance: SectorDominanceRow[]
 }
 
+export interface QualiTraceDriver {
+  driver: string
+  constructor: string | null
+  lap_time_s: number | null
+  is_pole: boolean
+  speed_kmh: number[]
+  throttle_pct: number[]
+  delta_s: number[]
+}
+
+export interface QualiTraceCorner {
+  number: number
+  distance_m: number
+}
+
+export interface QualiTraceData {
+  session_type: string | null
+  grid_m: number[]
+  corners: QualiTraceCorner[]
+  drivers: QualiTraceDriver[]
+}
+
 export interface DegradationFit {
   constructor: string
   compound: string

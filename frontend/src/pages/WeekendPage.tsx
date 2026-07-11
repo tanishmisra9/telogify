@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom'
 import { BarChart } from '@/components/BarChart'
 import { BlurFade } from '@/components/BlurFade'
 import { DegradationChart } from '@/components/DegradationChart'
+import { FightToPoleChart } from '@/components/FightToPoleChart'
 import { Insight } from '@/components/Insight'
 import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
@@ -15,6 +16,7 @@ import {
   type InsightItem,
   type PaceData,
   type QualiCharacterData,
+  type QualiTraceData,
   type ResultRow,
   type SectorBestRow,
   type SectorsData,
@@ -126,6 +128,7 @@ export function WeekendPage() {
   const sectors = useApi<SectorsData>(`${base}/sectors`)
   const topspeeds = useApi<TopSpeedsData>(`${base}/topspeeds`)
   const qualiCharacter = useApi<QualiCharacterData>(`${base}/quali-character`)
+  const qualiTrace = useApi<QualiTraceData>(`${base}/quali-trace`)
   const sprintPace = useApi<PaceData>(`${base}/pace?session=SPRINT`)
   const pace = useApi<PaceData>(`${base}/pace`)
   const degradation = useApi<DegradationData>(`${base}/degradation`)
@@ -251,17 +254,31 @@ export function WeekendPage() {
       <section className="mt-20">
         <SectionTitle>Qualifying</SectionTitle>
         {!sessionsLoaded ? (
-          <SkeletonCard className="min-h-[520px]" />
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+            <SkeletonCard className="min-h-[520px]" />
+            <SkeletonCard className="min-h-[640px]" />
+          </div>
         ) : !qualiHappened ? (
           <Upcoming>
             Qualifying hasn't run yet. The car-character comparison appears here once it has.
           </Upcoming>
-        ) : qualiCharacter.data ? (
-          <ScrollReveal>
-            <QualiCharacterTable data={qualiCharacter.data} />
-          </ScrollReveal>
         ) : (
-          <SkeletonCard className="min-h-[520px]" />
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+            {qualiCharacter.data ? (
+              <ScrollReveal>
+                <QualiCharacterTable data={qualiCharacter.data} />
+              </ScrollReveal>
+            ) : (
+              <SkeletonCard className="min-h-[520px]" />
+            )}
+            {qualiTrace.data ? (
+              <ScrollReveal delay={0.06}>
+                <FightToPoleChart data={qualiTrace.data} />
+              </ScrollReveal>
+            ) : (
+              <SkeletonCard className="min-h-[640px]" />
+            )}
+          </div>
         )}
       </section>
 
