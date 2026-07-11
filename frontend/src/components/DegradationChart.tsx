@@ -3,7 +3,7 @@ import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { Tooltip } from '@/components/Tooltip'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
-import { drawTransition, spring } from '@/lib/motion'
+import { drawTransition, morphTransition, spring } from '@/lib/motion'
 import type { DegradationData } from '@/lib/api'
 
 const WIDTH = 1100
@@ -131,19 +131,21 @@ export function DegradationChart({ data }: { data: DegradationData }) {
                 if (!range) return null
                 const [lo, hi] = range
                 const stroke = resolveTeamColor(f.constructor)
+                // Same key across a compound switch (a team present in both compounds keeps its
+                // line mounted), so x1/y1/x2/y2 in `animate` morph smoothly into the new
+                // compound's fit instead of snapping. A team missing from the newly-selected
+                // compound isn't in visibleFits at all, so it just exits/re-enters via
+                // AnimatePresence as before — no morph attempted when there's nothing to morph to.
+                const coords = { x1: x(lo), y1: y(f.slope_s_per_lap * lo + f.intercept_s), x2: x(hi), y2: y(f.slope_s_per_lap * hi + f.intercept_s) }
                 return (
                   <m.line
                     key={f.constructor}
-                    x1={x(lo)}
-                    y1={y(f.slope_s_per_lap * lo + f.intercept_s)}
-                    x2={x(hi)}
-                    y2={y(f.slope_s_per_lap * hi + f.intercept_s)}
                     stroke={stroke}
                     strokeWidth={f.flagged ? 3.5 : 2}
-                    initial={reduce ? false : { pathLength: 0, opacity: 0 }}
-                    animate={{ pathLength: 1, opacity: 1 }}
+                    initial={reduce ? false : { pathLength: 0, opacity: 0, ...coords }}
+                    animate={{ pathLength: 1, opacity: 1, ...coords }}
                     exit={{ opacity: 0 }}
-                    transition={reduce ? { duration: 0 } : drawTransition}
+                    transition={reduce ? { duration: 0 } : { ...drawTransition, x1: morphTransition, y1: morphTransition, x2: morphTransition, y2: morphTransition }}
                   />
                 )
               })}
