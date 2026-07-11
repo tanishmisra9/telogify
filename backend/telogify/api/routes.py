@@ -35,6 +35,7 @@ from telogify.db import get_session
 from telogify.models import (
     Insight,
     QualiCharacter,
+    QualiTrace,
     RaceWeekend,
     SectorBest,
     Session as SessionRow,
@@ -399,6 +400,43 @@ def weekend_quali_character(year: int, round: int, db: Session = Depends(get_ses
         "sector_dominance": [
             {"sector": d.sector, "constructor": d.constructor, "best_time_s": d.best_time_s, "margin_s": d.margin_s}
             for d in dominance
+        ],
+    }
+
+
+@router.get("/weekends/{year}/{round}/quali-trace")
+def weekend_quali_trace(year: int, round: int, db: Session = Depends(get_session)):
+    """Distance-aligned telemetry (speed, throttle, delta-to-pole) for every driver's fastest
+    lap in the MAIN Qualifying session, for "The fight to pole". Q only, never SQ. Rows are
+    ordered fastest-first, so drivers[0]/drivers[1] are always pole/runner-up; every driver
+    with a usable lap is included even though the frontend renders only the top two today."""
+    w = _weekend(db, year, round)
+    sessions = _weekend_sessions(db, w.id)
+    session = _session_by_type(sessions, "Q")
+    if session is None:
+        return {"session_type": None, "grid_m": [], "corners": [], "drivers": []}
+
+    rows = db.exec(
+        select(QualiTrace).where(QualiTrace.session_id == session.id).order_by(QualiTrace.lap_time_s)
+    ).all()
+    if not rows:
+        return {"session_type": session.session_type, "grid_m": [], "corners": [], "drivers": []}
+
+    return {
+        "session_type": session.session_type,
+        "grid_m": rows[0].grid_m,
+        "corners": rows[0].corners_json,
+        "drivers": [
+            {
+                "driver": r.driver,
+                "constructor": r.constructor,
+                "lap_time_s": r.lap_time_s,
+                "is_pole": r.is_pole,
+                "speed_kmh": r.speed_kmh,
+                "throttle_pct": r.throttle_pct,
+                "delta_s": r.delta_s,
+            }
+            for r in rows
         ],
     }
 
