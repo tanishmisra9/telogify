@@ -166,10 +166,16 @@ function SeasonView({ year }: { year: number }) {
   const rows = season.data?.constructors ?? []
 
   return (
-    <main className="mx-auto max-w-[1312px] px-6 py-16">
+    <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
       <BlurFade>
-        <p className="kicker text-accent">{year} season</p>
-        <h1 className="mt-3 font-display text-6xl leading-[0.95] tracking-tight sm:text-8xl">Season Snapshot</h1>
+        {/* Same heading-row shape as Weekends.tsx (h1 + kicker badge, one border-b-2 divider)
+            so the two pages' titles land at the same position and size when switching between
+            the WEEKENDS/SEASON nav links, instead of the season year stacking above as its own
+            line and pushing the heading down. */}
+        <div className="flex flex-col gap-1 border-b-2 border-ink pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+          <h1 className="font-display text-6xl leading-[0.95] tracking-tight sm:text-7xl">Season Snapshot</h1>
+          <span className="kicker whitespace-nowrap text-muted">{year} season</span>
+        </div>
         <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
           Every team's season so far, rolled up from the weekend pages. The ranking blends race pace and
           one-lap qualifying pace (weighted 60/40); the Gap by round chart tracks how each car's deficit
