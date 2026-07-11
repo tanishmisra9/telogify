@@ -17,10 +17,12 @@ const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
 /** Season-wide ERS deployment/harvesting: longitudinal acceleration vs speed, full-throttle and
- * no-brake laps only. Raw points (a few hundred per team, pooled across the season) sit as a
- * faint texture; each team's binned-median trend line is the actual story. Team identity comes
- * from the same click-to-isolate legend used by Gap by round and Tyre degradation: click a team
- * to isolate its line, multi-select, click again to bring it back. */
+ * no-brake laps only. Raw points (thousands per team, pooled across the season, server-capped
+ * per team in analysis/season.py) sit as a faint texture; each team's binned-median trend line
+ * is the actual story, and the deterministic per-power-unit verdicts above the chart are the
+ * headline. Team identity comes from the same click-to-isolate legend used by Gap by round and
+ * Tyre degradation: click a team to isolate its line, multi-select, click again to bring it
+ * back. */
 export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentScatter }) {
   const reduce = useReducedMotion()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -114,11 +116,21 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
             Longitudinal acceleration (m/s²)
           </text>
 
-          {visibleTeams.flatMap((team) =>
-            scatter[team].map((p, i) => (
-              <circle key={`${team}-${i}`} cx={x(p[0])} cy={y(p[1])} r={1.3} fill={teamColorWithAlpha(team, 0.1)} />
-            )),
-          )}
+          {/* One path per team instead of one <circle> per point: with several representative
+              laps per driver now sampled at ingest, a team's cloud can run into the thousands
+              of points, and a `<circle>` per point becomes real DOM weight at that count. Each
+              `M x,y h0.01` draws an imperceptible sliver that the round linecap renders as a
+              dot, so the same look costs one path node per team instead of one node per point. */}
+          {visibleTeams.map((team) => (
+            <path
+              key={`dots-${team}`}
+              d={scatter[team].map(([sp, ac]) => `M${x(sp)},${y(ac)}h0.01`).join('')}
+              stroke={teamColorWithAlpha(team, 0.14)}
+              strokeWidth={3.6}
+              strokeLinecap="round"
+              fill="none"
+            />
+          ))}
 
           <AnimatePresence>
             {visibleTrends.map(({ team, bins }) => {
@@ -153,8 +165,9 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
       </div>
 
       <p className="mt-4 text-xs text-muted">
-        Every point is a full-throttle, no-braking sample from one representative race lap per driver per
-        weekend, pooled across the season; cornering samples (lateral acceleration at or above 2 m/s²) are
+        Every point is a full-throttle, no-braking sample from up to five representative race laps per
+        driver per weekend, pooled across the season; cornering samples (lateral acceleration at or above
+        2 m/s²) are
         excluded so only straight-line deployment and harvesting show. Each line is that team's median
         acceleration at each speed. A line that drops toward or below zero at high speed shows the car's
         electrical deployment running out (clipping); a lower full-throttle acceleration at low-to-mid
