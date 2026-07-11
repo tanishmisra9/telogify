@@ -26,20 +26,23 @@ function ConfidenceChip({ confidence }: { confidence: string }) {
   )
 }
 
-// Re-anchor a column to its own leader: the best (smallest) team shows "leader", every other
-// team shows its gap to that leader. Renders one <span> so the leader reads as the reference.
+// Re-anchor a column to its own best: the best (smallest) team shows "best", every other
+// team shows its gap to that best. Renders one <span> so "best" reads as the reference.
 function gapCells(values: (number | null)[], fmtGap: (d: number) => string): (string | null)[] {
   const present = values.filter((v): v is number => v != null)
   if (present.length === 0) return values.map(() => null)
   const best = Math.min(...present)
-  return values.map((v) => (v == null ? null : v === best ? 'leader' : fmtGap(v - best)))
+  return values.map((v) => (v == null ? null : v === best ? 'best' : fmtGap(v - best)))
 }
 
 const renderCell = (text: string | null) =>
-  text == null ? '–' : text === 'leader' ? <span className="font-semibold text-ink">leader</span> : text
+  text == null ? '–' : text === 'best' ? <span className="font-semibold text-ink">best</span> : text
 
-const RANK_GRID = 'grid grid-cols-[2rem_1.6fr_1.3fr_1fr_1fr] items-center gap-x-4'
-const HEAD = 'border-b border-border pb-2 text-sm font-semibold text-ink'
+// No grid gap: cells touch and use matching horizontal padding instead, so each row's
+// border-top reads as one continuous line rather than breaking at every column boundary
+// (same recipe as Results.tsx).
+const RANK_GRID = 'grid grid-cols-[1.9fr_1fr_1fr_1fr] items-center'
+const HEAD = 'border-b border-border px-2 pb-2 text-sm font-semibold text-ink'
 
 function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   const topRanks = rankAsc(rows.map((r) => r.top_speed_deficit_kmh))
@@ -57,7 +60,6 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   return (
     <ol className={RANK_GRID}>
       <li className="contents" aria-hidden>
-        <span className={HEAD} />
         <span className={HEAD}>Team</span>
         <span className={`${HEAD} text-center`}>Pace</span>
         <span className={`${HEAD} text-center`}>Top speed</span>
@@ -65,24 +67,24 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
       </li>
       {rows.map((r, i) => {
         const b = i > 0 ? 'border-t border-border' : ''
-        // Only the rank + team columns carry the team-color wash; the metric cells already use
-        // heatBg to shade by rank, and layering a second color meaning there would muddy both.
+        // Rank + team merge into one washed pill instead of two separately-washed cells; the
+        // metric cells already use heatBg to shade by rank, so they keep their own wash.
         const wash = { backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }
         return (
           <li key={r.constructor} className="contents">
-            <span className={`num py-3 pl-2 text-sm text-muted ${b}`} style={wash}>{r.overall_rank ?? '–'}</span>
-            <span className={`flex items-center gap-2 py-3 pr-2 font-medium text-ink ${b}`} style={wash}>
+            <span className={`flex items-center gap-2 px-2 py-3 font-medium text-ink ${b}`} style={wash}>
+              <span className="num w-5 shrink-0 text-sm text-muted">{r.overall_rank ?? '–'}</span>
               <TeamRule team={r.constructor} />
               {r.constructor}
               <ConfidenceChip confidence={r.confidence} />
             </span>
-            <span className={`num py-3 text-center text-sm text-ink ${b}`} style={cell(r.overall_rank ?? n)}>
+            <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(r.overall_rank ?? n)}>
               {renderCell(paceCells[i])}
             </span>
-            <span className={`num py-3 text-center text-sm text-ink ${b}`} style={cell(topRanks[i])}>
+            <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(topRanks[i])}>
               {renderCell(topCells[i])}
             </span>
-            <span className={`num py-3 text-center text-sm text-ink ${b}`} style={cell(degRanks[i])}>
+            <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(degRanks[i])}>
               {renderCell(degCells[i])}
             </span>
           </li>
@@ -184,8 +186,8 @@ function SeasonView({ year }: { year: number }) {
             <div className="glass rounded-[--radius-panel] p-6">
               <RankingTable rows={rows} />
               <p className="mt-4 text-xs text-muted">
-                Each column is anchored to the season's best team: the leader shows "leader" and every other
-                team its gap to that leader. Pace is the 60/40 race and qualifying blend that drives the
+                Each column is anchored to the season's best team: it shows "best" and every other
+                team its gap to it. Pace is the 60/40 race and qualifying blend that drives the
                 order. Tyre wear is measured on the compound the field ran most, so it reflects the car and
                 not its tyre choice. Cells shade toward the accent as a team ranks higher on that metric. A
                 "partial data" or "low data" tag marks a team seen in too few rounds to read at full confidence.
