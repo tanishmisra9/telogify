@@ -8,7 +8,7 @@ import type { QualiTraceData, QualiTraceDriver } from '@/lib/api'
 const WIDTH = 1100
 const PANEL_H = 150
 const PANEL_GAP = 28
-const MARGIN = { top: 24, right: 20, bottom: 28, left: 56 }
+const MARGIN = { top: 38, right: 20, bottom: 28, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const PANELS_H = PANEL_H * 3 + PANEL_GAP * 2
 const HEIGHT = MARGIN.top + PANELS_H + MARGIN.bottom
@@ -92,6 +92,20 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   const x = (m: number) => (m / maxDist) * INNER_W
   const xs = data.grid_m.map(x)
 
+  // Corner numbers collide at tight, technical circuits (Monaco's chicane sequences pack several
+  // corners within a few meters of each other) -- skip a label when it would land within 16px of
+  // the last one shown. The dotted line still marks every corner; only the number thins out.
+  const MIN_LABEL_GAP_PX = 16
+  const labeledCorners = new Set<number>()
+  let lastLabelX = -Infinity
+  for (const c of data.corners) {
+    const cx = x(c.distance_m)
+    if (cx - lastLabelX >= MIN_LABEL_GAP_PX) {
+      labeledCorners.add(c.number)
+      lastLabelX = cx
+    }
+  }
+
   const speed = yScale([...p1.speed_kmh, ...p2.speed_kmh], PANEL_H)
   const delta = yScale([...p1.delta_s, ...p2.delta_s], PANEL_H, { includeZero: true })
   const throttle = yScale([], PANEL_H, { fixed: [0, 100] })
@@ -130,7 +144,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {panels.map((panel) => (
             <g key={panel.key} transform={`translate(0,${panel.offset})`}>
-              <text x={0} y={-8} fill="var(--color-muted)" fontSize={12}>
+              <text x={0} y={-22} fill="var(--color-muted)" fontSize={12}>
                 {panel.label}
               </text>
               {panel.key === 'delta' && (
@@ -153,7 +167,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
                     stroke="var(--color-border)"
                     strokeDasharray="2 3"
                   />
-                  {panel.key === 'speed' && (
+                  {panel.key === 'speed' && labeledCorners.has(c.number) && (
                     <text x={x(c.distance_m)} y={-8} textAnchor="middle" fontSize={10} fill="var(--color-muted)">
                       {c.number}
                     </text>
