@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
+import { ChartTabs } from '@/components/ChartTabs'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
-import { Tooltip } from '@/components/Tooltip'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
 import type { DegradationData } from '@/lib/api'
@@ -79,23 +79,12 @@ export function DegradationChart({ data }: { data: DegradationData }) {
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Tyre degradation</h2>
-        <div className="inline-flex rounded-full border border-border bg-surface/60 p-0.5" role="group" aria-label="Compound">
-          {compounds.map((c) => (
-            <Tooltip key={c} label={`${c.toLowerCase()} tyre degradation`}>
-              <button
-                type="button"
-                onClick={() => setCompound(c)}
-                aria-label={`Show ${c.toLowerCase()} tyre degradation`}
-                aria-pressed={compound === c}
-                className={`rounded-full px-3 py-1 text-sm transition-colors ${
-                  compound === c ? 'bg-accent/15 text-accent' : 'text-muted hover:text-ink'
-                }`}
-              >
-                {c}
-              </button>
-            </Tooltip>
-          ))}
-        </div>
+        <ChartTabs
+          ariaLabel="Compound"
+          active={compound}
+          onChange={setCompound}
+          tabs={compounds.map((c) => ({ value: c, label: c, hint: `${c.toLowerCase()} tyre degradation` }))}
+        />
       </div>
 
       {points.length === 0 ? (

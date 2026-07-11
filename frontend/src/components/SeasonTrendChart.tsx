@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
+import { ChartTabs } from '@/components/ChartTabs'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
@@ -110,22 +111,12 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
       transition={spring}
     >
       <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-        <div className="inline-flex rounded-full border border-border bg-surface/60 p-0.5" role="group" aria-label="Metric">
-          {(['pace', 'quali', 'cumulative'] as Metric[]).map((mkey) => (
-            <button
-              key={mkey}
-              type="button"
-              onClick={() => setMetric(mkey)}
-              aria-label={`Show ${METRIC_LABEL[mkey]} trend`}
-              aria-pressed={metric === mkey}
-              className={`rounded-full px-3 py-1 text-sm transition-colors ${
-                metric === mkey ? 'bg-accent/15 text-accent' : 'text-muted hover:text-ink'
-              }`}
-            >
-              {METRIC_LABEL[mkey]}
-            </button>
-          ))}
-        </div>
+        <ChartTabs
+          ariaLabel="Metric"
+          active={metric}
+          onChange={setMetric}
+          tabs={(['pace', 'quali', 'cumulative'] as Metric[]).map((mkey) => ({ value: mkey, label: METRIC_LABEL[mkey] }))}
+        />
       </div>
 
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
-import { Tooltip } from '@/components/Tooltip'
+import { ChartTabs } from '@/components/ChartTabs'
 import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teamShortName, teamColorWithAlpha } from '@/lib/teamColors'
 import type { PaceData, PaceRow } from '@/lib/api'
@@ -59,23 +59,15 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Pace spread</h2>
-        <div className="inline-flex rounded-full border border-border bg-surface/60 p-0.5" role="group" aria-label="Chart view">
-          {(['drivers', 'constructors'] as const).map((mode) => (
-            <Tooltip key={mode} label={mode === 'drivers' ? 'Pace per driver' : 'Pace per team'}>
-              <button
-                type="button"
-                onClick={() => setViewMode(mode)}
-                aria-label={mode === 'drivers' ? 'Show pace per driver' : 'Show pace per team'}
-                aria-pressed={viewMode === mode}
-                className={`rounded-full px-3 py-1 text-sm transition-colors ${
-                  viewMode === mode ? 'bg-accent/15 text-accent' : 'text-muted hover:text-ink'
-                }`}
-              >
-                {mode === 'drivers' ? 'Drivers' : 'Constructors'}
-              </button>
-            </Tooltip>
-          ))}
-        </div>
+        <ChartTabs
+          ariaLabel="Chart view"
+          active={viewMode}
+          onChange={setViewMode}
+          tabs={[
+            { value: 'drivers', label: 'Drivers', hint: 'Pace per driver' },
+            { value: 'constructors', label: 'Constructors', hint: 'Pace per team' },
+          ]}
+        />
       </div>
 
       {rows.length === 0 ? (
