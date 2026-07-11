@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor } from '@/lib/teamColors'
-import { drawTransition, spring } from '@/lib/motion'
+import { drawTransition, morphTransition, spring } from '@/lib/motion'
 import type { SeasonConstructorRow, SeasonRound } from '@/lib/api'
 
 const WIDTH = 1100
@@ -24,6 +24,29 @@ const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualif
 // axis sized to its own data with finer decimal ticks rather than being squeezed into the same
 // 1%-per-tick scale.
 const FIXED_AXIS_MAX: Partial<Record<Metric, number>> = { pace: 5, quali: 6 }
+
+// Aligns a team's sparse {round, value} points onto every round in `roundNums`, so the same
+// team's path always has the same number of points (and therefore the same smoothPath command
+// structure) regardless of which metric is selected — required for the d attribute to morph
+// smoothly between metrics rather than snap when round coverage differs (pace/quali/cumulative
+// trend arrays can have gaps independently of each other; see season.py's build_season_snapshot).
+// Missing rounds are linearly interpolated between the nearest known points, or held flat at the
+// nearest known value past either edge — a visual continuity aid, consistent with this chart's
+// existing framing of the axis as an index for comparison, not a literal per-round measurement.
+function resampleToRounds(points: { round: number; value: number }[], roundNums: number[]): number[] {
+  const sorted = [...points].sort((a, b) => a.round - b.round)
+  return roundNums.map((r) => {
+    const exact = sorted.find((p) => p.round === r)
+    if (exact) return exact.value
+    const before = [...sorted].reverse().find((p) => p.round < r)
+    const after = sorted.find((p) => p.round > r)
+    if (before && after) {
+      const t = (r - before.round) / (after.round - before.round)
+      return before.value + (after.value - before.value) * t
+    }
+    return (before ?? after)?.value ?? 0
+  })
+}
 
 // Catmull-Rom to cubic-Bezier: turns the same round-by-round points into a smooth curve instead
 // of straight polyline segments, without pulling in a shape/interpolation library.
@@ -62,14 +85,17 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
       return next
     })
 
-  const series = rows
-    .map((r) => ({ team: r.constructor, points: r.trend[metric] }))
-    .filter((s) => s.points.length > 0)
-
   const roundNums = rounds.map((r) => r.round)
   const xMin = Math.min(...roundNums)
   const xMax = Math.max(...roundNums)
-  const values = series.flatMap((s) => s.points.map((p) => p.value))
+
+  // Filtered on the team's original (pre-resample) point count, so a team with zero real data
+  // for this metric still doesn't render a fabricated flat line — resampling only fills gaps
+  // for teams that have some data.
+  const series = rows
+    .filter((r) => r.trend[metric].length > 0)
+    .map((r) => ({ team: r.constructor, values: resampleToRounds(r.trend[metric], roundNums) }))
+  const values = series.flatMap((s) => s.values)
 
   if (series.length === 0 || values.length === 0) {
     return <p className="text-sm text-muted">No trend data yet.</p>
@@ -142,19 +168,18 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
           <AnimatePresence>
             {visibleSeries.map((s) => {
               const color = resolveTeamColor(s.team)
-              const pts = [...s.points].sort((a, b) => a.round - b.round)
+              const pathD = smoothPath(roundNums.map((r, i) => ({ x: x(r), y: y(s.values[i]) })))
               return (
                 <m.path
                   key={s.team}
-                  d={smoothPath(pts.map((p) => ({ x: x(p.round), y: y(p.value) })))}
                   fill="none"
                   stroke={color}
                   strokeWidth={2}
                   strokeLinecap="round"
-                  initial={reduce ? false : { pathLength: 0, opacity: 0 }}
-                  animate={{ pathLength: 1, opacity: 1 }}
+                  initial={reduce ? false : { pathLength: 0, opacity: 0, d: pathD }}
+                  animate={{ pathLength: 1, opacity: 1, d: pathD }}
                   exit={{ opacity: 0 }}
-                  transition={reduce ? { duration: 0 } : drawTransition}
+                  transition={reduce ? { duration: 0 } : { ...drawTransition, d: morphTransition }}
                 />
               )
             })}
