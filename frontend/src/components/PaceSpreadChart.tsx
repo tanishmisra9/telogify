@@ -40,29 +40,35 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
   // Same touch-scroll-rejection as BarChart: a finger dragging across box plots to scroll the
   // chart horizontally shouldn't also toggle whichever one it passed over.
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  // Mouse-specific gotcha: scrolling via wheel/trackpad while the cursor stays put doesn't move
+  // the pointer, but the box plot underneath it changes as the content scrolls past -- and the
+  // browser fires a real mouseenter for whatever ends up there, silently swapping the selection
+  // out from under the reader. A JS timestamp guard on the handler isn't reliable here (the
+  // browser's hit-test recalculation and the scroll event aren't guaranteed to fire in a fixed
+  // order), so this disables pointer events on the rows at the CSS level for a beat after any
+  // scroll -- the browser then can't dispatch mouseenter to them at all, regardless of ordering.
+  const [isScrolling, setIsScrolling] = useState(false)
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width))
     observer.observe(el)
-    return () => observer.disconnect()
+    let scrollEndTimeout: ReturnType<typeof setTimeout>
+    const onScroll = () => {
+      setIsScrolling(true)
+      clearTimeout(scrollEndTimeout)
+      scrollEndTimeout = setTimeout(() => setIsScrolling(false), 200)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      observer.disconnect()
+      el.removeEventListener('scroll', onScroll)
+      clearTimeout(scrollEndTimeout)
+    }
   }, [])
 
   const canScrollRight = useScrollFade(containerRef)
-
-  // Popup position tracks scroll too, not just the chart's total width: clamping only to the
-  // chart's bounds let the popup center correctly on a column near the scrolled-to edge, then
-  // still render mostly off the visible viewport (clipped) since that edge could be far from
-  // the actual visible window on a wide, scrolled chart.
-  const [scrollLeft, setScrollLeft] = useState(0)
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const onScroll = () => setScrollLeft(el.scrollLeft)
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [])
 
   const rows: PaceRow[] = viewMode === 'drivers' ? pace.drivers : pace.constructors
 
@@ -90,15 +96,25 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
   const yTicks = Array.from({ length: 6 }, (_, i) => yMin + ((yMax - yMin) * i) / 5)
   const hovered = rows.find((r) => r.id === hoveredId) ?? null
 
-  // Clamped against BOTH the chart's total width and the currently visible scrolled window, so
-  // a column near the edge of a wide, scrolled chart still gets a fully on-screen popup instead
-  // of one that's correctly centered in content-space but clipped off the visible viewport.
-  const popupLeft = (row: PaceRow) => {
-    const rawLeft = MARGIN.left + band.center(rows.indexOf(row)) - 100
-    const lo = Math.max(0, scrollLeft)
-    const hi = Math.min(width - 200, scrollLeft + containerWidth - 200)
-    return Math.min(hi, Math.max(lo, rawLeft))
-  }
+  // Frozen in place, not tracked against scroll: computed fresh whenever the selected row
+  // changes (from the container's scroll offset at that exact moment), then left alone. A
+  // popup that re-centered itself on every scroll event dragged along with the chart underneath
+  // it, which read as the panel itself moving; it should only move when you pick a new column.
+  const [popupPos, setPopupPos] = useState<{ left: number; top: number } | null>(null)
+  useEffect(() => {
+    const el = containerRef.current
+    const idx = rows.findIndex((r) => r.id === hoveredId)
+    if (!el || idx === -1) {
+      setPopupPos(null)
+      return
+    }
+    const viewportX = MARGIN.left + band.center(idx) - el.scrollLeft
+    setPopupPos({
+      left: Math.min(Math.max(viewportX - 100, 0), el.clientWidth - 200),
+      top: MARGIN.top + 4,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoveredId])
 
   return (
     <m.div
@@ -136,6 +152,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
               </g>
             ))}
 
+            <g className={isScrolling ? 'pointer-events-none' : ''}>
             {rows.map((row, i) => {
               const cx = band.center(i)
               const bw = Math.min(band.bandwidth * 0.6, 34)
@@ -219,26 +236,28 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                 </g>
               )
             })}
+            </g>
 
           </g>
         </svg>
-        {/* A plain HTML overlay, not an SVG foreignObject: this popup has now rendered in the
-            wrong place on a real iOS device three separate times (filter blur, then a transform
-            offset, then apparently scroll position) no matter what was animated inside it --
-            WebKit's foreignObject support is unreliable enough on its own to abandon rather than
-            patch again. A normal absolutely-positioned div inside this same scrolling container
-            scrolls with the chart exactly like the foreignObject did, using ordinary, reliable
-            browser layout instead of SVG's replaced-element compositing. Stable key so switching
-            between two already-hovered columns slides in place rather than closing/reopening
-            (see BarChart's tag for the same pattern). */}
+        </div>
+        {/* A plain HTML overlay, not an SVG foreignObject (WebKit's foreignObject support proved
+            unreliable enough on a real device to abandon rather than patch again -- see git
+            history), and deliberately OUTSIDE the scrolling container, not inside it: positioned
+            against this outer non-scrolling wrapper, so it stays put on screen while the chart
+            scrolls underneath instead of dragging along with it. Position is frozen per selected
+            row (see the effect above), not recalculated on scroll, so it only ever moves when
+            you pick a different column -- exactly the same as picking one without having
+            scrolled at all. Stable key so switching between two already-selected columns slides
+            in place rather than closing/reopening (see BarChart's tag for the same pattern). */}
         <AnimatePresence>
-          {hovered && (
+          {hovered && popupPos && (
             <m.div
               key="pace-popup"
               className="glass pointer-events-none absolute w-[200px] rounded-xl px-3 py-2 text-xs text-ink"
-              style={{ top: MARGIN.top + 4 }}
-              initial={{ opacity: 0, left: popupLeft(hovered) }}
-              animate={{ opacity: 1, left: popupLeft(hovered) }}
+              style={{ top: popupPos.top }}
+              initial={{ opacity: 0, left: popupPos.left }}
+              animate={{ opacity: 1, left: popupPos.left }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
             >
@@ -256,7 +275,6 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
             </m.div>
           )}
         </AnimatePresence>
-        </div>
         <ScrollFadeEdge visible={canScrollRight} />
         </div>
       )}
