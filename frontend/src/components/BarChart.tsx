@@ -27,6 +27,10 @@ const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 // labels into overlap (the previous approach -- one constant true-pixel font size stretched over
 // a fluid-scaled column width -- broke exactly here: the column shrank but the label didn't).
 const MIN_SLOT = 40
+// The hover/tap value callout: a small enclosed tag sized for the widest realistic value
+// ("+1.293s", "28.094s").
+const PANEL_W = 80
+const PANEL_H = 26
 
 /** Shared vertical bar chart: one bar per row, team-colored, row label below, a light y-axis
  * for at-rest reading, and the exact value on hover (one at a time). Used for practice best
@@ -141,24 +145,42 @@ export function BarChart({
             )
           })}
           <AnimatePresence>
-            {hoveredRow && (
-              <m.text
-                key={hoveredRow.id}
-                x={center(rows.findIndex((r) => r.id === hoveredRow.id))}
-                y={-10}
-                textAnchor="middle"
-                fill="var(--color-ink)"
-                fontSize={13}
-                fontWeight={700}
-                className="num pointer-events-none"
-                initial={{ opacity: 0, filter: 'blur(4px)' }}
-                animate={{ opacity: 1, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, filter: 'blur(4px)' }}
-                transition={{ duration: 0.18 }}
-              >
-                {formatValue(hoveredRow.displayValue ?? hoveredRow.value, hoveredRow)}
-              </m.text>
-            )}
+            {hoveredRow &&
+              (() => {
+                const cx = center(rows.findIndex((r) => r.id === hoveredRow.id))
+                // A small enclosed tag, not bare text: reads as a callout instead of a stray
+                // number floating in the chart. Sits close to the bar's own peak (not a fixed
+                // spot near the chart's top, which read as disconnected from the bar), but
+                // clamped so it never runs off the top of the SVG for a very tall bar, or
+                // sits right on the axis for a very short one.
+                const panelX = Math.min(Math.max(cx - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
+                const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 10, -MARGIN.top + 4)
+                return (
+                  <m.g
+                    key={hoveredRow.id}
+                    className="pointer-events-none"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    transition={{ duration: 0.16 }}
+                  >
+                    <rect x={panelX + 2.5} y={panelY + 2.5} width={PANEL_W} height={PANEL_H} fill="var(--color-shadow)" rx={2} />
+                    <rect x={panelX} y={panelY} width={PANEL_W} height={PANEL_H} fill="var(--color-surface)" stroke="var(--color-ink)" strokeWidth={1.5} rx={2} />
+                    <text
+                      x={panelX + PANEL_W / 2}
+                      y={panelY + PANEL_H / 2 + 1}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill="var(--color-ink)"
+                      fontSize={13}
+                      fontWeight={700}
+                      className="num"
+                    >
+                      {formatValue(hoveredRow.displayValue ?? hoveredRow.value, hoveredRow)}
+                    </text>
+                  </m.g>
+                )
+              })()}
           </AnimatePresence>
         </g>
       </svg>

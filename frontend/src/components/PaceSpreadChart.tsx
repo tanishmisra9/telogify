@@ -197,27 +197,28 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
               )
             })}
 
-            <foreignObject
-              x={hovered ? Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100)) : 0}
-              y={4}
-              width={200}
-              height={170}
-              className="pointer-events-none"
-            >
-              <AnimatePresence>
-                {hovered && (
-                  // No `filter` here: WebKit badly corrupts an SVG foreignObject's position when
-                  // CSS filter (blur) is applied to its content -- confirmed on a real iOS device,
-                  // the popup rendered detached from its box plot and visibly clipped. Opacity +
-                  // a small y-offset gives the same fade-in feel without touching filter.
-                  <m.div
-                    key={hovered.id}
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.18 }}
-                    className="glass rounded-xl px-3 py-2 text-xs text-ink"
-                  >
+            {/* No CSS transform/filter/animation on anything INSIDE the foreignObject: WebKit
+                has repeatedly corrupted its position on a real iOS device with either applied
+                to its content (confirmed twice -- first with a filter blur, then again with a
+                transform y-offset, both causing the popup to render in the wrong place or jump
+                after painting). Animating the foreignObject's OWN native SVG opacity instead
+                keeps the fade without touching anything WebKit mishandles, and the div inside
+                is fully static. */}
+            <AnimatePresence>
+              {hovered && (
+                <m.foreignObject
+                  key={hovered.id}
+                  x={Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100))}
+                  y={4}
+                  width={200}
+                  height={170}
+                  className="pointer-events-none"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <div className="glass rounded-xl px-3 py-2 text-xs text-ink">
                     <div className="font-medium">{driverName(hovered.label)}</div>
                     {hovered.team && hovered.team !== hovered.label && (
                       <div className="mt-1 text-muted">{hovered.team}</div>
@@ -229,10 +230,10 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                       <div><span className="font-semibold text-ink">Ceiling</span> {hovered.stats.pace_ceiling.toFixed(3)}s</div>
                       <div><span className="font-semibold text-ink">{hovered.stats.n_laps}</span> laps of data</div>
                     </div>
-                  </m.div>
-                )}
-              </AnimatePresence>
-            </foreignObject>
+                  </div>
+                </m.foreignObject>
+              )}
+            </AnimatePresence>
           </g>
         </svg>
         </div>
