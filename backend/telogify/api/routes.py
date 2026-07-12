@@ -25,6 +25,7 @@ from telogify.analysis.race_pace import (
 )
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
 from telogify.analysis.season import build_season_accel_scatter, build_season_snapshot
+from telogify.analysis.season_stats import build_season_stats
 from telogify.ingest.results import (
     format_gap_label,
     format_total_time,
@@ -656,6 +657,16 @@ def season_snapshot(year: int, db: Session = Depends(get_session)):
     if snapshot is None:
         raise HTTPException(status_code=404, detail="no weekends for year")
     return snapshot
+
+
+@router.get("/season/{year}/stats")
+def season_stats(year: int, db: Session = Depends(get_session)):
+    """Landing-page headline stats: total laps analysed and total km of telemetry across
+    every ingested weekend of `year`."""
+    stats = build_season_stats(year, db)
+    if stats is None:
+        raise HTTPException(status_code=404, detail="no weekends for year")
+    return stats
 
 
 @router.get("/season/{year}/deployment")
