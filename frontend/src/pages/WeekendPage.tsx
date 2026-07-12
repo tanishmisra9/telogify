@@ -62,7 +62,7 @@ function PracticeSectors({ data }: { data: SectorsData }) {
   return (
     <div className="glass rounded-[--radius-panel] p-6">
       <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Best sectors</h2>
-      <div className="mt-5 grid gap-8">
+      <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-8">
         {[1, 2, 3].map((sector) => (
           <PracticeSectorChart key={sector} sector={sector} rows={data.drivers} />
         ))}
