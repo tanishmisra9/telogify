@@ -106,10 +106,12 @@ export function Landing() {
           {STEPS.map((step, i) => (
             <BlurFade key={step.title} delay={0.06 * i}>
               <div>
-                <span className="font-display text-6xl leading-none text-accent">
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <h3 className="mt-4 font-display text-3xl tracking-tight">{step.title}</h3>
+                <div className="flex items-baseline gap-3">
+                  <span className="font-display text-6xl leading-none text-accent">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <h3 className="font-display text-3xl tracking-tight">{step.title}</h3>
+                </div>
                 <p className="mt-3 leading-relaxed text-muted">{step.body}</p>
               </div>
             </BlurFade>
