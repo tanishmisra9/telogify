@@ -103,85 +103,93 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
         </ol>
       )}
 
-      <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Season ERS deployment: longitudinal acceleration vs speed">
-        <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-          {yTicks.map((t) => (
-            <g key={t}>
-              <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
-              <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
-                {t.toFixed(0)}
+      <div className="hidden md:block">
+        <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Season ERS deployment: longitudinal acceleration vs speed">
+          <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+            {yTicks.map((t) => (
+              <g key={t}>
+                <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
+                <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
+                  {t.toFixed(0)}
+                </text>
+              </g>
+            ))}
+            {xTicks.map((t) => (
+              <text key={t} x={x(t)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
+                {t}
               </text>
-            </g>
-          ))}
-          {xTicks.map((t) => (
-            <text key={t} x={x(t)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
-              {t}
+            ))}
+            <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
+              Speed (km/h)
             </text>
-          ))}
-          <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
-            Speed (km/h)
-          </text>
-          <text x={0} y={-8} textAnchor="start" fill="var(--color-muted)" fontSize={textPx(12)}>
-            Longitudinal acceleration (m/s²)
-          </text>
+            <text x={0} y={-8} textAnchor="start" fill="var(--color-muted)" fontSize={textPx(12)}>
+              Longitudinal acceleration (m/s²)
+            </text>
 
-          {/* One path per team instead of one <circle> per point: with several representative
-              laps per driver now sampled at ingest, a team's cloud can run into the thousands
-              of points, and a `<circle>` per point becomes real DOM weight at that count. Each
-              `M x,y h0.01` draws an imperceptible sliver that the round linecap renders as a
-              dot, so the same look costs one path node per team instead of one node per point. */}
-          {visibleTeams.map((team) => (
-            <path
-              key={`dots-${team}`}
-              d={scatter[team].map(([sp, ac]) => `M${x(sp)},${y(ac)}h0.01`).join('')}
-              stroke={teamColorWithAlpha(team, 0.2)}
-              strokeWidth={2.6}
-              strokeLinecap="round"
-              fill="none"
-            />
-          ))}
+            {/* One path per team instead of one <circle> per point: with several representative
+                laps per driver now sampled at ingest, a team's cloud can run into the thousands
+                of points, and a `<circle>` per point becomes real DOM weight at that count. Each
+                `M x,y h0.01` draws an imperceptible sliver that the round linecap renders as a
+                dot, so the same look costs one path node per team instead of one node per point. */}
+            {visibleTeams.map((team) => (
+              <path
+                key={`dots-${team}`}
+                d={scatter[team].map(([sp, ac]) => `M${x(sp)},${y(ac)}h0.01`).join('')}
+                stroke={teamColorWithAlpha(team, 0.2)}
+                strokeWidth={2.6}
+                strokeLinecap="round"
+                fill="none"
+              />
+            ))}
 
-          <AnimatePresence>
-            {visibleTrends.map(({ team, bins }) => {
-              const stroke = resolveTeamColor(team)
-              const pathD = smoothPath(bins.map((b) => ({ x: x(b.speedMid), y: y(b.medianAccel) })))
-              return (
-                <m.path
-                  key={team}
-                  fill="none"
-                  stroke={stroke}
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  initial={reduce ? false : { pathLength: 0, opacity: 0, d: pathD }}
-                  animate={{ pathLength: 1, opacity: 1, d: pathD }}
-                  exit={{ opacity: 0 }}
-                  transition={reduce ? { duration: 0 } : drawTransition}
-                />
-              )
-            })}
-          </AnimatePresence>
-        </g>
-      </svg>
+            <AnimatePresence>
+              {visibleTrends.map(({ team, bins }) => {
+                const stroke = resolveTeamColor(team)
+                const pathD = smoothPath(bins.map((b) => ({ x: x(b.speedMid), y: y(b.medianAccel) })))
+                return (
+                  <m.path
+                    key={team}
+                    fill="none"
+                    stroke={stroke}
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    initial={reduce ? false : { pathLength: 0, opacity: 0, d: pathD }}
+                    animate={{ pathLength: 1, opacity: 1, d: pathD }}
+                    exit={{ opacity: 0 }}
+                    transition={reduce ? { duration: 0 } : drawTransition}
+                  />
+                )
+              })}
+            </AnimatePresence>
+          </g>
+        </svg>
 
-      <div className="mt-6 border-t border-border pt-5">
-        <TeamSelectLegend
-          rows={teams.map((team) => ({ team }))}
-          selected={selected}
-          onToggle={toggleTeam}
-          isFiltering={isFiltering}
-        />
+        <div className="mt-6 border-t border-border pt-5">
+          <TeamSelectLegend
+            rows={teams.map((team) => ({ team }))}
+            selected={selected}
+            onToggle={toggleTeam}
+            isFiltering={isFiltering}
+          />
+        </div>
+
+        <p className="mt-4 text-xs text-muted">
+          Every point is a full-throttle, no-braking sample from up to five representative race laps per
+          driver per weekend, pooled across the season; cornering samples (lateral acceleration at or above
+          2 m/s²) are
+          excluded so only straight-line deployment and harvesting show. Each line is that team's median
+          acceleration at each speed. A line that drops toward or below zero at high speed shows the car's
+          electrical deployment running out (clipping); a lower full-throttle acceleration at low-to-mid
+          speed shows energy being harvested rather than deployed there. Click a team to isolate its line,
+          click again to bring it back.
+        </p>
       </div>
 
-      <p className="mt-4 text-xs text-muted">
-        Every point is a full-throttle, no-braking sample from up to five representative race laps per
-        driver per weekend, pooled across the season; cornering samples (lateral acceleration at or above
-        2 m/s²) are
-        excluded so only straight-line deployment and harvesting show. Each line is that team's median
-        acceleration at each speed. A line that drops toward or below zero at high speed shows the car's
-        electrical deployment running out (clipping); a lower full-throttle acceleration at low-to-mid
-        speed shows energy being harvested rather than deployed there. Click a team to isolate its line,
-        click again to bring it back.
+      <p className="text-sm text-muted md:hidden">
+        The deployment chart and team-by-team ranking are a desktop experience: the ranking only
+        makes sense read against the scatter it's drawn from. Open this weekend on a larger screen
+        to explore it; the verdicts above hold the same findings.
       </p>
     </div>
   )
