@@ -144,10 +144,13 @@ export function BarChart({
               </g>
             )
           })}
-          {/* mode="wait": same fix as PaceSpreadChart's popup -- the tag is wider than a
-              column, so switching straight from one bar to an adjacent one showed the old tag
-              closing over the new one opening. */}
-          <AnimatePresence mode="wait">
+          {/* Stable key, not keyed by hoveredRow.id: switching from one bar to an adjacent one
+              should slide the SAME tag over to the new position and swap its value, not
+              unmount/remount a new instance (which always looks like the tag closing and
+              reopening, no matter how the exit/enter timing is tuned). Fade in/out only happens
+              on the true open/close transition; switching between two already-tapped bars just
+              moves the tag and its rects/text in place via their own animated x/y. */}
+          <AnimatePresence>
             {hoveredRow &&
               (() => {
                 const cx = center(rows.findIndex((r) => r.id === hoveredRow.id))
@@ -160,18 +163,34 @@ export function BarChart({
                 const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 18, -MARGIN.top + 4)
                 return (
                   <m.g
-                    key={hoveredRow.id}
+                    key="bar-panel"
                     className="pointer-events-none"
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 4 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     transition={{ duration: 0.16 }}
                   >
-                    <rect x={panelX + 2.5} y={panelY + 2.5} width={PANEL_W} height={PANEL_H} fill="var(--color-shadow)" rx={2} />
-                    <rect x={panelX} y={panelY} width={PANEL_W} height={PANEL_H} fill="var(--color-surface)" stroke="var(--color-ink)" strokeWidth={1.5} rx={2} />
-                    <text
-                      x={panelX + PANEL_W / 2}
-                      y={panelY + PANEL_H / 2 + 1}
+                    <m.rect
+                      animate={{ x: panelX + 2.5, y: panelY + 2.5 }}
+                      transition={{ duration: 0.16 }}
+                      width={PANEL_W}
+                      height={PANEL_H}
+                      fill="var(--color-shadow)"
+                      rx={2}
+                    />
+                    <m.rect
+                      animate={{ x: panelX, y: panelY }}
+                      transition={{ duration: 0.16 }}
+                      width={PANEL_W}
+                      height={PANEL_H}
+                      fill="var(--color-surface)"
+                      stroke="var(--color-ink)"
+                      strokeWidth={1.5}
+                      rx={2}
+                    />
+                    <m.text
+                      animate={{ x: panelX + PANEL_W / 2, y: panelY + PANEL_H / 2 + 1 }}
+                      transition={{ duration: 0.16 }}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fill="var(--color-ink)"
@@ -180,7 +199,7 @@ export function BarChart({
                       className="num"
                     >
                       {formatValue(hoveredRow.displayValue ?? hoveredRow.value, hoveredRow)}
-                    </text>
+                    </m.text>
                   </m.g>
                 )
               })()}

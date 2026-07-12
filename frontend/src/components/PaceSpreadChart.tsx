@@ -204,21 +204,23 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                 after painting). Animating the foreignObject's OWN native SVG opacity instead
                 keeps the fade without touching anything WebKit mishandles, and the div inside
                 is fully static. */}
-            {/* mode="wait": adjacent box plots' 200px-wide popups overlap heavily (columns are
-                far narrower than that), so without waiting, switching straight from one to the
-                next showed both mid-fade at once -- the old one visibly closing over the new
-                one opening. */}
-            <AnimatePresence mode="wait">
+            {/* Stable key, not keyed by hovered.id: switching straight from one box plot to an
+                adjacent one should slide the SAME popup over to the new x and swap its content,
+                not unmount/remount a new instance. Keying by id forced exactly that -- an exit
+                and enter every time you moved to a neighboring column, which (mode="wait" or
+                not) always looked like the panel closing and reopening. Fade in/out now only
+                happens on the true open/close transition (nothing hovered <-> something
+                hovered); switching between two already-hovered columns just moves in place. */}
+            <AnimatePresence>
               {hovered && (
                 <m.foreignObject
-                  key={hovered.id}
-                  x={Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100))}
+                  key="pace-popup"
                   y={4}
                   width={200}
                   height={170}
                   className="pointer-events-none"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  initial={{ opacity: 0, x: Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100)) }}
+                  animate={{ opacity: 1, x: Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100)) }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.18 }}
                 >
