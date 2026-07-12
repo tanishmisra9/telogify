@@ -51,13 +51,32 @@ export function BarChart({
   // bar the finger passed over (touchend fires wherever the finger lifts, scroll or not). Only
   // treat it as a tap -- and toggle the label -- if the finger barely moved between start and end.
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  // Mouse-specific gotcha: scrolling via wheel/trackpad while the cursor stays put doesn't move
+  // the pointer, but the bar underneath it changes as the content scrolls past -- and the browser
+  // fires a real mouseenter for whatever ends up there, silently swapping the selection out from
+  // under the reader. A JS timestamp guard on the handler isn't reliable (the browser's hit-test
+  // recalculation and the scroll event aren't guaranteed to fire in a fixed order), so this
+  // disables pointer events on the bars at the CSS level for a beat after any scroll -- the
+  // browser then can't dispatch mouseenter to them at all, regardless of ordering.
+  const [isScrolling, setIsScrolling] = useState(false)
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width))
     observer.observe(el)
-    return () => observer.disconnect()
+    let scrollEndTimeout: ReturnType<typeof setTimeout>
+    const onScroll = () => {
+      setIsScrolling(true)
+      clearTimeout(scrollEndTimeout)
+      scrollEndTimeout = setTimeout(() => setIsScrolling(false), 200)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      observer.disconnect()
+      el.removeEventListener('scroll', onScroll)
+      clearTimeout(scrollEndTimeout)
+    }
   }, [])
 
   const canScrollRight = useScrollFade(containerRef)
@@ -95,6 +114,7 @@ export function BarChart({
               </text>
             </g>
           ))}
+          <g className={isScrolling ? 'pointer-events-none' : ''}>
           {rows.map((r, i) => {
             const cx = center(i)
             const top = y(r.value)
@@ -144,6 +164,7 @@ export function BarChart({
               </g>
             )
           })}
+          </g>
           {/* Stable key, not keyed by hoveredRow.id: switching from one bar to an adjacent one
               should slide the SAME tag over to the new position and swap its value, not
               unmount/remount a new instance (which always looks like the tag closing and
