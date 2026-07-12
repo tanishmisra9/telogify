@@ -25,16 +25,17 @@ export function SeasonStats() {
     <section className="mt-24 sm:mt-32">
       <div className="glass rounded-[--radius-panel] p-8 sm:p-12">
         <p className="kicker text-accent">Telogify&apos;s telemetry so far</p>
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:gap-6">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
           {STATS.map(({ key, label, format }) => (
-            <div key={key}>
-              {/* One step down from Countdown's text-5xl base: these are up to 6-7 digit
-                  figures (with thousands separators), not Countdown's fixed 2-digit values, so
-                  the same base size overflows a 2-column mobile layout. */}
-              <span className="num block text-3xl leading-none tracking-tight text-ink tabular-nums sm:text-6xl xl:text-8xl">
+            <div key={key} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              {/* Label sits beside the number, not below it, so the number is sized to leave
+                  room for the widest label ("Km of telemetry") next to it on one line even at
+                  a narrow mobile width -- one step down from Countdown's own text-5xl, which
+                  was sized for a bare digit pair with nothing beside it. */}
+              <span className="num text-4xl leading-none tracking-tight text-ink tabular-nums sm:text-6xl xl:text-8xl">
                 {format(data[key])}
               </span>
-              <span className="mt-2 block text-xs uppercase tracking-[0.2em] text-muted sm:text-sm">{label}</span>
+              <span className="text-xs uppercase tracking-[0.15em] text-muted sm:text-sm">{label}</span>
             </div>
           ))}
         </div>
