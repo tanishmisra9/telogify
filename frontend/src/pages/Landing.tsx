@@ -56,7 +56,7 @@ function LiveInsight() {
   // opacity 0). The data-load itself is the reveal.
   return (
     <section className="mt-24 sm:mt-32">
-      <p className="kicker text-accent">Latest verdict · {data.event_name}</p>
+      <p className="kicker text-sm! text-accent">Latest verdict · {data.event_name}</p>
       <div className="mt-4">
         <Insight item={data} showSlot={false} />
       </div>

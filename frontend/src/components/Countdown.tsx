@@ -40,7 +40,7 @@ export function Countdown() {
     <section className="mt-24 sm:mt-32">
       <div className="glass rounded-[--radius-panel] p-8 sm:p-12">
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-          <p className="kicker text-accent">Next race · Round {data.round}</p>
+          <p className="kicker text-sm! text-accent">Next race · Round {data.round}</p>
           <p className="num text-sm text-muted">
             {raceDate}
             {place ? ` · ${place}` : ''}
