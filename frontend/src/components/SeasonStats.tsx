@@ -24,7 +24,7 @@ export function SeasonStats() {
   return (
     <section className="mt-24 sm:mt-32">
       <div className="glass rounded-[--radius-panel] p-8 sm:p-12">
-        <p className="kicker text-accent">Season {data.year} so far</p>
+        <p className="kicker text-accent">Telogify&apos;s telemetry so far</p>
         <div className="mt-6 grid grid-cols-2 gap-4 sm:gap-6">
           {STATS.map(({ key, label, format }) => (
             <div key={key}>
