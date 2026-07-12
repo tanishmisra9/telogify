@@ -43,6 +43,10 @@ export function BarChart({
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  // Dragging a finger across bars to scroll the chart horizontally was also toggling whatever
+  // bar the finger passed over (touchend fires wherever the finger lifts, scroll or not). Only
+  // treat it as a tap -- and toggle the label -- if the finger barely moved between start and end.
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
@@ -104,8 +108,16 @@ export function BarChart({
                 // undo whatever mouseenter had just set, so it looked like it flickered and
                 // needed a second tap. preventDefault on touchend stops the browser from firing
                 // that synthetic mouse sequence at all, so only this handler runs for touch.
+                onTouchStart={(e) => {
+                  const t = e.touches[0]
+                  touchStartRef.current = { x: t.clientX, y: t.clientY }
+                }}
                 onTouchEnd={(e) => {
                   e.preventDefault()
+                  const start = touchStartRef.current
+                  const t = e.changedTouches[0]
+                  const moved = start ? Math.hypot(t.clientX - start.x, t.clientY - start.y) : 0
+                  if (moved > 10) return
                   setHoveredId((h) => (h === r.id ? null : r.id))
                 }}
               >
@@ -133,7 +145,7 @@ export function BarChart({
               <m.text
                 key={hoveredRow.id}
                 x={center(rows.findIndex((r) => r.id === hoveredRow.id))}
-                y={y(hoveredRow.value) - 8}
+                y={-10}
                 textAnchor="middle"
                 fill="var(--color-ink)"
                 fontSize={13}

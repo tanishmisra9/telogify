@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { m, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { driverName } from '@/lib/drivers'
@@ -37,6 +37,9 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
   const reduce = useReducedMotion()
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  // Same touch-scroll-rejection as BarChart: a finger dragging across box plots to scroll the
+  // chart horizontally shouldn't also toggle whichever one it passed over.
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
@@ -126,6 +129,18 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                   key={row.id}
                   onMouseEnter={() => setHoveredId(row.id)}
                   onMouseLeave={() => setHoveredId(null)}
+                  onTouchStart={(e) => {
+                    const t = e.touches[0]
+                    touchStartRef.current = { x: t.clientX, y: t.clientY }
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault()
+                    const start = touchStartRef.current
+                    const t = e.changedTouches[0]
+                    const moved = start ? Math.hypot(t.clientX - start.x, t.clientY - start.y) : 0
+                    if (moved > 10) return
+                    setHoveredId((h) => (h === row.id ? null : row.id))
+                  }}
                 >
                   {/* Full-height, full-band-width invisible catcher so hover doesn't flicker
                       when the cursor moves through the gaps between marks. */}
@@ -182,23 +197,38 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
               )
             })}
 
-            {hovered && (
-              <foreignObject x={Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100))} y={4} width={200} height={150} className="pointer-events-none">
-                <div className="glass rounded-xl px-3 py-2 text-xs text-ink">
-                  <div className="font-medium">{driverName(hovered.label)}</div>
-                  {hovered.team && hovered.team !== hovered.label && (
-                    <div className="mt-1 text-muted">{hovered.team}</div>
-                  )}
-                  <div className="mt-2 space-y-0.5 text-muted">
-                    <div><span className="font-semibold text-ink">Mean</span> {hovered.stats.mean.toFixed(3)}s</div>
-                    <div><span className="font-semibold text-ink">Median</span> {hovered.stats.median.toFixed(3)}s</div>
-                    <div><span className="font-semibold text-ink">Q1-Q3</span> {hovered.stats.q1.toFixed(3)}-{hovered.stats.q3.toFixed(3)}s</div>
-                    <div><span className="font-semibold text-ink">Ceiling</span> {hovered.stats.pace_ceiling.toFixed(3)}s</div>
-                    <div><span className="font-semibold text-ink">{hovered.stats.n_laps}</span> laps of data</div>
-                  </div>
-                </div>
-              </foreignObject>
-            )}
+            <foreignObject
+              x={hovered ? Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100)) : 0}
+              y={4}
+              width={200}
+              height={150}
+              className="pointer-events-none"
+            >
+              <AnimatePresence>
+                {hovered && (
+                  <m.div
+                    key={hovered.id}
+                    initial={{ opacity: 0, filter: 'blur(4px)' }}
+                    animate={{ opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, filter: 'blur(4px)' }}
+                    transition={{ duration: 0.18 }}
+                    className="glass rounded-xl px-3 py-2 text-xs text-ink"
+                  >
+                    <div className="font-medium">{driverName(hovered.label)}</div>
+                    {hovered.team && hovered.team !== hovered.label && (
+                      <div className="mt-1 text-muted">{hovered.team}</div>
+                    )}
+                    <div className="mt-2 space-y-0.5 text-muted">
+                      <div><span className="font-semibold text-ink">Mean</span> {hovered.stats.mean.toFixed(3)}s</div>
+                      <div><span className="font-semibold text-ink">Median</span> {hovered.stats.median.toFixed(3)}s</div>
+                      <div><span className="font-semibold text-ink">Q1-Q3</span> {hovered.stats.q1.toFixed(3)}-{hovered.stats.q3.toFixed(3)}s</div>
+                      <div><span className="font-semibold text-ink">Ceiling</span> {hovered.stats.pace_ceiling.toFixed(3)}s</div>
+                      <div><span className="font-semibold text-ink">{hovered.stats.n_laps}</span> laps of data</div>
+                    </div>
+                  </m.div>
+                )}
+              </AnimatePresence>
+            </foreignObject>
           </g>
         </svg>
         </div>
