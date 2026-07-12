@@ -1,4 +1,5 @@
 import { LogoWaveform } from '@/components/Logo'
+import { useApi, type WeekendSummary } from '@/lib/api'
 
 // Hand-rolled to match the codebase's icon convention (no lucide-react dependency installed).
 function InstagramIcon() {
@@ -27,6 +28,13 @@ function InstagramIcon() {
 // the scale its idea deserves; the text label stays in the normal padded container above it.
 // Purely decorative — not a link.
 export function Footer() {
+  // Same "current season" derivation as SeasonRedirect/SeasonStats (max year among ingested
+  // weekends), not a hardcoded year -- omit the season clause entirely rather than show a stale
+  // or blank one before this resolves.
+  const { data: weekends } = useApi<WeekendSummary[]>('/weekends')
+  const years = (weekends ?? []).map((w) => w.year)
+  const year = years.length > 0 ? Math.max(...years) : null
+
   return (
     <footer className="mt-24 border-t-[1.5px] border-ink pb-10">
       <div className="mx-auto max-w-[1312px] px-6 pt-8">
@@ -44,7 +52,7 @@ export function Footer() {
             </a>{' '}
             : clean-air filtering, fuel correction model, ERS depletion signal.
           </p>
-          <p className="shrink-0 text-sm text-muted">Timing data via FastF1 · 2026 season</p>
+          <p className="shrink-0 text-sm text-muted">Timing data via FastF1{year != null ? ` · ${year} season` : ''}</p>
         </div>
         {/* Ahead of the copyright row, not after: on mobile everything stacks in DOM order, and
             the copyright line should read as the footer's actual final line. */}
