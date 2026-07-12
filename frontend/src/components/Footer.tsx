@@ -50,7 +50,7 @@ export function Footer() {
           <p className="text-sm text-muted">Let&apos;s telogify this weekend.</p>
           <p className="shrink-0 text-sm text-muted">© 2026 Tanish Misra</p>
         </div>
-        <p className="mt-3 text-xs text-muted">Every figure computed from official timing data. Nothing estimated.</p>
+        <p className="mt-3 text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>
       </div>
       <div className="mt-6 text-ink">
         <LogoWaveform className="h-16 w-full sm:h-24" />
