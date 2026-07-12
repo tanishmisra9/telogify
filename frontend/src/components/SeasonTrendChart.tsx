@@ -90,8 +90,13 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   const xMin = Math.min(...roundNums)
   const xMax = Math.max(...roundNums)
   const innerWNeeded = Math.max(1, roundNums.length - 1) * MIN_ROUND_SLOT
-  const innerW = Math.max(containerWidth - MARGIN.left - MARGIN.right, innerWNeeded)
-  const width = innerW + MARGIN.left + MARGIN.right
+  // containerWidth is the scrolling area alone now (the y-axis panel is a separate flex sibling
+  // with its own width), so only MARGIN.right -- the scrolling SVG's own breathing room -- comes
+  // off it.
+  const innerW = Math.max(containerWidth - MARGIN.right, innerWNeeded)
+  // No MARGIN.left here: the y-axis moved into its own frozen panel outside this scrolling SVG,
+  // so this one's own content starts right at x=0 instead of leaving room for axis labels.
+  const width = innerW + MARGIN.right
 
   // Filtered on the team's original (pre-resample) point count, so a team with zero real data
   // for this metric still doesn't render a fabricated flat line — resampling only fills gaps
@@ -140,50 +145,64 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         />
       </div>
 
-      <div className="relative">
-      <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
-      <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
-        <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-          {yTicks.map((t) => (
-            <g key={t}>
-              <line x1={0} x2={innerW} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
-              <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={13}>
+      <div className="flex">
+        {/* Frozen y-axis: its own small SVG outside the scrolling container, not part of it, so
+            the percent scale stays put and readable no matter how far into the season you've
+            scrolled. Only the round axis and the lines themselves scroll. */}
+        <svg width={MARGIN.left} height={HEIGHT} className="shrink-0" aria-hidden>
+          <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+            {yTicks.map((t) => (
+              <text key={t} x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={13}>
                 {formatTick(t)}
               </text>
-            </g>
-          ))}
-          {roundNums.map((r) => (
-            <text key={r} x={x(r)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
-              {r}
-            </text>
-          ))}
-          <text x={innerW / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
-            Round
-          </text>
+            ))}
+          </g>
+        </svg>
+        <div className="relative min-w-0 flex-1">
+        <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
+        <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
+          <g transform={`translate(0,${MARGIN.top})`}>
+            {yTicks.map((t) => (
+              <line key={t} x1={0} x2={innerW} y1={y(t)} y2={y(t)} stroke="var(--color-muted)" strokeOpacity={0.35} strokeWidth={1.25} strokeDasharray="4 4" />
+            ))}
+            {roundNums.map((r) => (
+              <text key={r} x={x(r)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+                {r}
+              </text>
+            ))}
 
-          <AnimatePresence>
-            {visibleSeries.map((s) => {
-              const color = resolveTeamColor(s.team)
-              const pathD = smoothPath(roundNums.map((r, i) => ({ x: x(r), y: y(s.values[i]) })))
-              return (
-                <m.path
-                  key={s.team}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  initial={reduce ? false : { pathLength: 0, opacity: 0, d: pathD }}
-                  animate={{ pathLength: 1, opacity: 1, d: pathD }}
-                  exit={{ opacity: 0 }}
-                  transition={reduce ? { duration: 0 } : { ...drawTransition, d: morphTransition }}
-                />
-              )
-            })}
-          </AnimatePresence>
-        </g>
-      </svg>
-      </div>
-      <ScrollFadeEdge visible={canScrollRight} />
+            <AnimatePresence>
+              {visibleSeries.map((s) => {
+                const color = resolveTeamColor(s.team)
+                const pathD = smoothPath(roundNums.map((r, i) => ({ x: x(r), y: y(s.values[i]) })))
+                return (
+                  <m.path
+                    key={s.team}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    initial={reduce ? false : { pathLength: 0, opacity: 0, d: pathD }}
+                    animate={{ pathLength: 1, opacity: 1, d: pathD }}
+                    exit={{ opacity: 0 }}
+                    transition={reduce ? { duration: 0 } : { ...drawTransition, d: morphTransition }}
+                  />
+                )
+              })}
+            </AnimatePresence>
+          </g>
+        </svg>
+        </div>
+        <ScrollFadeEdge visible={canScrollRight} />
+        {/* "Round" axis title, static outside the scrolling container: only the round-number
+            ticks above should scroll with the x-axis, the title itself should stay put. */}
+        <p
+          className="pointer-events-none absolute inset-x-0 text-center text-xs text-muted"
+          style={{ top: MARGIN.top + INNER_H + 36 }}
+        >
+          Round
+        </p>
+        </div>
       </div>
 
       <div className="mt-6 border-t border-border pt-5">
