@@ -9,6 +9,7 @@ export function Tooltip({ label, children }: { label: string; children: ReactEle
   const id = useId()
   const reduce = useReducedMotion()
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const autoHideTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Hover waits ~500ms so it doesn't flash on pass-through; focus shows immediately.
   const show = (delay: number) => {
@@ -17,7 +18,16 @@ export function Tooltip({ label, children }: { label: string; children: ReactEle
   }
   const hide = () => {
     clearTimeout(timer.current)
+    clearTimeout(autoHideTimer.current)
     setOpen(false)
+  }
+  // Touch has no hover/blur to dismiss on, so a tap opens the tooltip immediately and it closes
+  // itself after a beat instead of sticking open until the next unrelated tap.
+  const tap = () => {
+    clearTimeout(timer.current)
+    setOpen(true)
+    clearTimeout(autoHideTimer.current)
+    autoHideTimer.current = setTimeout(() => setOpen(false), 2000)
   }
 
   const trigger = open
@@ -31,6 +41,7 @@ export function Tooltip({ label, children }: { label: string; children: ReactEle
       onMouseLeave={hide}
       onFocusCapture={() => show(0)}
       onBlurCapture={hide}
+      onClick={tap}
     >
       {trigger}
       <AnimatePresence>
