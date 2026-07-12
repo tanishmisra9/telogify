@@ -5,7 +5,7 @@ export function ScrollFadeEdge({ visible }: { visible: boolean }) {
   return (
     <div
       aria-hidden
-      className={`pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-surface to-transparent transition-opacity duration-200 ${
+      className={`pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-surface/60 to-transparent transition-opacity duration-200 ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
     />

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, m } from 'framer-motion'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
-import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { useScrollFade } from '@/lib/useScrollFade'
 
@@ -95,20 +95,30 @@ export function BarChart({
             return (
               <g
                 key={r.id}
+                className="cursor-pointer"
                 onMouseEnter={() => setHoveredId(r.id)}
                 onMouseLeave={() => setHoveredId((h) => (h === r.id ? null : h))}
+                // Touch has no hover to toggle off, so a tap here should show/hide the label on
+                // its own -- but touch also fires a synthetic mouseenter (then a click) after
+                // this, and toggling from both raced: the click's toggle would immediately
+                // undo whatever mouseenter had just set, so it looked like it flickered and
+                // needed a second tap. preventDefault on touchend stops the browser from firing
+                // that synthetic mouse sequence at all, so only this handler runs for touch.
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  setHoveredId((h) => (h === r.id ? null : r.id))
+                }}
               >
                 {/* Full column-width AND full chart-height (margins included) hit area, so hovering
                    anywhere above/below a short bar, or over its label, still triggers it. */}
                 <rect x={i * step} y={-MARGIN.top} width={step} height={HEIGHT} fill="transparent" />
-                <rect
+                <m.rect
                   x={cx - bw / 2}
                   y={top}
                   width={bw}
                   height={Math.max(1.5, baseline - top)}
-                  fill={fill}
-                  stroke={stroke}
-                  strokeWidth={hoveredId === r.id ? 2 : 1}
+                  animate={{ fill, stroke, strokeWidth: hoveredId === r.id ? 2 : 1 }}
+                  transition={{ duration: 0.18 }}
                   rx={2}
                   className="pointer-events-none"
                 />
@@ -118,19 +128,26 @@ export function BarChart({
               </g>
             )
           })}
-          {hoveredRow && (
-            <text
-              x={center(rows.findIndex((r) => r.id === hoveredRow.id))}
-              y={y(hoveredRow.value) - 8}
-              textAnchor="middle"
-              fill="var(--color-ink)"
-              fontSize={13}
-              fontWeight={700}
-              className="num pointer-events-none"
-            >
-              {driverName(hoveredRow.label)} {formatValue(hoveredRow.displayValue ?? hoveredRow.value, hoveredRow)}
-            </text>
-          )}
+          <AnimatePresence>
+            {hoveredRow && (
+              <m.text
+                key={hoveredRow.id}
+                x={center(rows.findIndex((r) => r.id === hoveredRow.id))}
+                y={y(hoveredRow.value) - 8}
+                textAnchor="middle"
+                fill="var(--color-ink)"
+                fontSize={13}
+                fontWeight={700}
+                className="num pointer-events-none"
+                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                transition={{ duration: 0.18 }}
+              >
+                {formatValue(hoveredRow.displayValue ?? hoveredRow.value, hoveredRow)}
+              </m.text>
+            )}
+          </AnimatePresence>
         </g>
       </svg>
       </div>
