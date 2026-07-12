@@ -55,6 +55,7 @@ alembic upgrade head            # apply migrations to telogify_dev
 | `RESEND_FROM` | Sender, e.g. `Telogify <insights@telogify.app>` once the domain is verified. |
 | `FASTF1_CACHE` | FastF1 on-disk cache dir (default `.fastf1_cache`). |
 | `WEB_BASE_URL` | Base URL the email CTA links to. |
+| `WIKIPEDIA_RECAP_ENABLED` | Fetch a structured Wikipedia event recap at ingest time (default `true`). Fetch failures never raise; set `false` to skip the network call entirely (e.g. on a sandboxed/offline host where it would otherwise hang past its own timeout). |
 
 ### CLI
 
@@ -65,7 +66,14 @@ telogify run-weekend 2026 --dry-run  # preview which rounds would run, no API sp
 telogify run-insights 2026      # LLM-only: regenerate insights for all ingested completed rounds
 telogify run-insights 2026 8    # LLM-only: regenerate insights for one round (no FastF1 re-ingest)
 telogify run-insights 2026 --dry-run  # preview insight regen rounds, no API spend
+telogify ingest 2026            # FastF1 ingest only, no analysis/candidates/LLM call, zero API spend --
+                                 # the cheap path to re-run every extractor after one of them changes
+telogify ingest 2026 8          # same, for a single round
+telogify ingest 2026 --dry-run  # preview which rounds would be ingested
 telogify diagnose 2025 11       # ranking sanity: clean-lap counts + attribution confidence
+telogify list-insights          # print all persisted insights, grouped by weekend
+telogify list-insights 2026     # same, filtered to one season
+telogify fetch-recap 2025 11    # fetch/store the Wikipedia event recap only, no full re-ingest
 telogify send-digest 2025 11    # email the 3 insights to subscribers via Resend
 ```
 
@@ -99,9 +107,11 @@ npm run build            # production build to dist/
 npm test                 # vitest unit tests (pure lib functions)
 ```
 
-Four routes: landing (`/`), weekends index (`/weekends`), race weekend page
-(`/weekends/:year/:round`: 3 insights + pace/degradation charts + finishing order), and
-subscribe (`/subscribe`).
+Five routes: landing (`/`), weekends index (`/weekends`), race weekend page
+(`/weekends/:year/:round`: 3 insights, pace/degradation/qualifying charts including "The fight
+to pole" P1-vs-P2 telemetry scrub, and finishing order), season snapshot (`/season[/:year]`:
+constructor ranking, form guide, season-wide trend and ERS deployment charts), and subscribe
+(`/subscribe`).
 
 ## Deploy
 
