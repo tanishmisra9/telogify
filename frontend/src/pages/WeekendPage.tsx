@@ -401,7 +401,7 @@ export function WeekendPage() {
                 <div className="grid gap-4">
                   {insights.data.map((item, i) => (
                     <BlurFade key={item.slot} delay={0.06 * i}>
-                      <Insight item={item} collapsible />
+                      <Insight item={item} collapsible contextLabel={weekend.data!.event_name} />
                     </BlurFade>
                   ))}
                 </div>

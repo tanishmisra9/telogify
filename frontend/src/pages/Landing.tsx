@@ -58,7 +58,7 @@ function LiveInsight() {
     <section className="mt-24 sm:mt-32">
       <p className="kicker text-sm! text-accent">Latest verdict · {data.event_name}</p>
       <div className="mt-4">
-        <Insight item={data} showSlot={false} />
+        <Insight item={data} showSlot={false} contextLabel={data.event_name} />
       </div>
       <p className="mt-3 text-xs text-muted">Every figure traced to official timing data. Nothing estimated.</p>
     </section>
