@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
+import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { TeamMark, TeamRule } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
 import { emphasize } from '@/lib/emphasize'
@@ -8,6 +9,7 @@ import { driverName } from '@/lib/drivers'
 import { expandTransition } from '@/lib/motion'
 import { qualiInsights, type QualiInsight } from '@/lib/qualiInsights'
 import { teamColorWithAlpha } from '@/lib/teamColors'
+import { useScrollFade } from '@/lib/useScrollFade'
 import type { QualiCharacterData } from '@/lib/api'
 
 function InsightCard({ ins }: { ins: QualiInsight }) {
@@ -104,6 +106,9 @@ function HeadCell({ label, hint, align = 'right' }: { label: React.ReactNode; hi
 }
 
 export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const canScrollRight = useScrollFade(containerRef)
+
   if (data.rows.length === 0) {
     return <p className="text-sm text-muted">No qualifying car-character data yet.</p>
   }
@@ -123,7 +128,8 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
 
       <CharacterInsights insights={insights} />
 
-      <div className="mt-6 overflow-x-auto">
+      <div className="relative mt-6">
+      <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
         <table className="w-full min-w-[680px] border-collapse text-sm" aria-label="Qualifying car character by team">
           <thead>
             <tr className="text-left text-xs text-muted">
@@ -160,6 +166,8 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
             })}
           </tbody>
         </table>
+      </div>
+      <ScrollFadeEdge visible={canScrollRight} />
       </div>
 
       {data.sector_dominance.length > 0 && (

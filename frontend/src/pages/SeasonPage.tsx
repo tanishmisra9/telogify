@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import { Navigate, useParams } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
+import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionTitle } from '@/components/SectionTitle'
@@ -10,6 +11,7 @@ import { heatBg, rankAsc } from '@/lib/heat'
 import { expandTransition } from '@/lib/motion'
 import { seasonSummary, type Trait } from '@/lib/seasonSummary'
 import { teamColorWithAlpha } from '@/lib/teamColors'
+import { useScrollFade } from '@/lib/useScrollFade'
 import {
   useApi,
   type SeasonConstructorRow,
@@ -48,6 +50,8 @@ const RANK_GRID = 'grid grid-cols-[1.9fr_1fr_1fr_1fr] items-center'
 const HEAD = 'border-b border-border px-2 pb-2 text-sm font-semibold text-ink'
 
 function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const canScrollRight = useScrollFade(containerRef)
   const topRanks = rankAsc(rows.map((r) => r.top_speed_deficit_kmh))
   const degRanks = rankAsc(rows.map((r) => r.tyre_deg_s_per_lap))
   const n = rows.length
@@ -64,7 +68,8 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
     // Same recipe as Results.tsx: the "Team" cell's rank + rule + name + confidence chip can't
     // shrink below its content width, so on a narrow viewport the grid needs its own scroll
     // container instead of forcing the whole page wider.
-    <div className="overflow-x-auto">
+    <div className="relative">
+    <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
       <ol className={`${RANK_GRID} min-w-[480px]`}>
         <li className="contents" aria-hidden>
           <span className={HEAD}>Team</span>
@@ -98,6 +103,8 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
           )
         })}
       </ol>
+    </div>
+    <ScrollFadeEdge visible={canScrollRight} />
     </div>
   )
 }
