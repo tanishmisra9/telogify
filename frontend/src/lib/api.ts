@@ -139,6 +139,8 @@ export interface QualiTraceDriver {
   constructor: string | null
   lap_time_s: number | null
   is_pole: boolean
+  // Resampled onto grid_m by lap fraction: each point is real telemetry at that fraction of the
+  // driver's own lap, so the final point is their finish line (see analysis/quali_trace.py).
   speed_kmh: number[]
   throttle_pct: number[]
   delta_s: number[]

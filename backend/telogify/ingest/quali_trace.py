@@ -8,6 +8,13 @@ representative lap per driver, no pooled multi-lap TrackStatus gate). MAIN Quali
 Q/SQ-agnostic extraction, because "the fight to pole" is specifically about the session that
 decides pole. Stored per driver, idempotently, for every driver with a usable lap -- not just
 the eventual top two -- so a future compare-any-two (or add-a-driver) UI needs no re-ingest.
+
+A driver whose recorded distance is implausibly short vs the field (is_distance_plausible) is
+excluded entirely, same as an unparseable lap -- their official lap time/result is untouched
+elsewhere in the product; only this telemetry-scrub chart can't trust their car-data channel for
+that lap. In the rare case that driver is pole, "the fight to pole" then compares the two
+fastest drivers WITH trustworthy telemetry rather than showing a corrupted number under pole's
+name -- see is_distance_plausible's docstring for why partial masking alone isn't enough.
 """
 
 from sqlmodel import Session as DBSession
@@ -16,7 +23,10 @@ from sqlmodel import delete, select
 from telogify.analysis.quali_trace import (
     build_distance_grid,
     delta_to_pole_s,
+    fraction_aligned_query,
+    is_distance_plausible,
     lap_relative_time_s,
+    representative_max_distance_m,
     resample_to_grid,
 )
 from telogify.ingest.loader import WeekendData
@@ -27,8 +37,8 @@ from telogify.models import QualiTrace, Session
 
 def extract_quali_traces(session) -> tuple[dict[str, dict], list[float]]:
     """driver -> {constructor, lap_time_s, is_pole, speed_kmh, throttle_pct, delta_s}, plus the
-    shared distance grid (built from the pole lap's own max distance). Empty ({}, []) when no
-    driver has a representative lap with usable telemetry."""
+    shared distance grid (built from the field's median recorded lap distance). Empty ({}, [])
+    when no driver has a representative lap with usable, distance-plausible telemetry."""
     reps = select_representative_laps(session)
     if len(reps) == 0:
         return {}, []
@@ -47,28 +57,37 @@ def extract_quali_traces(session) -> tuple[dict[str, dict], list[float]]:
     if not laps_by_driver:
         return {}, []
 
+    typical_distance = representative_max_distance_m([float(tel["Distance"].max()) for _, tel in laps_by_driver.values()])
+    laps_by_driver = {
+        d: (lap, tel)
+        for d, (lap, tel) in laps_by_driver.items()
+        if is_distance_plausible(float(tel["Distance"].max()), typical_distance)
+    }
+    if not laps_by_driver:
+        return {}, []
+
     pole_driver = min(laps_by_driver, key=lambda d: laps_by_driver[d][0]["LapTime"])
-    _, pole_tel = laps_by_driver[pole_driver]
-    grid = build_distance_grid(float(pole_tel["Distance"].max()))
-    pole_time_on_grid = resample_to_grid(
-        pole_tel["Distance"].tolist(),
-        lap_relative_time_s(pole_tel["Time"].dt.total_seconds().tolist()),
-        grid,
-    )
+    nominal_max = representative_max_distance_m([float(tel["Distance"].max()) for _, tel in laps_by_driver.values()])
+    grid = build_distance_grid(nominal_max)
+
+    def time_on_grid_for(tel) -> list[float]:
+        distance = tel["Distance"].tolist()
+        query = fraction_aligned_query(grid, distance[-1], nominal_max)
+        return resample_to_grid(distance, lap_relative_time_s(tel["Time"].dt.total_seconds().tolist()), query)
+
+    pole_time_on_grid = time_on_grid_for(laps_by_driver[pole_driver][1])
 
     out: dict[str, dict] = {}
     for driver, (lap, tel) in laps_by_driver.items():
         distance = tel["Distance"].tolist()
-        time_on_grid = resample_to_grid(
-            distance, lap_relative_time_s(tel["Time"].dt.total_seconds().tolist()), grid
-        )
+        query = fraction_aligned_query(grid, distance[-1], nominal_max)
         out[driver] = {
             "constructor": lap.get("Team"),
             "lap_time_s": lap["LapTime"].total_seconds(),
             "is_pole": driver == pole_driver,
-            "speed_kmh": resample_to_grid(distance, tel["Speed"].tolist(), grid),
-            "throttle_pct": resample_to_grid(distance, tel["Throttle"].tolist(), grid),
-            "delta_s": delta_to_pole_s(time_on_grid, pole_time_on_grid),
+            "speed_kmh": resample_to_grid(distance, tel["Speed"].tolist(), query),
+            "throttle_pct": resample_to_grid(distance, tel["Throttle"].tolist(), query),
+            "delta_s": delta_to_pole_s(time_on_grid_for(tel), pole_time_on_grid),
         }
     return out, grid
 

@@ -1,8 +1,9 @@
-import { useRef, useState, type MouseEvent } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
 import { driverName } from '@/lib/drivers'
 import { resolveTeamColor } from '@/lib/teamColors'
 import { drawTransition } from '@/lib/motion'
+import { useSvgTextScale } from '@/lib/useSvgTextScale'
 import type { QualiTraceData, QualiTraceDriver } from '@/lib/api'
 
 const WIDTH = 1100
@@ -73,7 +74,7 @@ function DriverBadge({ driver, color, dashed }: { driver: QualiTraceDriver; colo
 
 export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   const reduce = useReducedMotion()
-  const svgRef = useRef<SVGSVGElement>(null)
+  const { ref: svgRef, textPx } = useSvgTextScale(WIDTH)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
 
   const [p1, p2] = data.drivers
@@ -144,7 +145,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {panels.map((panel) => (
             <g key={panel.key} transform={`translate(0,${panel.offset})`}>
-              <text x={0} y={-22} fill="var(--color-muted)" fontSize={12}>
+              <text x={0} y={-22} fill="var(--color-muted)" fontSize={textPx(12)}>
                 {panel.label}
               </text>
               {panel.key === 'delta' && (
@@ -168,7 +169,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
                     strokeDasharray="2 3"
                   />
                   {panel.key === 'speed' && labeledCorners.has(c.number) && (
-                    <text x={x(c.distance_m)} y={-8} textAnchor="middle" fontSize={10} fill="var(--color-muted)">
+                    <text x={x(c.distance_m)} y={-8} textAnchor="middle" fontSize={textPx(10)} fill="var(--color-muted)">
                       {c.number}
                     </text>
                   )}
@@ -233,9 +234,9 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
                         <line x1={0} x2={14} y1={3} y2={3} stroke={color} strokeWidth={2} strokeDasharray={dashed ? '3 2' : undefined} />
                       </svg>
                       <div className="leading-tight">
-                        <span className="num font-semibold text-ink">{drv.speed_kmh[hoveredIndex]?.toFixed(0)} km/h</span>
-                        <span className="ml-2 num text-muted">{drv.delta_s[hoveredIndex] >= 0 ? '+' : ''}{drv.delta_s[hoveredIndex]?.toFixed(3)}s</span>
-                        <span className="ml-2 num text-muted">{drv.throttle_pct[hoveredIndex]?.toFixed(0)}%</span>
+                        <span className="num font-semibold text-ink">{drv.speed_kmh[hoveredIndex].toFixed(0)} km/h</span>
+                        <span className="ml-2 num text-muted">{drv.delta_s[hoveredIndex] >= 0 ? '+' : ''}{drv.delta_s[hoveredIndex].toFixed(3)}s</span>
+                        <span className="ml-2 num text-muted">{drv.throttle_pct[hoveredIndex].toFixed(0)}%</span>
                       </div>
                     </div>
                   )
@@ -247,9 +248,10 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
       </svg>
 
       <p className="mt-4 text-xs text-muted">
-        Distance-aligned telemetry from each driver's fastest qualifying lap; dotted lines mark
-        turn numbers. Delta is the time gap to the pole lap at the same point on track. Move over
-        the chart to scrub through the lap.
+        Telemetry from each driver's fastest qualifying lap, aligned by position on track; dotted
+        lines mark turn numbers. Delta is the running time gap to the pole lap: below the line means
+        ahead at that point, above means behind, and where it ends is the final gap. Move over the
+        chart to scrub through the lap.
       </p>
     </div>
   )
