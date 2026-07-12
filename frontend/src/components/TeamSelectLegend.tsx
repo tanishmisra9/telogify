@@ -29,7 +29,7 @@ export function TeamSelectLegend({
   isFiltering: boolean
 }) {
   return (
-    <ol className="[column-count:2] gap-x-6">
+    <ol className="[column-count:2] [column-gap:0]">
       {rows.map((r, i) => {
         const isSelected = selected.has(r.team)
         const isDimmed = isFiltering && !isSelected
