@@ -201,16 +201,20 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
               x={hovered ? Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100)) : 0}
               y={4}
               width={200}
-              height={150}
+              height={170}
               className="pointer-events-none"
             >
               <AnimatePresence>
                 {hovered && (
+                  // No `filter` here: WebKit badly corrupts an SVG foreignObject's position when
+                  // CSS filter (blur) is applied to its content -- confirmed on a real iOS device,
+                  // the popup rendered detached from its box plot and visibly clipped. Opacity +
+                  // a small y-offset gives the same fade-in feel without touching filter.
                   <m.div
                     key={hovered.id}
-                    initial={{ opacity: 0, filter: 'blur(4px)' }}
-                    animate={{ opacity: 1, filter: 'blur(0px)' }}
-                    exit={{ opacity: 0, filter: 'blur(4px)' }}
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.18 }}
                     className="glass rounded-xl px-3 py-2 text-xs text-ink"
                   >
