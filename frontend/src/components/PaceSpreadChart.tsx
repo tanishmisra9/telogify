@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
+import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teamShortName, teamColorWithAlpha } from '@/lib/teamColors'
+import { useScrollFade } from '@/lib/useScrollFade'
 import type { PaceData, PaceRow } from '@/lib/api'
 
 type ViewMode = 'drivers' | 'constructors'
@@ -43,6 +45,8 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
+
+  const canScrollRight = useScrollFade(containerRef)
 
   const rows: PaceRow[] = viewMode === 'drivers' ? pace.drivers : pace.constructors
 
@@ -93,6 +97,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
       {rows.length === 0 ? (
         <p className="text-sm text-muted">No pace data.</p>
       ) : (
+        <div className="relative">
         <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
         <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label="Pace spread box plot">
           <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
@@ -196,6 +201,8 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
             )}
           </g>
         </svg>
+        </div>
+        <ScrollFadeEdge visible={canScrollRight} />
         </div>
       )}
 

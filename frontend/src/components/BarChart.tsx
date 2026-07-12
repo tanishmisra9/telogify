@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
+import { useScrollFade } from '@/lib/useScrollFade'
 
 export interface BarChartRow {
   id: string
@@ -50,6 +52,8 @@ export function BarChart({
     return () => observer.disconnect()
   }, [])
 
+  const canScrollRight = useScrollFade(containerRef)
+
   if (rows.length === 0) return null
 
   const innerWNeeded = rows.length * MIN_SLOT
@@ -69,7 +73,8 @@ export function BarChart({
   const hoveredRow = rows.find((r) => r.id === hoveredId) ?? null
 
   return (
-    <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
+    <div className="relative">
+      <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
       <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label="Bar chart">
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {yTicks.map((t) => (
@@ -128,6 +133,8 @@ export function BarChart({
           )}
         </g>
       </svg>
+      </div>
+      <ScrollFadeEdge visible={canScrollRight} />
     </div>
   )
 }
