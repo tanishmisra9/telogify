@@ -28,7 +28,10 @@ export function SeasonStats() {
         <div className="mt-6 grid grid-cols-2 gap-4 sm:gap-6">
           {STATS.map(({ key, label, format }) => (
             <div key={key}>
-              <span className="num block text-5xl leading-none tracking-tight text-ink tabular-nums sm:text-7xl xl:text-8xl">
+              {/* One step down from Countdown's text-5xl base: these are up to 6-7 digit
+                  figures (with thousands separators), not Countdown's fixed 2-digit values, so
+                  the same base size overflows a 2-column mobile layout. */}
+              <span className="num block text-3xl leading-none tracking-tight text-ink tabular-nums sm:text-6xl xl:text-8xl">
                 {format(data[key])}
               </span>
               <span className="mt-2 block text-xs uppercase tracking-[0.2em] text-muted sm:text-sm">{label}</span>
