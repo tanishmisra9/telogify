@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
+import { useSvgTextScale } from '@/lib/useSvgTextScale'
 
 export interface BarChartRow {
   id: string
@@ -15,7 +17,7 @@ export interface BarChartRow {
 // clips at its own viewBox edge by default, so a wide axis tick (e.g. "+1.293s"), the last bar's
 // hover label, or the tallest bar's hover label (it sits right above the top gridline) all get
 // visibly truncated without this margin.
-const MARGIN = { top: 28, right: 36, bottom: 34, left: 64 }
+const MARGIN = { top: 28, right: 36, bottom: 34, left: 78 }
 const WIDTH = 1200
 const HEIGHT = 260
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
@@ -34,6 +36,7 @@ export function BarChart({
   domainMin?: number
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const { ref, scale, textPx } = useSvgTextScale(WIDTH)
 
   if (rows.length === 0) return null
 
@@ -44,20 +47,26 @@ export function BarChart({
 
   const step = INNER_W / rows.length
   const bw = Math.min(30, step * 0.6)
+  // Now that labels hold a constant true-pixel size (via textPx) instead of shrinking with the
+  // chart, a full ~20-driver field packs too tight to fit one label per bar on mobile. Thin to
+  // every Nth label instead of letting them overlap into a smush; every bar is still reachable
+  // via hover/tap for its exact value regardless of whether its resting label is shown.
+  const MIN_LABEL_GAP_PX = 44
+  const labelStride = Math.max(1, Math.ceil(MIN_LABEL_GAP_PX / scale / step))
   const center = (i: number) => step * i + step / 2
   const baseline = y(lo)
   const yTicks = Array.from({ length: 4 }, (_, i) => lo + (span * i) / 3)
   const hoveredRow = rows.find((r) => r.id === hoveredId) ?? null
 
   return (
-    <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full" role="img" aria-label="Bar chart">
+    <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full" role="img" aria-label="Bar chart">
       <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
         {yTicks.map((t) => (
           <g key={t}>
             <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
             {/* A tick isn't any one row, so format it as a plain axis value (no row-specific
                displayValue override, e.g. practice sectors' leader-shows-absolute special case). */}
-            <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={12} className="num">
+            <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(12)} className="num">
               {formatValue(t, { id: '', label: '', value: t })}
             </text>
           </g>
@@ -87,9 +96,11 @@ export function BarChart({
                 rx={2}
                 className="pointer-events-none"
               />
-              <text x={cx} y={INNER_H + 21} textAnchor="middle" fill="var(--color-ink)" fontSize={13.5} fontWeight={600} className="pointer-events-none font-display">
-                {r.label}
-              </text>
+              {i % labelStride === 0 && (
+                <text x={cx} y={INNER_H + 21} textAnchor="middle" fill="var(--color-ink)" fontSize={textPx(13.5)} fontWeight={600} className="pointer-events-none font-display">
+                  {r.label}
+                </text>
+              )}
             </g>
           )
         })}
@@ -99,11 +110,11 @@ export function BarChart({
             y={y(hoveredRow.value) - 8}
             textAnchor="middle"
             fill="var(--color-ink)"
-            fontSize={13}
+            fontSize={textPx(13)}
             fontWeight={700}
             className="num pointer-events-none"
           >
-            {formatValue(hoveredRow.displayValue ?? hoveredRow.value, hoveredRow)}
+            {driverName(hoveredRow.label)} {formatValue(hoveredRow.displayValue ?? hoveredRow.value, hoveredRow)}
           </text>
         )}
       </g>

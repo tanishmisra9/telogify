@@ -4,6 +4,7 @@ import { ChartTabs } from '@/components/ChartTabs'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
+import { useSvgTextScale } from '@/lib/useSvgTextScale'
 import type { DegradationData } from '@/lib/api'
 
 const WIDTH = 1100
@@ -14,6 +15,7 @@ const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
 export function DegradationChart({ data }: { data: DegradationData }) {
   const reduce = useReducedMotion()
+  const { ref, textPx } = useSvgTextScale(WIDTH)
   const compounds = Array.from(new Set(data.fits.map((f) => f.compound))).sort()
   const [compound, setCompound] = useState<string | null>(compounds[0] ?? null)
   // Empty = show every team (today's default). Not reset on compound switch,
@@ -90,22 +92,22 @@ export function DegradationChart({ data }: { data: DegradationData }) {
       {points.length === 0 ? (
         <p className="text-sm text-muted">No {compound.toLowerCase()} laps this race.</p>
       ) : (
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Fuel-corrected lap time vs tyre age">
+        <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Fuel-corrected lap time vs tyre age">
           <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
             {yTicks.map((t) => (
               <g key={t}>
                 <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
-                <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={13}>
+                <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
                   {t.toFixed(1)}s
                 </text>
               </g>
             ))}
             {xTicks.map((t) => (
-              <text key={t} x={x(t)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+              <text key={t} x={x(t)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
                 {t}
               </text>
             ))}
-            <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+            <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
               Tyre age (laps)
             </text>
 

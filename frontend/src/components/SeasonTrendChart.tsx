@@ -5,6 +5,7 @@ import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
 import { smoothPath } from '@/lib/svgPath'
+import { useSvgTextScale } from '@/lib/useSvgTextScale'
 import type { SeasonConstructorRow, SeasonRound } from '@/lib/api'
 
 const WIDTH = 1100
@@ -55,6 +56,7 @@ function resampleToRounds(points: { round: number; value: number }[], roundNums:
 // front-runner and a line dropping away is a team losing ground. Copies DegradationChart's scaffold.
 export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[]; rounds: SeasonRound[] }) {
   const reduce = useReducedMotion()
+  const { ref, textPx } = useSvgTextScale(WIDTH)
   const [metric, setMetric] = useState<Metric>('pace')
   // Empty = show every team (default). Not reset on metric switch, so a comparison survives
   // moving between Race pace/Qualifying/Cumulative.
@@ -119,22 +121,22 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         />
       </div>
 
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
+      <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {yTicks.map((t) => (
             <g key={t}>
               <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
-              <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={13}>
+              <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
                 {formatTick(t)}
               </text>
             </g>
           ))}
           {roundNums.map((r) => (
-            <text key={r} x={x(r)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+            <text key={r} x={x(r)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
               {r}
             </text>
           ))}
-          <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+          <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
             Round
           </text>
 

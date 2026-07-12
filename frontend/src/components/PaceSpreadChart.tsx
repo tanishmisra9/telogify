@@ -3,6 +3,7 @@ import { m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teamShortName, teamColorWithAlpha } from '@/lib/teamColors'
+import { useSvgTextScale } from '@/lib/useSvgTextScale'
 import type { PaceData, PaceRow } from '@/lib/api'
 
 type ViewMode = 'drivers' | 'constructors'
@@ -25,10 +26,39 @@ function bandLayout(n: number) {
   }
 }
 
+// A box plot isn't broadcast-familiar chart grammar for an F1-fan (not engineer) audience, and
+// the prose legend below packs five stats terms into one paragraph. A small annotated glyph,
+// drawn with the exact same stroke styles the real chart uses (solid/dashed/dotted, same
+// colors), gives readers a visual anchor before they hit the words.
+function BoxPlotKey() {
+  const ink = 'var(--color-ink)'
+  const accent = 'var(--color-accent)'
+  return (
+    <svg viewBox="0 0 190 100" className="h-[100px] w-[190px] shrink-0" aria-hidden>
+      <circle cx={38} cy={10} r={3} fill="none" stroke={ink} strokeWidth={1.25} />
+      <line x1={38} x2={38} y1={20} y2={88} stroke={ink} strokeWidth={1.5} />
+      <line x1={28} x2={48} y1={20} y2={20} stroke={ink} strokeWidth={1.5} />
+      <line x1={28} x2={48} y1={88} y2={88} stroke={ink} strokeWidth={1.5} />
+      <rect x={20} y={30} width={36} height={44} fill="none" stroke={ink} strokeWidth={1} rx={2} />
+      <line x1={20} x2={56} y1={40} y2={40} stroke={accent} strokeWidth={1.5} strokeDasharray="4 3" />
+      <line x1={20} x2={56} y1={52} y2={52} stroke={accent} strokeWidth={2.5} />
+      <line x1={20} x2={56} y1={64} y2={64} stroke={accent} strokeWidth={1.25} strokeDasharray="1 2.5" />
+
+      <text x={64} y={13} fontSize={10} fill="var(--color-muted)">Outlier</text>
+      <text x={64} y={24} fontSize={10} fill="var(--color-muted)">Whisker (99.3%)</text>
+      <text x={64} y={43} fontSize={10} fill="var(--color-muted)">Mean</text>
+      <text x={64} y={55} fontSize={10} fill="var(--color-muted)">Median</text>
+      <text x={64} y={67} fontSize={10} fill="var(--color-muted)">Pace ceiling</text>
+      <text x={64} y={78} fontSize={10} fill="var(--color-muted)">Middle 50% (box)</text>
+    </svg>
+  )
+}
+
 export function PaceSpreadChart({ pace }: { pace: PaceData }) {
   const [viewMode, setViewMode] = useState<ViewMode>('drivers')
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const reduce = useReducedMotion()
+  const { ref, scale, textPx } = useSvgTextScale(WIDTH)
 
   const rows: PaceRow[] = viewMode === 'drivers' ? pace.drivers : pace.constructors
 
@@ -48,6 +78,11 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
   const band = bandLayout(rows.length)
   const y = (v: number) => INNER_H * (1 - (v - yMin) / (yMax - yMin))
   const yTicks = Array.from({ length: 6 }, (_, i) => yMin + ((yMax - yMin) * i) / 5)
+  // Labels now hold a constant true-pixel size (via textPx) instead of shrinking with the chart,
+  // so a full driver field packs too tight to fit one label block per column on mobile. Thin to
+  // every Nth column instead of letting them overlap; the hover tooltip still covers every row.
+  const MIN_LABEL_GAP_PX = 34
+  const labelStride = Math.max(1, Math.ceil(MIN_LABEL_GAP_PX / scale / band.step))
   const hovered = rows.find((r) => r.id === hoveredId) ?? null
 
   return (
@@ -73,12 +108,12 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
       {rows.length === 0 ? (
         <p className="text-sm text-muted">No pace data.</p>
       ) : (
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Pace spread box plot">
+        <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Pace spread box plot">
           <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
             {yTicks.map((tick) => (
               <g key={tick}>
                 <line x1={0} x2={INNER_W} y1={y(tick)} y2={y(tick)} stroke="var(--color-border)" strokeDasharray="4 4" />
-                <text x={-9} y={y(tick)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={14}>
+                <text x={-9} y={y(tick)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(14)}>
                   {tick.toFixed(1)}s
                 </text>
               </g>
@@ -117,37 +152,37 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                     <circle key={`${row.id}-o-${oi}`} cx={cx} cy={y(o)} r={4} fill="none" stroke={stroke} strokeWidth={1.25} />
                   ))}
 
-                  {viewMode === 'drivers' ? (
+                  {i % labelStride !== 0 ? null : viewMode === 'drivers' ? (
                     <>
-                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={500} className="font-display">
+                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={textPx(14)} fontWeight={500} className="font-display">
                         {row.label}
                       </text>
-                      <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
+                      <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)} className="num">
                         {s.mean.toFixed(2)}
                       </text>
                       {row.gap_to_fastest_s > 0 && (
-                        <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
+                        <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)} className="num">
                           +{row.gap_to_fastest_s.toFixed(2)}s
                         </text>
                       )}
-                      <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+                      <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
                     </>
                   ) : (
                     <>
-                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={14} fontWeight={600} className="font-display uppercase tracking-wide">
+                      <text x={cx} y={INNER_H + 20} textAnchor="middle" fill="var(--color-ink)" fontSize={textPx(14)} fontWeight={600} className="font-display uppercase tracking-wide">
                         {teamShortName(row.team)}
                       </text>
-                      <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
+                      <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)} className="num">
                         {s.mean.toFixed(2)}
                       </text>
                       {row.gap_to_fastest_s > 0 && (
-                        <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
+                        <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)} className="num">
                           +{row.gap_to_fastest_s.toFixed(2)}s
                         </text>
                       )}
-                      <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+                      <text x={cx} y={INNER_H + 68} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
                         {s.compounds.length ? s.compounds.join('-') : 'N/A'}
                       </text>
                     </>
@@ -177,11 +212,14 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
         </svg>
       )}
 
-      <p className="mt-4 text-xs text-muted">
-        Sorted by mean pace; gaps are mean delta to the fastest. Lap 1 excluded, fuel-corrected.
-        Solid line median, dashed line mean, dotted line pace ceiling (fastest tenth of laps), box
-        is the middle 50 percent of laps, whiskers cover 99.3 percent, dots are outliers.
-      </p>
+      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+        <BoxPlotKey />
+        <p className="min-w-0 flex-1 text-xs text-muted">
+          Sorted by mean pace; gaps are mean delta to the fastest. Lap 1 excluded, fuel-corrected.
+          Solid line median, dashed line mean, dotted line pace ceiling (fastest tenth of laps), box
+          is the middle 50 percent of laps, whiskers cover 99.3 percent, dots are outliers.
+        </p>
+      </div>
       {pace.stop_count_spread >= 2 && (
         <p className="mt-2 text-xs text-muted">
           Pit-equated: stop counts vary by up to {pace.stop_count_spread} across the field, so treat

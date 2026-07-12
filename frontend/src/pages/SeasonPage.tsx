@@ -58,39 +58,44 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   const cell = (rank: number) => ({ backgroundColor: heatBg(rank, n) })
 
   return (
-    <ol className={RANK_GRID}>
-      <li className="contents" aria-hidden>
-        <span className={HEAD}>Team</span>
-        <span className={`${HEAD} text-center`}>Pace</span>
-        <span className={`${HEAD} text-center`}>Top speed</span>
-        <span className={`${HEAD} text-center`}>Tyre wear</span>
-      </li>
-      {rows.map((r, i) => {
-        const b = i > 0 ? 'border-t border-border' : ''
-        // Rank + team merge into one washed pill instead of two separately-washed cells; the
-        // metric cells already use heatBg to shade by rank, so they keep their own wash.
-        const wash = { backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }
-        return (
-          <li key={r.constructor} className="contents">
-            <span className={`flex items-center gap-2 px-2 py-3 font-medium text-ink ${b}`} style={wash}>
-              <span className="num w-5 shrink-0 text-sm text-muted">{r.overall_rank ?? '–'}</span>
-              <TeamRule team={r.constructor} />
-              {r.constructor}
-              <ConfidenceChip confidence={r.confidence} />
-            </span>
-            <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(r.overall_rank ?? n)}>
-              {renderCell(paceCells[i])}
-            </span>
-            <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(topRanks[i])}>
-              {renderCell(topCells[i])}
-            </span>
-            <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(degRanks[i])}>
-              {renderCell(degCells[i])}
-            </span>
-          </li>
-        )
-      })}
-    </ol>
+    // Same recipe as Results.tsx: the "Team" cell's rank + rule + name + confidence chip can't
+    // shrink below its content width, so on a narrow viewport the grid needs its own scroll
+    // container instead of forcing the whole page wider.
+    <div className="overflow-x-auto">
+      <ol className={`${RANK_GRID} min-w-[480px]`}>
+        <li className="contents" aria-hidden>
+          <span className={HEAD}>Team</span>
+          <span className={`${HEAD} text-center`}>Pace</span>
+          <span className={`${HEAD} text-center`}>Top speed</span>
+          <span className={`${HEAD} text-center`}>Tyre wear</span>
+        </li>
+        {rows.map((r, i) => {
+          const b = i > 0 ? 'border-t border-border' : ''
+          // Rank + team merge into one washed pill instead of two separately-washed cells; the
+          // metric cells already use heatBg to shade by rank, so they keep their own wash.
+          const wash = { backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }
+          return (
+            <li key={r.constructor} className="contents">
+              <span className={`flex items-center gap-2 px-2 py-3 font-medium text-ink ${b}`} style={wash}>
+                <span className="num w-5 shrink-0 text-sm text-muted">{r.overall_rank ?? '–'}</span>
+                <TeamRule team={r.constructor} />
+                {r.constructor}
+                <ConfidenceChip confidence={r.confidence} />
+              </span>
+              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(r.overall_rank ?? n)}>
+                {renderCell(paceCells[i])}
+              </span>
+              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(topRanks[i])}>
+                {renderCell(topCells[i])}
+              </span>
+              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(degRanks[i])}>
+                {renderCell(degCells[i])}
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }
 

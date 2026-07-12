@@ -1,4 +1,5 @@
 import { TeamRule } from '@/components/TeamMark'
+import { driverName } from '@/lib/drivers'
 import { teamColorWithAlpha } from '@/lib/teamColors'
 import type { ResultRow } from '@/lib/api'
 
@@ -6,7 +7,7 @@ import type { ResultRow } from '@/lib/api'
 // shorter box than its text-bearing row-mates, leaving a gap in the team-color wash. Default
 // stretch fills every cell to the row's full height instead; the shared py-3 padding already
 // centers content visually.
-const GRID = 'grid grid-cols-[3rem_5.5rem_1fr_7.5rem_3.5rem_7rem]'
+const GRID = 'grid grid-cols-[3rem_10rem_1fr_7.5rem_3.5rem_7rem]'
 const HEAD = 'border-b border-border px-2 pb-2 text-sm font-semibold text-ink'
 
 // Cells touch (no grid gap) with matching horizontal padding instead, so a row's border-top
@@ -22,7 +23,7 @@ export function Results({ rows }: { rows: ResultRow[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <ol className={`${GRID} min-w-[480px]`} aria-label="Finishing order">
+      <ol className={`${GRID} min-w-[560px]`} aria-label="Finishing order">
         <li className="contents" aria-hidden>
           <span className={HEAD} />
           <span className={HEAD}>Driver</span>
@@ -37,9 +38,12 @@ export function Results({ rows }: { rows: ResultRow[] }) {
           return (
             <li key={`${r.position}-${r.driver}`} className="contents">
               <span className={`num px-2 py-3 text-sm text-muted ${b}`} style={cell}>{r.position ?? '–'}</span>
-              <span className={`flex items-center gap-2 px-2 py-3 font-display font-medium text-ink ${b}`} style={cell}>
+              <span className={`flex items-center gap-2 px-2 py-3 ${b}`} style={cell}>
                 <TeamRule team={r.constructor} className="w-[4px]" />
-                {r.driver}
+                <span className="min-w-0">
+                  <span className="block font-display font-medium text-ink">{driverName(r.driver)}</span>
+                  <span className="block text-xs text-muted">{r.driver}</span>
+                </span>
               </span>
               <span className={`px-2 py-3 text-sm text-ink ${b}`} style={cell}>{r.constructor}</span>
               <span className={`num px-2 py-3 text-sm tracking-wide text-ink ${b}`} style={cell}>{r.strategy}</span>

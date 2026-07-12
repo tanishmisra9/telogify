@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { BarChart } from '@/components/BarChart'
 import { BlurFade } from '@/components/BlurFade'
 import { DegradationChart } from '@/components/DegradationChart'
@@ -146,9 +146,17 @@ export function WeekendPage() {
   const sessionsLoaded = !sessions.loading
 
   if (weekend.error || sessions.error) {
+    // apiGet throws `${status}`, so a 404 (weekend not ingested yet) is distinguishable from a
+    // real network/server failure instead of both reading as one alarming "API offline."
+    const notFound = weekend.error?.includes('404') || sessions.error?.includes('404')
     return (
       <main className="mx-auto max-w-[1312px] px-6 py-16">
-        <p className="text-muted">API offline.</p>
+        <p className="text-muted">
+          {notFound ? "This weekend hasn't been analysed yet." : "Couldn't reach the API. Try again shortly."}
+        </p>
+        <Link to="/weekends" className="mt-4 inline-block text-accent underline">
+          Back to weekends
+        </Link>
       </main>
     )
   }
