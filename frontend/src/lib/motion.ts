@@ -3,6 +3,10 @@ import type { Transition } from 'framer-motion'
 // Spring physics, ease-out feel, no bounce.
 export const spring: Transition = { type: 'spring', stiffness: 120, damping: 20 }
 
+// Quicker settle than `spring`: for disclosure/collapse toggles, which should feel snappy
+// rather than like a section-level reveal.
+export const expandTransition: Transition = { type: 'spring', stiffness: 380, damping: 32 }
+
 // Ease-out-quint: a clean "drawing" feel for an SVG line/path reveal, no bounce. Shared by every
 // chart with a click-to-isolate legend (Tyre degradation, Gap by round) so newly-revealed lines
 // draw in consistently.

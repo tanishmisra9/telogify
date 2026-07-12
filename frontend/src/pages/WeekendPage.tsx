@@ -12,7 +12,7 @@ import { Results } from '@/components/Results'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionTitle } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
-import { spring } from '@/lib/motion'
+import { expandTransition, spring } from '@/lib/motion'
 import {
   useApi,
   type DegradationData,
@@ -208,9 +208,6 @@ function SectionNav({ sections }: { sections: NavSection[] }) {
 }
 
 const METHODOLOGY_SEEN_KEY = 'telogify:seen-methodology'
-// Quicker settle than the shared `spring` (stiffness 120/damping 20): this toggle should feel
-// snappy, not like a section-level reveal.
-const disclosureTransition = { type: 'spring', stiffness: 380, damping: 32 } as const
 
 function MethodologyDisclosure() {
   const [open, setOpen] = useState(() => {
@@ -250,7 +247,7 @@ function MethodologyDisclosure() {
           aria-hidden
           className="shrink-0 text-muted"
           animate={{ rotate: open ? 180 : 0 }}
-          transition={disclosureTransition}
+          transition={expandTransition}
         >
           <path d="m6 9 6 6 6-6" />
         </m.svg>
@@ -261,7 +258,7 @@ function MethodologyDisclosure() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={disclosureTransition}
+            transition={expandTransition}
             className="overflow-hidden"
           >
             <p className="mt-3 text-sm leading-relaxed text-muted">
@@ -395,7 +392,7 @@ export function WeekendPage() {
                 <div className="grid gap-4">
                   {insights.data.map((item, i) => (
                     <BlurFade key={item.slot} delay={0.06 * i}>
-                      <Insight item={item} />
+                      <Insight item={item} collapsible />
                     </BlurFade>
                   ))}
                 </div>
