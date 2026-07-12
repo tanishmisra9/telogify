@@ -14,8 +14,9 @@ export interface TeamSelectRow {
 // (rank 1, 2, 3 across the top, then 4, 5, 6), so the eye zigzags instead of reading straight
 // down the ranking. Columns fill top-to-bottom automatically, which is both the correct reading
 // order and the compact, space-efficient shape a single top-down list can't give an 11-team
-// field. Column count is driven by available width (up to 3, each at least 15rem), so it
-// collapses to one column on mobile with no breakpoint classes needed.
+// field. Fixed at 2 columns (not width-driven): a min-width-per-column rule collapsed to one
+// column -- and a lot of empty space beside it -- on anything narrower than ~30rem, which is
+// most phones. TeamMark already truncates a name that doesn't fit a narrower column.
 export function TeamSelectLegend({
   rows,
   selected,
@@ -28,7 +29,7 @@ export function TeamSelectLegend({
   isFiltering: boolean
 }) {
   return (
-    <ol className="[column-count:3] [column-width:15rem] gap-x-10">
+    <ol className="[column-count:2] gap-x-6">
       {rows.map((r, i) => {
         const isSelected = selected.has(r.team)
         const isDimmed = isFiltering && !isSelected

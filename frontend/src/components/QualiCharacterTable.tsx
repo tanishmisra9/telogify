@@ -12,59 +12,47 @@ import { teamColorWithAlpha } from '@/lib/teamColors'
 import { useScrollFade } from '@/lib/useScrollFade'
 import type { QualiCharacterData } from '@/lib/api'
 
+// Collapsible to just its heading on mobile, open by default; desktop always shows the full
+// card outright (the chevron only renders on mobile, and the CSS override on the text keeps it
+// visible on desktop even in the state's closed default, so there's no toggle to reach for there).
 function InsightCard({ ins }: { ins: QualiInsight }) {
+  const [open, setOpen] = useState(true)
   return (
     <div
       className="rounded-[--radius-panel] border border-border p-5"
       style={{ backgroundColor: teamColorWithAlpha(ins.team, 0.09) }}
     >
-      <div className="flex items-center gap-2">
-        <TeamRule team={ins.team} />
-        <p className="kicker text-accent">{ins.kicker}</p>
-      </div>
-      <p className="mt-3 text-[15px] leading-relaxed text-ink">{emphasize(ins.text)}</p>
-    </div>
-  )
-}
-
-// Open by default, collapsible on mobile only -- desktop has the room to just show these
-// findings outright, no toggle needed.
-function CharacterInsights({ insights }: { insights: QualiInsight[] }) {
-  const [open, setOpen] = useState(true)
-  if (insights.length === 0) return null
-
-  return (
-    <>
-      <div className="mt-5 hidden gap-4 border-b border-border pb-6 sm:grid-cols-2 md:grid">
-        {insights.map((ins) => (
-          <InsightCard key={ins.kicker} ins={ins} />
-        ))}
-      </div>
-      <div className="mt-5 border-b border-border pb-6 md:hidden">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          className="flex w-full items-center justify-between gap-4 text-left"
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 text-left md:pointer-events-none"
+      >
+        <div className="flex items-center gap-2">
+          <TeamRule team={ins.team} />
+          <p className="kicker text-accent">{ins.kicker}</p>
+        </div>
+        <m.svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className="shrink-0 text-muted md:hidden"
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={expandTransition}
         >
-          <p className="kicker text-muted">Findings</p>
-          <m.svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-            className="shrink-0 text-muted"
-            animate={{ rotate: open ? 180 : 0 }}
-            transition={expandTransition}
-          >
-            <path d="m6 9 6 6 6-6" />
-          </m.svg>
-        </button>
+          <path d="m6 9 6 6 6-6" />
+        </m.svg>
+      </button>
+      {/* Desktop: always shown, nothing to animate. Mobile: animated height/opacity collapse,
+          matching every other disclosure on the site instead of CSS `hidden`'s instant snap. */}
+      <p className="mt-3 hidden text-[15px] leading-relaxed text-ink md:block">{emphasize(ins.text)}</p>
+      <div className="md:hidden">
         <AnimatePresence initial={false}>
           {open && (
             <m.div
@@ -74,16 +62,23 @@ function CharacterInsights({ insights }: { insights: QualiInsight[] }) {
               transition={expandTransition}
               className="overflow-hidden"
             >
-              <div className="mt-4 grid gap-4">
-                {insights.map((ins) => (
-                  <InsightCard key={ins.kicker} ins={ins} />
-                ))}
-              </div>
+              <p className="mt-3 text-[15px] leading-relaxed text-ink">{emphasize(ins.text)}</p>
             </m.div>
           )}
         </AnimatePresence>
       </div>
-    </>
+    </div>
+  )
+}
+
+function CharacterInsights({ insights }: { insights: QualiInsight[] }) {
+  if (insights.length === 0) return null
+  return (
+    <div className="mt-5 grid gap-4 border-b border-border pb-6 sm:grid-cols-2">
+      {insights.map((ins) => (
+        <InsightCard key={ins.kicker} ins={ins} />
+      ))}
+    </div>
   )
 }
 

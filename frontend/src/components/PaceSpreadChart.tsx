@@ -51,6 +51,19 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
 
   const canScrollRight = useScrollFade(containerRef)
 
+  // Popup position tracks scroll too, not just the chart's total width: clamping only to the
+  // chart's bounds let the popup center correctly on a column near the scrolled-to edge, then
+  // still render mostly off the visible viewport (clipped) since that edge could be far from
+  // the actual visible window on a wide, scrolled chart.
+  const [scrollLeft, setScrollLeft] = useState(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onScroll = () => setScrollLeft(el.scrollLeft)
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
   const rows: PaceRow[] = viewMode === 'drivers' ? pace.drivers : pace.constructors
 
   const { yMin, yMax } = (() => {
@@ -77,6 +90,16 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
   const yTicks = Array.from({ length: 6 }, (_, i) => yMin + ((yMax - yMin) * i) / 5)
   const hovered = rows.find((r) => r.id === hoveredId) ?? null
 
+  // Clamped against BOTH the chart's total width and the currently visible scrolled window, so
+  // a column near the edge of a wide, scrolled chart still gets a fully on-screen popup instead
+  // of one that's correctly centered in content-space but clipped off the visible viewport.
+  const popupLeft = (row: PaceRow) => {
+    const rawLeft = MARGIN.left + band.center(rows.indexOf(row)) - 100
+    const lo = Math.max(0, scrollLeft)
+    const hi = Math.min(width - 200, scrollLeft + containerWidth - 200)
+    return Math.min(hi, Math.max(lo, rawLeft))
+  }
+
   return (
     <m.div
       className="glass w-full rounded-[--radius-panel] p-5"
@@ -101,7 +124,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
         <p className="text-sm text-muted">No pace data.</p>
       ) : (
         <div className="relative">
-        <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
+        <div ref={containerRef} className="relative overflow-x-auto overscroll-x-contain">
         <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label="Pace spread box plot">
           <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
             {yTicks.map((tick) => (
@@ -197,51 +220,42 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
               )
             })}
 
-            {/* No CSS transform/filter/animation on anything INSIDE the foreignObject: WebKit
-                has repeatedly corrupted its position on a real iOS device with either applied
-                to its content (confirmed twice -- first with a filter blur, then again with a
-                transform y-offset, both causing the popup to render in the wrong place or jump
-                after painting). Animating the foreignObject's OWN native SVG opacity instead
-                keeps the fade without touching anything WebKit mishandles, and the div inside
-                is fully static. */}
-            {/* Stable key, not keyed by hovered.id: switching straight from one box plot to an
-                adjacent one should slide the SAME popup over to the new x and swap its content,
-                not unmount/remount a new instance. Keying by id forced exactly that -- an exit
-                and enter every time you moved to a neighboring column, which (mode="wait" or
-                not) always looked like the panel closing and reopening. Fade in/out now only
-                happens on the true open/close transition (nothing hovered <-> something
-                hovered); switching between two already-hovered columns just moves in place. */}
-            <AnimatePresence>
-              {hovered && (
-                <m.foreignObject
-                  key="pace-popup"
-                  y={4}
-                  width={200}
-                  height={170}
-                  className="pointer-events-none"
-                  initial={{ opacity: 0, x: Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100)) }}
-                  animate={{ opacity: 1, x: Math.min(innerW - 200, Math.max(0, band.center(rows.indexOf(hovered)) - 100)) }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18 }}
-                >
-                  <div className="glass rounded-xl px-3 py-2 text-xs text-ink">
-                    <div className="font-medium">{driverName(hovered.label)}</div>
-                    {hovered.team && hovered.team !== hovered.label && (
-                      <div className="mt-1 text-muted">{hovered.team}</div>
-                    )}
-                    <div className="mt-2 space-y-0.5 text-muted">
-                      <div><span className="font-semibold text-ink">Mean</span> {hovered.stats.mean.toFixed(3)}s</div>
-                      <div><span className="font-semibold text-ink">Median</span> {hovered.stats.median.toFixed(3)}s</div>
-                      <div><span className="font-semibold text-ink">Q1-Q3</span> {hovered.stats.q1.toFixed(3)}-{hovered.stats.q3.toFixed(3)}s</div>
-                      <div><span className="font-semibold text-ink">Ceiling</span> {hovered.stats.pace_ceiling.toFixed(3)}s</div>
-                      <div><span className="font-semibold text-ink">{hovered.stats.n_laps}</span> laps of data</div>
-                    </div>
-                  </div>
-                </m.foreignObject>
-              )}
-            </AnimatePresence>
           </g>
         </svg>
+        {/* A plain HTML overlay, not an SVG foreignObject: this popup has now rendered in the
+            wrong place on a real iOS device three separate times (filter blur, then a transform
+            offset, then apparently scroll position) no matter what was animated inside it --
+            WebKit's foreignObject support is unreliable enough on its own to abandon rather than
+            patch again. A normal absolutely-positioned div inside this same scrolling container
+            scrolls with the chart exactly like the foreignObject did, using ordinary, reliable
+            browser layout instead of SVG's replaced-element compositing. Stable key so switching
+            between two already-hovered columns slides in place rather than closing/reopening
+            (see BarChart's tag for the same pattern). */}
+        <AnimatePresence>
+          {hovered && (
+            <m.div
+              key="pace-popup"
+              className="glass pointer-events-none absolute w-[200px] rounded-xl px-3 py-2 text-xs text-ink"
+              style={{ top: MARGIN.top + 4 }}
+              initial={{ opacity: 0, left: popupLeft(hovered) }}
+              animate={{ opacity: 1, left: popupLeft(hovered) }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              <div className="font-medium">{driverName(hovered.label)}</div>
+              {hovered.team && hovered.team !== hovered.label && (
+                <div className="mt-1 text-muted">{hovered.team}</div>
+              )}
+              <div className="mt-2 space-y-0.5 text-muted">
+                <div><span className="font-semibold text-ink">Mean</span> {hovered.stats.mean.toFixed(3)}s</div>
+                <div><span className="font-semibold text-ink">Median</span> {hovered.stats.median.toFixed(3)}s</div>
+                <div><span className="font-semibold text-ink">Q1-Q3</span> {hovered.stats.q1.toFixed(3)}-{hovered.stats.q3.toFixed(3)}s</div>
+                <div><span className="font-semibold text-ink">Ceiling</span> {hovered.stats.pace_ceiling.toFixed(3)}s</div>
+                <div><span className="font-semibold text-ink">{hovered.stats.n_laps}</span> laps of data</div>
+              </div>
+            </m.div>
+          )}
+        </AnimatePresence>
         </div>
         <ScrollFadeEdge visible={canScrollRight} />
         </div>

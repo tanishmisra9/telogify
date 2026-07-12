@@ -162,15 +162,22 @@ export function BarChart({
                 const panelX = Math.min(Math.max(cx - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
                 const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 18, -MARGIN.top + 4)
                 return (
+                  // Blur fade for true open/close (safe here -- this is plain SVG, not a
+                  // foreignObject, so it doesn't hit the WebKit filter-corruption bug). Each
+                  // child's `initial` matches its own first-render position exactly, so nothing
+                  // animates in from the SVG's (0,0) corner on first mount -- only `animate`
+                  // changing on a later re-render (switching to a different bar while already
+                  // open) actually moves them, which is the intended slide.
                   <m.g
                     key="bar-panel"
                     className="pointer-events-none"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
+                    initial={{ opacity: 0, filter: 'blur(4px)' }}
+                    animate={{ opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, filter: 'blur(4px)' }}
                     transition={{ duration: 0.16 }}
                   >
                     <m.rect
+                      initial={{ x: panelX + 2.5, y: panelY + 2.5 }}
                       animate={{ x: panelX + 2.5, y: panelY + 2.5 }}
                       transition={{ duration: 0.16 }}
                       width={PANEL_W}
@@ -179,6 +186,7 @@ export function BarChart({
                       rx={2}
                     />
                     <m.rect
+                      initial={{ x: panelX, y: panelY }}
                       animate={{ x: panelX, y: panelY }}
                       transition={{ duration: 0.16 }}
                       width={PANEL_W}
@@ -189,6 +197,7 @@ export function BarChart({
                       rx={2}
                     />
                     <m.text
+                      initial={{ x: panelX + PANEL_W / 2, y: panelY + PANEL_H / 2 + 1 }}
                       animate={{ x: panelX + PANEL_W / 2, y: panelY + PANEL_H / 2 + 1 }}
                       transition={{ duration: 0.16 }}
                       textAnchor="middle"

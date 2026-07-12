@@ -13,9 +13,11 @@ const HEIGHT = 440
 const MARGIN = { top: 16, right: 16, bottom: 52, left: 56 }
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 // Structural, not fluid: each round gets this many real pixels of x-axis space no matter the
-// container size, same reasoning as BarChart/PaceSpreadChart -- a season with 20+ rounds packed
-// into a fluid-scaled axis crushed the round-number ticks into overlap on mobile.
-const MIN_ROUND_SLOT = 34
+// container size, same reasoning as BarChart/PaceSpreadChart. Generous on purpose, not just
+// enough to avoid tick overlap: this chart draws up to ~10 overlapping team lines per round, and
+// a fluid-scaled axis squeezed thin later in a season reads as a tangle -- a heart monitor, not
+// a comparison. Scrolling a wider chart beats cramming a full season into one screenful.
+const MIN_ROUND_SLOT = 64
 
 type Metric = 'pace' | 'quali' | 'cumulative'
 const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualifying', cumulative: 'Cumulative' }
