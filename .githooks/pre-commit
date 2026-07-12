@@ -1,0 +1,11 @@
+#!/bin/sh
+# Blocks a commit if gitleaks finds a secret in the staged diff.
+# Activated once per clone via: git config core.hooksPath .githooks
+# Genuine false positive? git commit --no-verify, or extend .gitleaks.toml's allowlist.
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "gitleaks not found (brew install gitleaks) -- skipping secret scan" >&2
+  exit 0
+fi
+
+gitleaks protect --staged --redact -v
