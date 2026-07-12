@@ -1,18 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
+import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
 import { smoothPath } from '@/lib/svgPath'
-import { useSvgTextScale } from '@/lib/useSvgTextScale'
+import { useScrollFade } from '@/lib/useScrollFade'
 import type { SeasonConstructorRow, SeasonRound } from '@/lib/api'
 
-const WIDTH = 1100
 const HEIGHT = 440
 const MARGIN = { top: 16, right: 16, bottom: 52, left: 56 }
-const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
+// Structural, not fluid: each round gets this many real pixels of x-axis space no matter the
+// container size, same reasoning as BarChart/PaceSpreadChart -- a season with 20+ rounds packed
+// into a fluid-scaled axis crushed the round-number ticks into overlap on mobile.
+const MIN_ROUND_SLOT = 34
 
 type Metric = 'pace' | 'quali' | 'cumulative'
 const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualifying', cumulative: 'Cumulative' }
@@ -56,11 +59,22 @@ function resampleToRounds(points: { round: number; value: number }[], roundNums:
 // front-runner and a line dropping away is a team losing ground. Copies DegradationChart's scaffold.
 export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[]; rounds: SeasonRound[] }) {
   const reduce = useReducedMotion()
-  const { ref, textPx } = useSvgTextScale(WIDTH)
   const [metric, setMetric] = useState<Metric>('pace')
   // Empty = show every team (default). Not reset on metric switch, so a comparison survives
   // moving between Race pace/Qualifying/Cumulative.
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState(0)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const canScrollRight = useScrollFade(containerRef)
 
   const toggleTeam = (team: string) =>
     setSelected((prev) => {
@@ -73,6 +87,9 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   const roundNums = rounds.map((r) => r.round)
   const xMin = Math.min(...roundNums)
   const xMax = Math.max(...roundNums)
+  const innerWNeeded = Math.max(1, roundNums.length - 1) * MIN_ROUND_SLOT
+  const innerW = Math.max(containerWidth - MARGIN.left - MARGIN.right, innerWNeeded)
+  const width = innerW + MARGIN.left + MARGIN.right
 
   // Filtered on the team's original (pre-resample) point count, so a team with zero real data
   // for this metric still doesn't render a fabricated flat line — resampling only fills gaps
@@ -96,7 +113,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   const dataMax = Math.max(...values)
   const fixedMax = FIXED_AXIS_MAX[metric]
   const yMax = fixedMax != null ? Math.max(fixedMax, Math.ceil(dataMax)) : dataMax * 1.05 || 1
-  const x = (v: number) => (xMax === xMin ? INNER_W / 2 : ((v - xMin) / (xMax - xMin)) * INNER_W)
+  const x = (v: number) => (xMax === xMin ? innerW / 2 : ((v - xMin) / (xMax - xMin)) * innerW)
   const y = (v: number) => INNER_H * (v / yMax) // 0 at the top (fastest team on top)
 
   const yTicks =
@@ -121,22 +138,24 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         />
       </div>
 
-      <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
+      <div className="relative">
+      <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
+      <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {yTicks.map((t) => (
             <g key={t}>
-              <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
-              <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
+              <line x1={0} x2={innerW} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
+              <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={13}>
                 {formatTick(t)}
               </text>
             </g>
           ))}
           {roundNums.map((r) => (
-            <text key={r} x={x(r)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
+            <text key={r} x={x(r)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
               {r}
             </text>
           ))}
-          <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
+          <text x={innerW / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
             Round
           </text>
 
@@ -161,6 +180,9 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
           </AnimatePresence>
         </g>
       </svg>
+      </div>
+      <ScrollFadeEdge visible={canScrollRight} />
+      </div>
 
       <div className="mt-6 border-t border-border pt-5">
         <TeamSelectLegend
