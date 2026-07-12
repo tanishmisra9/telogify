@@ -16,20 +16,6 @@ class RaceWeekend(SQLModel, table=True):
     circuit_name: str
     country: str
     event_name: str
-    wikipedia_title: str | None = None
-
-
-class WeekendRecap(SQLModel, table=True):
-    """Structured Wikipedia event recap for SQ/SPRINT/Q/R, fetched at ingest."""
-
-    __tablename__ = "weekend_recap"
-
-    id: int | None = Field(default=None, primary_key=True)
-    weekend_id: int = Field(foreign_key="race_weekend.id", index=True, unique=True)
-    page_title: str | None = None
-    page_id: int | None = None
-    fetched_at: datetime = Field(default_factory=datetime.utcnow)
-    sessions_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
 
 
 class Session(SQLModel, table=True):

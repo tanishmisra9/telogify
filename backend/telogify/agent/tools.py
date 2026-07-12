@@ -27,7 +27,6 @@ from telogify.models import (
     SessionResult,
     Stint,
     StraightSegment,
-    WeekendRecap,
 )
 
 
@@ -358,35 +357,11 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
             rows.sort(key=lambda r: r["harvesting_slope_ms2_per_kmh"])
             return json.dumps(rows)
 
-    @tool
-    def get_weekend_recap() -> str:
-        """Structured Wikipedia recap for this weekend's SQ, SPRINT (if run), Q, and R sessions.
-        Use for on-track EVENT context only: retirements with cause and lap, collisions,
-        penalties, safety/virtual safety car beats, and strategy turning points. NOT for pace,
-        top speeds, gaps, or grid/finish ordinals (use telemetry and get_session_results).
-        Telemetry wins if recap and telemetry disagree on car performance. Returns {} when
-        no recap is stored for a session."""
-        with sf() as db:
-            wid = _weekend_id(db, year, round_num)
-            if wid is None:
-                return json.dumps({})
-            row = db.exec(select(WeekendRecap).where(WeekendRecap.weekend_id == wid)).first()
-            if row is None or not row.sessions_json:
-                return json.dumps({})
-            return json.dumps(
-                {
-                    "source": "wikipedia",
-                    "page_title": row.page_title,
-                    "sessions": row.sessions_json,
-                }
-            )
-
     return [
         get_candidate_insights,
         get_race_control_events,
         get_deployment,
         get_race_deployment_character,
-        get_weekend_recap,
         get_straight_speed,
         get_corner_delta,
         get_lap_evolution,

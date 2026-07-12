@@ -122,18 +122,6 @@ def test_rank_is_robustness_descending():
     assert [s.subject for s in rank([a, b])] == ["B", "A"]
 
 
-def test_recap_outcome_correlates_with_position_swing():
-    swing = _sig("position_swing", 14.0, 1.0, "Mercedes", category="result")
-    recap = _sig("recap_outcome", 12.6, 0.9, "Mercedes", category="recap")
-    lone = _sig("corner_delta", 8.0, 1.0, "McLaren")
-    signals = [swing, recap, lone]
-    normalize_and_score(signals)
-    merged = correlate(signals)
-    combined = next(s for s in merged if s.subject == "Mercedes" and s.signal_type == "cross_session")
-    assert combined.robustness > swing.robustness
-    assert combined.robustness > recap.robustness
-
-
 def test_linear_regression_recovers_known_line():
     xs = [300.0, 310.0, 320.0, 330.0]
     ys = [90.0, 89.0, 88.0, 87.0]  # exact line: y = -0.1x + 120

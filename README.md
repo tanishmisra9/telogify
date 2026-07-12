@@ -55,7 +55,6 @@ alembic upgrade head            # apply migrations to telogify_dev
 | `RESEND_FROM` | Sender, e.g. `Telogify <insights@telogify.app>` once the domain is verified. |
 | `FASTF1_CACHE` | FastF1 on-disk cache dir (default `.fastf1_cache`). |
 | `WEB_BASE_URL` | Base URL the email CTA links to. |
-| `WIKIPEDIA_RECAP_ENABLED` | Fetch a structured Wikipedia event recap at ingest time (default `true`). Fetch failures never raise; set `false` to skip the network call entirely (e.g. on a sandboxed/offline host where it would otherwise hang past its own timeout). |
 
 ### CLI
 
@@ -73,7 +72,6 @@ telogify ingest 2026 --dry-run  # preview which rounds would be ingested
 telogify diagnose 2025 11       # ranking sanity: clean-lap counts + attribution confidence
 telogify list-insights          # print all persisted insights, grouped by weekend
 telogify list-insights 2026     # same, filtered to one season
-telogify fetch-recap 2025 11    # fetch/store the Wikipedia event recap only, no full re-ingest
 telogify send-digest 2025 11    # email the 3 insights to subscribers via Resend
 ```
 

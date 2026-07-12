@@ -187,15 +187,6 @@ _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
         "shortest-clip claim",
         "Re-check get_deployment: another car has lower max_clip_m than the value you cited.",
     ),
-    (
-        "untraceable recap",
-        "Only cite retirement cause, mechanical failure, or retirement lap from get_weekend_recap facts.",
-    ),
-    (
-        "unquantified recap",
-        "A recap fact must be the stated cause of a quantified pace or telemetry number already in "
-        "this insight. Either attach the number or drop the recap claim entirely.",
-    ),
 )
 
 

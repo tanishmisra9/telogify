@@ -81,26 +81,6 @@ _SECTOR_CTX = re.compile(
     re.IGNORECASE,
 )
 
-_RECAP_MECHANICAL = (
-    "mechanical failure",
-    "mechanical issue",
-    "mechanical problem",
-    "engine failure",
-    "engine blew",
-    "power unit failure",
-    "brake failure",
-    "brakes failed",
-    "coolant",
-    "gearbox",
-    "hydraulic",
-    "suspension failure",
-    "retired with",
-    "retired due to",
-    "retired because",
-)
-
-_ON_LAP_PHRASE = re.compile(r"\bon lap (\d+)\b", re.IGNORECASE)
-
 
 def _parse_tool_results(trace: list[dict], tool_name: str) -> list:
     rows: list = []
@@ -223,96 +203,6 @@ def flag_false_deployment_superlative(text: str, trace: list[dict]) -> list[str]
     return []
 
 
-def _recap_facts(trace: list[dict]) -> list[dict]:
-    for entry in trace:
-        if entry.get("tool") != "get_weekend_recap":
-            continue
-        result = entry.get("result")
-        if not result:
-            continue
-        try:
-            data = json.loads(result) if isinstance(result, str) else result
-        except (json.JSONDecodeError, TypeError):
-            continue
-        sessions = data.get("sessions") or {}
-        facts: list[dict] = []
-        for session_data in sessions.values():
-            if not isinstance(session_data, dict) or not session_data.get("present"):
-                continue
-            for fact in session_data.get("facts") or []:
-                if isinstance(fact, dict):
-                    facts.append(fact)
-        return facts
-    return []
-
-
-def _recap_blob(facts: list[dict]) -> str:
-    parts: list[str] = []
-    for fact in facts:
-        parts.append(fact.get("text", ""))
-        if fact.get("lap") is not None:
-            parts.append(str(fact["lap"]))
-    return " ".join(parts).lower()
-
-
-def filter_guardrails_with_recap(phrases: list[str], text: str, trace: list[dict]) -> list[str]:
-    """Drop guardrail hits allowed when get_weekend_recap supports the claim."""
-    facts = _recap_facts(trace)
-    if not facts:
-        return phrases
-    blob = _recap_blob(facts)
-    laps = {int(f["lap"]) for f in facts if f.get("lap") is not None}
-    has_retirement = any(f.get("kind") == "retirement" for f in facts)
-    low_text = text.lower()
-    kept: list[str] = []
-    for phrase in phrases:
-        low = phrase.lower()
-        if low in blob:
-            continue
-        lap_match = _ON_LAP_PHRASE.match(low)
-        if lap_match:
-            lap = int(lap_match.group(1))
-            if lap in laps and re.search(r"\b(?:retired|retirement|dnf|did not finish)\b", low_text):
-                continue
-        if low in ("retired due to", "retired because", "retired with") and has_retirement:
-            continue
-        if any(term in low for term in _RECAP_MECHANICAL) and any(term in blob for term in _RECAP_MECHANICAL if term in low):
-            continue
-        if any(term in low and term in blob for term in _RECAP_MECHANICAL):
-            continue
-        kept.append(phrase)
-    return kept
-
-
-def _recap_tool_called(trace: list[dict]) -> bool:
-    return any(entry.get("tool") == "get_weekend_recap" for entry in trace)
-
-
-def flag_untraceable_recap_claims(text: str, trace: list[dict]) -> list[str]:
-    """Flag mechanical/retirement-lap claims not present in get_weekend_recap."""
-    if not _recap_tool_called(trace):
-        return []
-    facts = _recap_facts(trace)
-    blob = _recap_blob(facts)
-    laps = {int(f["lap"]) for f in facts if f.get("lap") is not None}
-    low = text.lower()
-    issues: list[str] = []
-
-    for term in _RECAP_MECHANICAL:
-        if term in low and term not in blob:
-            issues.append(f"untraceable recap: mechanical phrase '{term}' not in get_weekend_recap")
-            break
-
-    for match in _ON_LAP_PHRASE.finditer(low):
-        lap = int(match.group(1))
-        window = low[max(0, match.start() - 80) : match.end() + 80]
-        if re.search(r"\b(?:retired|retirement|dnf|did not finish)\b", window) and lap not in laps:
-            issues.append(f"untraceable recap: retirement lap {lap} not in get_weekend_recap")
-            break
-
-    return issues
-
-
 _QUANTITY_RE = re.compile(
     r"(\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%)"
     r"|(?:\(\s*(\d+(?:\.\d+)?)\s*mph\s*\))",
@@ -373,30 +263,6 @@ def extract_prose_quantities(text: str) -> list[float]:
         if raw is not None:
             found.append(float(raw))
     return found
-
-
-def flag_unquantified_recap_cause(text: str, trace: list[dict]) -> list[str]:
-    """Flag a recap fact used as a standalone narrative with no quantified number attached.
-
-    Recap may only appear as the stated cause of a pace/telemetry figure already in the same
-    insight; a mechanical/damage/retirement phrase with no quantity nearby is journalism, not
-    an insight, and must be rejected.
-    """
-    if not _recap_tool_called(trace):
-        return []
-    facts = _recap_facts(trace)
-    if not facts:
-        return []
-    blob = _recap_blob(facts)
-    low = text.lower()
-    mentions_recap = any(term in low and term in blob for term in _RECAP_MECHANICAL) or any(
-        (f.get("text") or "").lower() in low for f in facts if f.get("text")
-    )
-    if not mentions_recap:
-        return []
-    if _QUANTITY_RE.search(text):
-        return []
-    return ["unquantified recap: cites a recap event with no quantified pace/telemetry number attached"]
 
 
 def flag_weak_deployment_cluster(text: str, trace: list[dict]) -> list[str]:
@@ -503,10 +369,6 @@ def validate_insights(insights: list[dict], trace: list[dict]) -> dict[int, list
         for issue in flag_qualifying_practice_sector_mismatch(text, trace):
             flagged.setdefault(i, []).append(issue)
         for issue in flag_false_deployment_superlative(text, trace):
-            flagged.setdefault(i, []).append(issue)
-        for issue in flag_untraceable_recap_claims(text, trace):
-            flagged.setdefault(i, []).append(issue)
-        for issue in flag_unquantified_recap_cause(text, trace):
             flagged.setdefault(i, []).append(issue)
         for issue in flag_weak_deployment_cluster(text, trace):
             flagged.setdefault(i, []).append(issue)

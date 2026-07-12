@@ -2,15 +2,12 @@ import json
 
 from telogify.agent.validation import (
     extract_prose_quantities,
-    filter_guardrails_with_recap,
     flag_cross_insight_conflicts,
     flag_false_deployment_superlative,
     flag_false_retirement_causation,
     flag_qualifying_practice_sector_mismatch,
     flag_session_abbreviations,
-    flag_unquantified_recap_cause,
     flag_untraceable_numbers,
-    flag_untraceable_recap_claims,
     flag_weak_deployment_cluster,
     validate_insights,
 )
@@ -204,85 +201,6 @@ def test_flag_false_deployment_superlative_shortest_clip():
     issues = flag_false_deployment_superlative(text, trace)
     assert len(issues) == 1
     assert "180" in issues[0]
-
-
-def test_filter_guardrails_with_recap_allows_retirement_lap():
-    trace = [
-        {
-            "tool": "get_weekend_recap",
-            "args": {},
-            "result": json.dumps(
-                {
-                    "sessions": {
-                        "R": {
-                            "present": True,
-                            "facts": [
-                                {
-                                    "kind": "retirement",
-                                    "lap": 45,
-                                    "drivers": ["VER"],
-                                    "text": "Verstappen retired on lap 45 with a coolant leak.",
-                                }
-                            ],
-                        }
-                    }
-                }
-            ),
-        }
-    ]
-    text = "Verstappen retired on lap 45 with a coolant leak."
-    phrases = ["on lap 45", "coolant"]
-    assert "on lap 45" not in filter_guardrails_with_recap(phrases, text, trace)
-
-
-def test_flag_untraceable_recap_claims_blocks_unsupported_mechanical():
-    trace = [
-        {
-            "tool": "get_weekend_recap",
-            "args": {},
-            "result": json.dumps({"sessions": {"R": {"present": True, "facts": []}}}),
-        }
-    ]
-    issues = flag_untraceable_recap_claims("He retired with an engine failure on lap 10.", trace)
-    assert any("engine failure" in i for i in issues)
-
-
-def _recap_trace(fact_text: str) -> list[dict]:
-    return [
-        {
-            "tool": "get_weekend_recap",
-            "args": {},
-            "result": json.dumps(
-                {
-                    "sessions": {
-                        "R": {
-                            "present": True,
-                            "facts": [
-                                {"kind": "damage", "lap": None, "drivers": ["ANT"], "text": fact_text}
-                            ],
-                        }
-                    }
-                }
-            ),
-        }
-    ]
-
-
-def test_flag_unquantified_recap_cause_rejects_standalone_narrative():
-    trace = _recap_trace("broken left-front wheel shield")
-    text = "Antonelli's car suffered a broken left-front wheel shield during the race."
-    issues = flag_unquantified_recap_cause(text, trace)
-    assert len(issues) == 1
-    assert "unquantified recap" in issues[0]
-
-
-def test_flag_unquantified_recap_cause_passes_with_quantified_number():
-    trace = _recap_trace("broken left-front wheel shield")
-    text = (
-        "Antonelli's car lost 0.842 seconds a lap after a broken left-front wheel shield "
-        "unbalanced the car for the rest of the race."
-    )
-    assert flag_unquantified_recap_cause(text, trace) == []
 
 
 def test_flag_weak_deployment_cluster():

@@ -40,11 +40,6 @@ class Settings(BaseSettings):
     fuel_kg_per_race: float = 70.0
     fuel_time_cost_s_per_kg: float = 0.025
 
-    wikipedia_recap_enabled: bool = True
-    wikipedia_user_agent: str = (
-        "TelogifyRecapBot/1.0 (https://telogify.com; recap@telogify.com) httpx"
-    )
-
 
 settings = Settings()
 
