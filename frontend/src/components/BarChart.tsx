@@ -154,7 +154,7 @@ export function BarChart({
                 // clamped so it never runs off the top of the SVG for a very tall bar, or
                 // sits right on the axis for a very short one.
                 const panelX = Math.min(Math.max(cx - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
-                const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 10, -MARGIN.top + 4)
+                const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 18, -MARGIN.top + 4)
                 return (
                   <m.g
                     key={hoveredRow.id}
