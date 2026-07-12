@@ -283,6 +283,17 @@ function Upcoming({ children }: { children: React.ReactNode }) {
   )
 }
 
+function FightToPoleDesktopNote() {
+  return (
+    <div className="md:hidden">
+      <Upcoming>
+        The fight to pole&apos;s telemetry scrubbing is a desktop experience. Open this weekend on a
+        larger screen to explore the lap.
+      </Upcoming>
+    </div>
+  )
+}
+
 // Reserve the practice block's footprint so the page doesn't grow when the two charts land.
 function PracticeSkeleton() {
   return (
@@ -449,7 +460,8 @@ export function WeekendPage() {
         {!sessionsLoaded ? (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
             <SkeletonCard label="Car character" className="min-h-[520px]" />
-            <SkeletonCard label="The fight to pole" className="min-h-[640px]" />
+            <SkeletonCard label="The fight to pole" className="hidden min-h-[640px] md:block" />
+            <FightToPoleDesktopNote />
           </div>
         ) : !qualiHappened ? (
           <Upcoming>
@@ -464,13 +476,16 @@ export function WeekendPage() {
             ) : (
               <SkeletonCard label="Car character" className="min-h-[520px]" />
             )}
-            {qualiTrace.data ? (
-              <ScrollReveal delay={0.06}>
-                <FightToPoleChart data={qualiTrace.data} />
-              </ScrollReveal>
-            ) : (
-              <SkeletonCard label="The fight to pole" className="min-h-[640px]" />
-            )}
+            <div className="hidden md:block">
+              {qualiTrace.data ? (
+                <ScrollReveal delay={0.06}>
+                  <FightToPoleChart data={qualiTrace.data} />
+                </ScrollReveal>
+              ) : (
+                <SkeletonCard label="The fight to pole" className="min-h-[640px]" />
+              )}
+            </div>
+            <FightToPoleDesktopNote />
           </div>
         )}
       </section>

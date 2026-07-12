@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
+import { TeamMark } from '@/components/TeamMark'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
@@ -12,6 +13,26 @@ const HEIGHT = 420
 const MARGIN = { top: 16, right: 24, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
+
+// Mobile has no chart to isolate a line on, so the click-to-select legend would be a control
+// with nothing to control. This is the same ranking, read-only.
+function DegradationRankingList({ rows }: { rows: { team: string; value: string }[] }) {
+  return (
+    <ol className="flex flex-col gap-1">
+      {rows.map((r, i) => (
+        <li
+          key={r.team}
+          className="grid min-h-11 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-sm px-2 py-1 text-sm"
+          style={{ backgroundColor: teamColorWithAlpha(r.team, 0.09) }}
+        >
+          <span className="num text-xs text-muted">{i + 1}</span>
+          <TeamMark team={r.team} className="font-medium" />
+          <span className="num text-xs text-ink">{r.value}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
 
 export function DegradationChart({ data }: { data: DegradationData }) {
   const reduce = useReducedMotion()
@@ -68,6 +89,10 @@ export function DegradationChart({ data }: { data: DegradationData }) {
   // Ranked worst-wear-first (steepest slope first) so the chart's most-flagged line and the
   // list's top row are the same story read two ways, not two columns whose order is ambiguous.
   const rankedFits = [...fits].sort((a, b) => b.slope_s_per_lap - a.slope_s_per_lap)
+  const rankedRows = rankedFits.map((f) => ({
+    team: f.constructor,
+    value: `${f.slope_s_per_lap >= 0 ? '+' : ''}${f.slope_s_per_lap.toFixed(3)}s/lap`,
+  }))
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4)
   const xTickCount = Math.min(6, xMax + 1)
   const xTicks = Array.from({ length: xTickCount }, (_, i) => Math.round((xMax * i) / (xTickCount - 1 || 1)))
@@ -92,73 +117,83 @@ export function DegradationChart({ data }: { data: DegradationData }) {
       {points.length === 0 ? (
         <p className="text-sm text-muted">No {compound.toLowerCase()} laps this race.</p>
       ) : (
-        <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Fuel-corrected lap time vs tyre age">
-          <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-            {yTicks.map((t) => (
-              <g key={t}>
-                <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
-                <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
-                  {t.toFixed(1)}s
+        <div className="hidden md:block">
+          <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Fuel-corrected lap time vs tyre age">
+            <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+              {yTicks.map((t) => (
+                <g key={t}>
+                  <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
+                  <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
+                    {t.toFixed(1)}s
+                  </text>
+                </g>
+              ))}
+              {xTicks.map((t) => (
+                <text key={t} x={x(t)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
+                  {t}
                 </text>
-              </g>
-            ))}
-            {xTicks.map((t) => (
-              <text key={t} x={x(t)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
-                {t}
+              ))}
+              <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
+                Tyre age (laps)
               </text>
-            ))}
-            <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
-              Tyre age (laps)
-            </text>
 
-            {/* Raw laps sit as a faint texture; the labeled fit line is the actual finding. */}
-            {visiblePoints.map((p, i) => (
-              <circle key={i} cx={x(p.tyre_age)} cy={y(p.lap_time_s)} r={1.5} fill={teamColorWithAlpha(p.constructor, 0.16)} />
-            ))}
+              {/* Raw laps sit as a faint texture; the labeled fit line is the actual finding. */}
+              {visiblePoints.map((p, i) => (
+                <circle key={i} cx={x(p.tyre_age)} cy={y(p.lap_time_s)} r={1.5} fill={teamColorWithAlpha(p.constructor, 0.16)} />
+              ))}
 
-            <AnimatePresence>
-              {visibleFits.map((f) => {
-                const range = ageRangeByConstructor[f.constructor]
-                if (!range) return null
-                const [lo, hi] = range
-                const stroke = resolveTeamColor(f.constructor)
-                // Same key across a compound switch (a team present in both compounds keeps its
-                // line mounted), so x1/y1/x2/y2 in `animate` morph smoothly into the new
-                // compound's fit instead of snapping. A team missing from the newly-selected
-                // compound isn't in visibleFits at all, so it just exits/re-enters via
-                // AnimatePresence as before — no morph attempted when there's nothing to morph to.
-                const coords = { x1: x(lo), y1: y(f.slope_s_per_lap * lo + f.intercept_s), x2: x(hi), y2: y(f.slope_s_per_lap * hi + f.intercept_s) }
-                return (
-                  <m.line
-                    key={f.constructor}
-                    stroke={stroke}
-                    strokeWidth={f.flagged ? 3.5 : 2}
-                    initial={reduce ? false : { pathLength: 0, opacity: 0, ...coords }}
-                    animate={{ pathLength: 1, opacity: 1, ...coords }}
-                    exit={{ opacity: 0 }}
-                    transition={reduce ? { duration: 0 } : { ...drawTransition, x1: morphTransition, y1: morphTransition, x2: morphTransition, y2: morphTransition }}
-                  />
-                )
-              })}
-            </AnimatePresence>
-          </g>
-        </svg>
+              <AnimatePresence>
+                {visibleFits.map((f) => {
+                  const range = ageRangeByConstructor[f.constructor]
+                  if (!range) return null
+                  const [lo, hi] = range
+                  const stroke = resolveTeamColor(f.constructor)
+                  // Same key across a compound switch (a team present in both compounds keeps its
+                  // line mounted), so x1/y1/x2/y2 in `animate` morph smoothly into the new
+                  // compound's fit instead of snapping. A team missing from the newly-selected
+                  // compound isn't in visibleFits at all, so it just exits/re-enters via
+                  // AnimatePresence as before — no morph attempted when there's nothing to morph to.
+                  const coords = { x1: x(lo), y1: y(f.slope_s_per_lap * lo + f.intercept_s), x2: x(hi), y2: y(f.slope_s_per_lap * hi + f.intercept_s) }
+                  return (
+                    <m.line
+                      key={f.constructor}
+                      stroke={stroke}
+                      strokeWidth={f.flagged ? 3.5 : 2}
+                      initial={reduce ? false : { pathLength: 0, opacity: 0, ...coords }}
+                      animate={{ pathLength: 1, opacity: 1, ...coords }}
+                      exit={{ opacity: 0 }}
+                      transition={reduce ? { duration: 0 } : { ...drawTransition, x1: morphTransition, y1: morphTransition, x2: morphTransition, y2: morphTransition }}
+                    />
+                  )
+                })}
+              </AnimatePresence>
+            </g>
+          </svg>
+        </div>
       )}
 
+      <p className="mt-4 text-sm text-muted md:hidden">
+        The wear chart is a desktop experience. Open this weekend on a larger screen to compare
+        lines. The ranking below still updates with the compound tab above.
+      </p>
+
       {/* Ranked worst wear first — also the click-to-isolate control for the chart above (see
-          TeamSelectLegend). */}
+          TeamSelectLegend). Mobile has no chart to isolate a line on, so it gets the same
+          ranking as a read-only list instead. */}
       <div className="mt-6 border-t border-border pt-5">
-        <TeamSelectLegend
-          rows={rankedFits.map((f) => ({
-            team: f.constructor,
-            value: `${f.slope_s_per_lap >= 0 ? '+' : ''}${f.slope_s_per_lap.toFixed(3)}s/lap`,
-          }))}
-          selected={selected}
-          onToggle={toggleTeam}
-          isFiltering={isFiltering}
-        />
+        <div className="hidden md:block">
+          <TeamSelectLegend
+            rows={rankedRows}
+            selected={selected}
+            onToggle={toggleTeam}
+            isFiltering={isFiltering}
+          />
+        </div>
+        <div className="md:hidden">
+          <DegradationRankingList rows={rankedRows} />
+        </div>
       </div>
-      <p className="mt-4 text-xs text-muted">
+      <p className="mt-4 hidden text-xs text-muted md:block">
         Fuel-corrected lap time against tyre age; a bold line marks wear well above the field.
         Ranked worst wear first below — click a team to isolate its line, click again to bring it
         back.
