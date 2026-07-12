@@ -1,11 +1,89 @@
+import { useState } from 'react'
+import { AnimatePresence, m } from 'framer-motion'
 import { TeamMark, TeamRule } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
 import { emphasize } from '@/lib/emphasize'
 import { heatBg, rankAsc, rankDesc } from '@/lib/heat'
 import { driverName } from '@/lib/drivers'
-import { qualiInsights } from '@/lib/qualiInsights'
+import { expandTransition } from '@/lib/motion'
+import { qualiInsights, type QualiInsight } from '@/lib/qualiInsights'
 import { teamColorWithAlpha } from '@/lib/teamColors'
 import type { QualiCharacterData } from '@/lib/api'
+
+function InsightCard({ ins }: { ins: QualiInsight }) {
+  return (
+    <div
+      className="rounded-[--radius-panel] border border-border p-5"
+      style={{ backgroundColor: teamColorWithAlpha(ins.team, 0.09) }}
+    >
+      <div className="flex items-center gap-2">
+        <TeamRule team={ins.team} />
+        <p className="kicker text-accent">{ins.kicker}</p>
+      </div>
+      <p className="mt-3 text-[15px] leading-relaxed text-ink">{emphasize(ins.text)}</p>
+    </div>
+  )
+}
+
+// Open by default, collapsible on mobile only -- desktop has the room to just show these
+// findings outright, no toggle needed.
+function CharacterInsights({ insights }: { insights: QualiInsight[] }) {
+  const [open, setOpen] = useState(true)
+  if (insights.length === 0) return null
+
+  return (
+    <>
+      <div className="mt-5 hidden gap-4 border-b border-border pb-6 sm:grid-cols-2 md:grid">
+        {insights.map((ins) => (
+          <InsightCard key={ins.kicker} ins={ins} />
+        ))}
+      </div>
+      <div className="mt-5 border-b border-border pb-6 md:hidden">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="flex w-full items-center justify-between gap-4 text-left"
+        >
+          <p className="kicker text-muted">Findings</p>
+          <m.svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            className="shrink-0 text-muted"
+            animate={{ rotate: open ? 180 : 0 }}
+            transition={expandTransition}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </m.svg>
+        </button>
+        <AnimatePresence initial={false}>
+          {open && (
+            <m.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={expandTransition}
+              className="overflow-hidden"
+            >
+              <div className="mt-4 grid gap-4">
+                {insights.map((ins) => (
+                  <InsightCard key={ins.kicker} ins={ins} />
+                ))}
+              </div>
+            </m.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </>
+  )
+}
 
 function Cell({ children, bg }: { children: React.ReactNode; bg: string }) {
   return (
@@ -43,23 +121,7 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
     <div className="glass rounded-[--radius-panel] p-6">
       <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Car character</h2>
 
-      {insights.length > 0 && (
-        <div className="mt-5 grid gap-4 border-b border-border pb-6 sm:grid-cols-2">
-          {insights.map((ins) => (
-            <div
-              key={ins.kicker}
-              className="rounded-[--radius-panel] border border-border p-5"
-              style={{ backgroundColor: teamColorWithAlpha(ins.team, 0.09) }}
-            >
-              <div className="flex items-center gap-2">
-                <TeamRule team={ins.team} />
-                <p className="kicker text-accent">{ins.kicker}</p>
-              </div>
-              <p className="mt-3 text-[15px] leading-relaxed text-ink">{emphasize(ins.text)}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      <CharacterInsights insights={insights} />
 
       <div className="mt-6 overflow-x-auto">
         <table className="w-full min-w-[680px] border-collapse text-sm" aria-label="Qualifying car character by team">
