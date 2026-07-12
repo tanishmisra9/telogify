@@ -2,21 +2,22 @@ import { Link } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
 import { Countdown } from '@/components/Countdown'
 import { Insight } from '@/components/Insight'
+import { SeasonStats } from '@/components/SeasonStats'
 import { Tooltip } from '@/components/Tooltip'
 import { useApi, type LatestInsight } from '@/lib/api'
 
 const STEPS = [
   {
-    title: 'Ingest',
-    body: 'A full race weekend goes in: every lap, telemetry trace, tyre stint, sector, and result.',
+    title: 'Every session.',
+    body: 'Practice through race, nothing left out. Sector bests, top speeds, tyre stints, lap by lap.',
   },
   {
-    title: 'Measure',
-    body: 'Deterministic analysis computes every number into the database: pace, degradation, car character, and sectors.',
+    title: 'Every figure.',
+    body: 'Computed from official timing, not estimated. Pace, degradation, car character: each number stored before the agent writes a word.',
   },
   {
-    title: 'Read',
-    body: 'An agent writes three plain-language insights, every figure traced back to the data.',
+    title: 'Three verdicts.',
+    body: "What the telemetry shows that the broadcast couldn't. The cross-channel finding that explains the result.",
   },
 ]
 
@@ -92,6 +93,8 @@ export function Landing() {
       <Countdown />
 
       <LiveInsight />
+
+      <SeasonStats />
 
       <section className="mt-28 sm:mt-40">
         <BlurFade>

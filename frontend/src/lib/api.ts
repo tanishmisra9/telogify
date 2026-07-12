@@ -36,6 +36,14 @@ export interface NextRace {
   location?: string
 }
 
+// Landing-page headline stats: total laps analysed and total km of telemetry across every
+// ingested weekend of the season.
+export interface SeasonStats {
+  year: number
+  total_laps: number
+  total_km: number
+}
+
 export interface BoxStats {
   mean: number
   median: number
