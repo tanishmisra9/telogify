@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { AnimatePresence, m } from 'framer-motion'
 import { Navigate, useParams } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
 import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
@@ -5,6 +7,7 @@ import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
 import { heatBg, rankAsc } from '@/lib/heat'
+import { expandTransition } from '@/lib/motion'
 import { seasonSummary, type Trait } from '@/lib/seasonSummary'
 import { teamColorWithAlpha } from '@/lib/teamColors'
 import {
@@ -128,6 +131,82 @@ function TraitList({ traits, kind }: { traits: Trait[]; kind: 'up' | 'down' }) {
   )
 }
 
+// Closed by default: strengths/weaknesses for every team at once is a wall of text before a
+// reader has picked who they care about. The team row itself (pill, name, confidence chip)
+// stays visible either way so the list still reads as a ranking at a glance.
+function FormGuideRow({
+  row: r,
+  strengths,
+  weaknesses,
+  bordered,
+}: {
+  row: SeasonConstructorRow
+  strengths: Trait[]
+  weaknesses: Trait[]
+  bordered: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <li className={`py-7 ${bordered ? 'border-t border-border' : ''}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-4 text-left"
+      >
+        <div
+          className="inline-flex items-center gap-2.5 rounded-[--radius-panel] px-3 py-1.5"
+          style={{ backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }}
+        >
+          <TeamRule team={r.constructor} className="h-[1.1em]" />
+          <h3 className="font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
+            {r.constructor}
+          </h3>
+          <ConfidenceChip confidence={r.confidence} />
+        </div>
+        <m.svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className="shrink-0 text-muted"
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={expandTransition}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </m.svg>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={expandTransition}
+            className="overflow-hidden"
+          >
+            <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 sm:pl-[22px]">
+              <div>
+                <p className="kicker mb-2.5 text-accent">Strengths</p>
+                <TraitList traits={strengths} kind="up" />
+              </div>
+              <div>
+                <p className="kicker mb-2.5 text-muted">Weaknesses</p>
+                <TraitList traits={weaknesses} kind="down" />
+              </div>
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </li>
+  )
+}
+
 function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
   const summary = seasonSummary(rows)
   return (
@@ -136,28 +215,13 @@ function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
         {rows.map((r, i) => {
           const s = summary[r.constructor]
           return (
-            <li key={r.constructor} className={`py-7 ${i > 0 ? 'border-t border-border' : ''}`}>
-              <div
-                className="inline-flex items-center gap-2.5 rounded-[--radius-panel] px-3 py-1.5"
-                style={{ backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }}
-              >
-                <TeamRule team={r.constructor} className="h-[1.1em]" />
-                <h3 className="font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
-                  {r.constructor}
-                </h3>
-                <ConfidenceChip confidence={r.confidence} />
-              </div>
-              <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 sm:pl-[22px]">
-                <div>
-                  <p className="kicker mb-2.5 text-accent">Strengths</p>
-                  <TraitList traits={s.strengths} kind="up" />
-                </div>
-                <div>
-                  <p className="kicker mb-2.5 text-muted">Weaknesses</p>
-                  <TraitList traits={s.weaknesses} kind="down" />
-                </div>
-              </div>
-            </li>
+            <FormGuideRow
+              key={r.constructor}
+              row={r}
+              strengths={s.strengths}
+              weaknesses={s.weaknesses}
+              bordered={i > 0}
+            />
           )
         })}
       </ul>
