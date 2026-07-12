@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { AnimatePresence, m } from 'framer-motion'
 import { Link, useParams } from 'react-router-dom'
 import { BarChart } from '@/components/BarChart'
 import { BlurFade } from '@/components/BlurFade'
@@ -10,6 +12,7 @@ import { Results } from '@/components/Results'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionTitle } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
+import { spring } from '@/lib/motion'
 import {
   useApi,
   type DegradationData,
@@ -100,6 +103,181 @@ function PracticeTopSpeeds({ data }: { data: TopSpeedsData }) {
   )
 }
 
+interface NavSection {
+  id: string
+  label: string
+}
+
+// Fixed left-hand rail: dots double as the "jump to section" utility, the up/down arrows step
+// sequentially, and the top dot (Insights, right below the header) doubles as back-to-top --
+// one restrained widget instead of three separate floating pieces.
+function SectionNav({ sections }: { sections: NavSection[] }) {
+  const [active, setActive] = useState(sections[0]?.id)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    const els = sections.map((s) => document.getElementById(s.id)).filter((e): e is HTMLElement => e !== null)
+    if (els.length === 0) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const intersecting = entries.filter((e) => e.isIntersecting)
+        if (intersecting.length === 0) return
+        const topMost = intersecting.reduce((a, b) => (a.boundingClientRect.top < b.boundingClientRect.top ? a : b))
+        setActive(topMost.target.id)
+      },
+      { rootMargin: '-20% 0px -70% 0px' },
+    )
+    els.forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [sections])
+
+  const activeIndex = Math.max(
+    0,
+    sections.findIndex((s) => s.id === active),
+  )
+
+  function jump(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  if (sections.length < 2) return null
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <m.nav
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -8 }}
+          transition={spring}
+          aria-label="Section navigation"
+          className="fixed left-8 top-1/2 z-30 hidden -translate-y-1/2 flex-col items-center gap-4 xl:flex"
+        >
+          <button
+            type="button"
+            onClick={() => sections[activeIndex - 1] && jump(sections[activeIndex - 1].id)}
+            disabled={activeIndex <= 0}
+            aria-label="Previous section"
+            className="text-muted transition-colors hover:text-ink disabled:opacity-20"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m18 15-6-6-6 6" />
+            </svg>
+          </button>
+          <div className="flex flex-col gap-3.5">
+            {sections.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => jump(s.id)}
+                aria-label={`Jump to ${s.label}`}
+                aria-current={s.id === active}
+                className="group relative flex items-center py-1"
+              >
+                <span
+                  className={`h-3 w-3 rounded-full border-[1.5px] border-ink transition-colors ${s.id === active ? 'border-accent bg-accent' : 'bg-transparent group-hover:bg-ink/40'}`}
+                />
+                <span className="pointer-events-none absolute left-5 whitespace-nowrap rounded bg-ink px-2 py-1 text-sm text-bg opacity-0 transition-opacity group-hover:opacity-100">
+                  {s.label}
+                </span>
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => sections[activeIndex + 1] && jump(sections[activeIndex + 1].id)}
+            disabled={activeIndex >= sections.length - 1}
+            aria-label="Next section"
+            className="text-muted transition-colors hover:text-ink disabled:opacity-20"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        </m.nav>
+      )}
+    </AnimatePresence>
+  )
+}
+
+const METHODOLOGY_SEEN_KEY = 'telogify:seen-methodology'
+// Quicker settle than the shared `spring` (stiffness 120/damping 20): this toggle should feel
+// snappy, not like a section-level reveal.
+const disclosureTransition = { type: 'spring', stiffness: 380, damping: 32 } as const
+
+function MethodologyDisclosure() {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(METHODOLOGY_SEEN_KEY) === null
+    } catch {
+      return true
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(METHODOLOGY_SEEN_KEY, '1')
+    } catch {
+      /* private mode: disclosure just defaults open every visit */
+    }
+  }, [])
+
+  return (
+    <div className="glass mt-6 rounded-[--radius-panel] p-6">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-4 text-left"
+      >
+        <p className="font-display text-[1.35rem] font-semibold tracking-tight text-ink">How these are made</p>
+        <m.svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className="shrink-0 text-muted"
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={disclosureTransition}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </m.svg>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={disclosureTransition}
+            className="overflow-hidden"
+          >
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              Every figure above is read from official timing and car telemetry, then computed into a
+              database by deterministic analysis, with nothing estimated. An agent then picks the three
+              findings you could not get from the timing screen, favouring a weakness in one area
+              (qualifying, straight-line speed, tyre wear, corner grip) that explains an outcome in another.
+              Each number is traceable back to the exact data it came from.
+            </p>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 function Upcoming({ children }: { children: React.ReactNode }) {
   return (
     <p className="rounded-[--radius-panel] border border-dashed border-border p-6 text-sm text-muted">
@@ -112,8 +290,8 @@ function Upcoming({ children }: { children: React.ReactNode }) {
 function PracticeSkeleton() {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-      <SkeletonCard className="min-h-[560px]" />
-      <SkeletonCard className="min-h-[300px]" />
+      <SkeletonCard label="Best sectors" className="min-h-[560px]" />
+      <SkeletonCard label="Top speeds" className="min-h-[300px]" />
     </div>
   )
 }
@@ -145,6 +323,14 @@ export function WeekendPage() {
   const raceHappened = present.has('R')
   const sessionsLoaded = !sessions.loading
 
+  const navSections: NavSection[] = [
+    topReady && insights.data && insights.data.length > 0 ? { id: 'insights', label: 'Insights' } : null,
+    sessionsLoaded && practiceHappened ? { id: 'practice', label: 'Practice' } : null,
+    sessionsLoaded && sprintHappened ? { id: 'sprint', label: 'Sprint' } : null,
+    sessionsLoaded && qualiHappened ? { id: 'qualifying', label: 'Qualifying' } : null,
+    sessionsLoaded && raceHappened ? { id: 'race', label: 'Race' } : null,
+  ].filter((s): s is NavSection => s !== null)
+
   if (weekend.error || sessions.error) {
     // apiGet throws `${status}`, so a 404 (weekend not ingested yet) is distinguishable from a
     // real network/server failure instead of both reading as one alarming "API offline."
@@ -163,6 +349,7 @@ export function WeekendPage() {
 
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16">
+      <SectionNav sections={navSections} />
       {!topReady ? (
         // Plain, borderless placeholders only: no SectionTitle heading/rule and no .glass-bordered
         // SkeletonCard here, since those are exactly what used to pop in and then vanish. Everything
@@ -181,15 +368,25 @@ export function WeekendPage() {
         </>
       ) : (
         <BlurFade>
-          <p className="kicker text-accent">
+          <Link to="/weekends" className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            Back to weekends
+          </Link>
+          <p className="kicker mt-6 text-accent">
             {year} · Round {round}
           </p>
           <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
             {weekend.data!.event_name}
           </h1>
-          <p className="mt-3 text-lg text-muted">{weekend.data!.circuit_name}</p>
+          <p className="mt-3 text-lg text-muted">
+            {weekend.data!.circuit_name}
+            {weekend.data!.country ? `, ${weekend.data!.country}` : ''}
+            {weekend.data!.race_laps ? ` · ${weekend.data!.race_laps} laps` : ''}
+          </p>
 
-          <section className="mt-16">
+          <section id="insights" className="mt-16 scroll-mt-24">
             <SectionTitle>Your three insights</SectionTitle>
             {!insights.data || insights.data.length === 0 ? (
               <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
@@ -203,16 +400,7 @@ export function WeekendPage() {
                   ))}
                 </div>
                 <BlurFade delay={0.06 * insights.data.length + 0.06}>
-                  <div className="glass mt-6 rounded-[--radius-panel] p-6">
-                    <p className="font-display text-[1.35rem] font-semibold tracking-tight text-ink">How these are made</p>
-                    <p className="mt-3 text-sm leading-relaxed text-muted">
-                      Every figure above is read from official timing and car telemetry, then computed into a
-                      database by deterministic analysis, with nothing estimated. An agent then picks the three
-                      findings you could not get from the timing screen, favouring a weakness in one area
-                      (qualifying, straight-line speed, tyre wear, corner grip) that explains an outcome in another.
-                      Each number is traceable back to the exact data it came from.
-                    </p>
-                  </div>
+                  <MethodologyDisclosure />
                 </BlurFade>
               </div>
             )}
@@ -220,7 +408,7 @@ export function WeekendPage() {
         </BlurFade>
       )}
 
-      <section className="mt-20">
+      <section id="practice" className="mt-20 scroll-mt-24">
         <SectionTitle>Practice</SectionTitle>
         {!sessionsLoaded ? (
           <PracticeSkeleton />
@@ -233,38 +421,38 @@ export function WeekendPage() {
                 <PracticeSectors data={sectors.data} />
               </ScrollReveal>
             ) : (
-              <SkeletonCard className="min-h-[560px]" />
+              <SkeletonCard label="Best sectors" className="min-h-[560px]" />
             )}
             {topspeeds.data ? (
               <ScrollReveal delay={0.06}>
                 <PracticeTopSpeeds data={topspeeds.data} />
               </ScrollReveal>
             ) : (
-              <SkeletonCard className="min-h-[300px]" />
+              <SkeletonCard label="Top speeds" className="min-h-[300px]" />
             )}
           </div>
         )}
       </section>
 
       {sprintHappened && (
-        <section className="mt-20">
+        <section id="sprint" className="mt-20 scroll-mt-24">
           <SectionTitle>Sprint</SectionTitle>
           {sprintPace.data ? (
             <ScrollReveal>
               <PaceSpreadChart pace={sprintPace.data} />
             </ScrollReveal>
           ) : (
-            <SkeletonCard className="min-h-[600px]" />
+            <SkeletonCard label="Pace spread" className="min-h-[600px]" />
           )}
         </section>
       )}
 
-      <section className="mt-20">
+      <section id="qualifying" className="mt-20 scroll-mt-24">
         <SectionTitle>Qualifying</SectionTitle>
         {!sessionsLoaded ? (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-            <SkeletonCard className="min-h-[520px]" />
-            <SkeletonCard className="min-h-[640px]" />
+            <SkeletonCard label="Car character" className="min-h-[520px]" />
+            <SkeletonCard label="The fight to pole" className="min-h-[640px]" />
           </div>
         ) : !qualiHappened ? (
           <Upcoming>
@@ -277,26 +465,26 @@ export function WeekendPage() {
                 <QualiCharacterTable data={qualiCharacter.data} />
               </ScrollReveal>
             ) : (
-              <SkeletonCard className="min-h-[520px]" />
+              <SkeletonCard label="Car character" className="min-h-[520px]" />
             )}
             {qualiTrace.data ? (
               <ScrollReveal delay={0.06}>
                 <FightToPoleChart data={qualiTrace.data} />
               </ScrollReveal>
             ) : (
-              <SkeletonCard className="min-h-[640px]" />
+              <SkeletonCard label="The fight to pole" className="min-h-[640px]" />
             )}
           </div>
         )}
       </section>
 
-      <section className="mt-20">
+      <section id="race" className="mt-20 scroll-mt-24">
         <SectionTitle>Race</SectionTitle>
         {!sessionsLoaded ? (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-            <SkeletonCard className="min-h-[600px]" />
-            <SkeletonCard className="min-h-[540px]" />
-            <SkeletonCard className="min-h-[400px]" />
+            <SkeletonCard label="Pace spread" className="min-h-[600px]" />
+            <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
+            <SkeletonCard label="Finishing order" className="min-h-[400px]" />
           </div>
         ) : !raceHappened ? (
           <Upcoming>
@@ -310,14 +498,14 @@ export function WeekendPage() {
                 <PaceSpreadChart pace={pace.data} />
               </ScrollReveal>
             ) : (
-              <SkeletonCard className="min-h-[600px]" />
+              <SkeletonCard label="Pace spread" className="min-h-[600px]" />
             )}
             {degradation.data ? (
               <ScrollReveal delay={0.06}>
                 <DegradationChart data={degradation.data} />
               </ScrollReveal>
             ) : (
-              <SkeletonCard className="min-h-[540px]" />
+              <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
             )}
             {results.data ? (
               <ScrollReveal delay={0.1}>
@@ -329,11 +517,25 @@ export function WeekendPage() {
                 </div>
               </ScrollReveal>
             ) : (
-              <SkeletonCard className="mx-auto min-h-[400px] w-full max-w-4xl" />
+              <SkeletonCard label="Finishing order" className="mx-auto min-h-[400px] w-full max-w-4xl" />
             )}
           </div>
         )}
       </section>
+
+      <div className="mt-16 flex justify-center">
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="group flex items-center gap-2 text-sm text-muted transition-colors hover:text-ink"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="m5 12 7-7 7 7" />
+            <path d="M12 19V5" />
+          </svg>
+          Back to top
+        </button>
+      </div>
     </main>
   )
 }

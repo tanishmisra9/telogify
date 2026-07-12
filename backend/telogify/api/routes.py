@@ -174,6 +174,22 @@ def next_race():
 @router.get("/weekends/{year}/{round}")
 def weekend_detail(year: int, round: int, db: Session = Depends(get_session)):
     w = _weekend(db, year, round)
+
+    # Race distance in laps: the WINNER's classified lap count, not any driver's -- a winner by
+    # definition completes the full race distance, so this is the one case get_session_results'
+    # excluded `laps` field (unreliable for retirees, ~2 short of the real retirement lap) is
+    # exactly right for.
+    race_laps: int | None = None
+    race_session = _race_session(db, w.id)
+    if race_session is not None:
+        winner = db.exec(
+            select(SessionResult).where(
+                SessionResult.session_id == race_session.id, SessionResult.position == 1
+            )
+        ).first()
+        if winner is not None and winner.laps is not None:
+            race_laps = int(winner.laps)
+
     return {
         "id": w.id,
         "year": w.year,
@@ -181,6 +197,7 @@ def weekend_detail(year: int, round: int, db: Session = Depends(get_session)):
         "event_name": w.event_name,
         "circuit_name": w.circuit_name,
         "country": w.country,
+        "race_laps": race_laps,
     }
 
 

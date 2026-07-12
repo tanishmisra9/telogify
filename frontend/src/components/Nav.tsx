@@ -11,18 +11,23 @@ const LINKS = [
 
 export function Nav() {
   const { pathname } = useLocation()
+  const homeActive = pathname === '/'
   return (
     <header className="sticky top-0 z-40 border-b-[1.5px] border-ink bg-glass backdrop-blur-md">
       <nav className="mx-auto flex max-w-[1312px] flex-col items-start gap-2 px-6 py-3 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:py-0">
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
-          <Link to="/" className="group flex items-center gap-2.5 text-ink" aria-label="Telogify home">
-            <LogoMark />
-            <span className="font-display text-3xl leading-none tracking-tight">
-              Telo<span className="text-accent">gify</span>
-            </span>
-          </Link>
-        </div>
+        <Link
+          to="/"
+          aria-current={homeActive ? 'page' : undefined}
+          aria-label="Telogify home"
+          className={`group flex items-center gap-2.5 border-b-2 pb-0.5 text-ink transition-colors ${
+            homeActive ? 'border-accent' : 'border-transparent'
+          }`}
+        >
+          <LogoMark />
+          <span className="font-display text-3xl leading-none tracking-tight">
+            Telo<span className="text-accent">gify</span>
+          </span>
+        </Link>
         <div className="flex items-center gap-1">
           {LINKS.map((l) => {
             const active = pathname.startsWith(l.to)
@@ -43,6 +48,7 @@ export function Nav() {
               </Tooltip>
             )
           })}
+          <ThemeToggle />
         </div>
       </nav>
     </header>

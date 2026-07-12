@@ -103,6 +103,13 @@ def test_weekend_detail_404(client):
     assert client.get("/weekends/1999/1").status_code == 404
 
 
+def test_weekend_detail_includes_race_laps(client):
+    """race_laps is the WINNER's classified laps (fixture seeds NOR at position 1, 71.0 laps),
+    never a non-winner's -- a retiree's count is a known FastF1 undercount."""
+    body = client.get("/weekends/2025/11").json()
+    assert body["race_laps"] == 71
+
+
 def test_insights(client):
     r = client.get("/weekends/2025/11/insights")
     assert [i["header"] for i in r.json()] == ["H1"]

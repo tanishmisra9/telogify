@@ -13,7 +13,8 @@ scoring/correlation/ranking stays unchanged.
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from statistics import mean
+from statistics import StatisticsError, mean
+from statistics import linear_regression as _ols
 
 from sqlmodel import Session as DBSession
 from sqlmodel import delete, select
@@ -606,17 +607,12 @@ def _mine_quali_progression(db, sessions):
 
 
 def linear_regression(xs: list[float], ys: list[float]) -> tuple[float, float] | None:
-    """Ordinary least squares slope/intercept for y ~ x. None if x has no spread."""
-    n = len(xs)
-    if n < 2:
+    """Ordinary least squares slope/intercept for y ~ x. None if x has fewer than 2 points or
+    no spread (statistics.linear_regression raises StatisticsError for both)."""
+    try:
+        return _ols(xs, ys)
+    except StatisticsError:
         return None
-    mean_x, mean_y = mean(xs), mean(ys)
-    denom = sum((x - mean_x) ** 2 for x in xs)
-    if denom == 0:
-        return None
-    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denom
-    intercept = mean_y - slope * mean_x
-    return slope, intercept
 
 
 _QUALI_RESIDUAL_MIN_S = 0.05

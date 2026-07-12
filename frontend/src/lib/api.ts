@@ -9,6 +9,9 @@ export interface WeekendSummary {
   event_name: string
   circuit_name: string
   country: string
+  // The winner's classified lap count (the one driver for whom that figure is reliable);
+  // null before the race session is ingested.
+  race_laps: number | null
 }
 
 export interface InsightItem {
@@ -221,16 +224,6 @@ export type SeasonDeploymentScatter = Record<string, [number, number][]>
 
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) throw new Error(`${res.status}`)
-  return res.json() as Promise<T>
-}
-
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
   if (!res.ok) throw new Error(`${res.status}`)
   return res.json() as Promise<T>
 }

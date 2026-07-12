@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { Footer } from '@/components/Footer'
 import { Nav } from '@/components/Nav'
 import { Landing } from '@/pages/Landing'
+import { NotFoundPage } from '@/pages/NotFoundPage'
 import { Weekends } from '@/pages/Weekends'
 import { WeekendPage } from '@/pages/WeekendPage'
 import { SeasonPage } from '@/pages/SeasonPage'
@@ -37,6 +38,7 @@ export default function App() {
               <Route path="/season" element={<SeasonPage />} />
               <Route path="/season/:year" element={<SeasonPage />} />
               <Route path="/subscribe" element={<SubscribePage />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </div>
           <Footer />
