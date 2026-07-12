@@ -46,11 +46,13 @@ export function Footer() {
           </p>
           <p className="shrink-0 text-sm text-muted">Timing data via FastF1 · 2026 season</p>
         </div>
+        {/* Ahead of the copyright row, not after: on mobile everything stacks in DOM order, and
+            the copyright line should read as the footer's actual final line. */}
+        <p className="mt-3 text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>
         <div className="mt-1.5 flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
           <p className="text-sm text-muted">Let&apos;s telogify this weekend.</p>
           <p className="shrink-0 text-sm text-muted">© 2026 Tanish Misra</p>
         </div>
-        <p className="mt-3 text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>
       </div>
       <div className="mt-6 text-ink">
         <LogoWaveform className="h-16 w-full sm:h-24" />
