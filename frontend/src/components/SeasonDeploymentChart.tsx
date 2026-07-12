@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
+import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
 import { TeamRule } from '@/components/TeamMark'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
@@ -186,11 +187,10 @@ export function SeasonDeploymentChart({ scatter }: { scatter: SeasonDeploymentSc
         </p>
       </div>
 
-      <p className="text-sm text-muted md:hidden">
-        The deployment chart and team-by-team ranking are a desktop experience: the ranking only
-        makes sense read against the scatter it's drawn from. Open this weekend on a larger screen
-        to explore it; the verdicts above hold the same findings.
-      </p>
+      <DesktopOnlyNote>
+        The chart and its team-by-team ranking only make sense read together, so both wait for a
+        larger screen. The verdicts above already hold the same findings.
+      </DesktopOnlyNote>
     </div>
   )
 }

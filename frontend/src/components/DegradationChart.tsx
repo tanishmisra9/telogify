@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
+import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
 import { TeamMark } from '@/components/TeamMark'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
@@ -172,10 +173,10 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         </div>
       )}
 
-      <p className="mt-4 text-sm text-muted md:hidden">
-        The wear chart is a desktop experience. Open this weekend on a larger screen to compare
-        lines. The ranking below still updates with the compound tab above.
-      </p>
+      <DesktopOnlyNote className="mt-4">
+        Open this weekend on a larger screen to compare wear lines. The ranking below still
+        updates with the compound tab above.
+      </DesktopOnlyNote>
 
       {/* Ranked worst wear first — also the click-to-isolate control for the chart above (see
           TeamSelectLegend). Mobile has no chart to isolate a line on, so it gets the same

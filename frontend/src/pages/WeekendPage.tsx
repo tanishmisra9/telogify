@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { BarChart } from '@/components/BarChart'
 import { BlurFade } from '@/components/BlurFade'
 import { DegradationChart } from '@/components/DegradationChart'
+import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
 import { FightToPoleChart } from '@/components/FightToPoleChart'
 import { Insight } from '@/components/Insight'
 import { PaceSpreadChart } from '@/components/PaceSpreadChart'
@@ -285,12 +286,9 @@ function Upcoming({ children }: { children: React.ReactNode }) {
 
 function FightToPoleDesktopNote() {
   return (
-    <div className="md:hidden">
-      <Upcoming>
-        The fight to pole&apos;s telemetry scrubbing is a desktop experience. Open this weekend on a
-        larger screen to explore the lap.
-      </Upcoming>
-    </div>
+    <DesktopOnlyNote>
+      Open this weekend on a larger screen to scrub through the lap&apos;s telemetry.
+    </DesktopOnlyNote>
   )
 }
 
