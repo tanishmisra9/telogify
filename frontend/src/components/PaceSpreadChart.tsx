@@ -204,7 +204,11 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                 after painting). Animating the foreignObject's OWN native SVG opacity instead
                 keeps the fade without touching anything WebKit mishandles, and the div inside
                 is fully static. */}
-            <AnimatePresence>
+            {/* mode="wait": adjacent box plots' 200px-wide popups overlap heavily (columns are
+                far narrower than that), so without waiting, switching straight from one to the
+                next showed both mid-fade at once -- the old one visibly closing over the new
+                one opening. */}
+            <AnimatePresence mode="wait">
               {hovered && (
                 <m.foreignObject
                   key={hovered.id}

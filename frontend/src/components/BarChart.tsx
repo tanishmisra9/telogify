@@ -144,7 +144,10 @@ export function BarChart({
               </g>
             )
           })}
-          <AnimatePresence>
+          {/* mode="wait": same fix as PaceSpreadChart's popup -- the tag is wider than a
+              column, so switching straight from one bar to an adjacent one showed the old tag
+              closing over the new one opening. */}
+          <AnimatePresence mode="wait">
             {hoveredRow &&
               (() => {
                 const cx = center(rows.findIndex((r) => r.id === hoveredRow.id))
