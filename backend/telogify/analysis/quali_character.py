@@ -22,6 +22,11 @@ than each team's own personal-best corner.
 from dataclasses import dataclass
 from statistics import mean
 
+# Car character compares the front of the field, not the whole grid: "leader" labels
+# (best top speed, best downforce, ...) are computed relative to this set, so trimming
+# happens before labeling, not after.
+TOP_TEAMS_N = 5
+
 DRAG_EFFICIENT = "efficient, low drag"
 DRAG_HIGH_DOWNFORCE = "draggy, high-downforce"
 DRAG_LACKS_EFFICIENCY = "lacks efficiency"

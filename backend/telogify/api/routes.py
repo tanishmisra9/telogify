@@ -13,6 +13,7 @@ from telogify.analysis.schedule import Event, fetch_season_schedule, pick_next_e
 from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import REFERENCE_AGE_LAPS, fit_all_groups
 from telogify.analysis.quali_character import (
+    TOP_TEAMS_N,
     fastest_qualifier_per_constructor,
     label_car_character,
     pick_fastest_corner,
@@ -53,10 +54,6 @@ router = APIRouter()
 SESSION_ORDER = ["FP1", "FP2", "FP3", "SQ", "SPRINT", "Q", "R"]
 PRACTICE_SESSIONS = ("FP1", "FP2", "FP3")
 INDICATIVE_SESSIONS = ("FP1", "FP2", "FP3", "SQ")
-# Car character compares the front of the field, not the whole grid: "leader" labels
-# (best top speed, best downforce, ...) are computed relative to this set, so trimming
-# happens before labeling, not after.
-TOP_TEAMS_N = 5
 
 
 class SubscribeIn(BaseModel):

@@ -14,6 +14,13 @@ from statistics import mean
 from sqlmodel import Session, select
 
 from telogify.analysis.candidates import _ERS_HARVEST_BAND_KMH, _ERS_MIN_BAND_POINTS, linear_regression
+from telogify.analysis.quali_character import (
+    TOP_TEAMS_N,
+    fastest_qualifier_per_constructor,
+    label_car_character,
+    pick_fastest_corner,
+)
+from telogify.analysis.sectors import sector_dominance
 from telogify.db import engine
 from telogify.models import (
     AccelSample,
@@ -21,8 +28,10 @@ from telogify.models import (
     CandidateInsight,
     ConstructorIndex,
     DeploymentTrace,
+    QualiCharacter,
     RaceControlEvent,
     RaceWeekend,
+    SectorBest,
     Session as SessionRow,
     SessionResult,
     Stint,
@@ -66,20 +75,20 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
     sf = session_factory or _default_factory
 
     @tool
-    def get_candidate_insights(n: int = 10) -> str:
+    def get_candidate_insights(n: int = 10, category: str = "") -> str:
         """Return the top n pre-computed candidate findings for this weekend, ranked highest
         first. The ranking favors teams that beat or fell short of where their car's season-long
         pace level should have put them (over- and under-delivery), not just the biggest raw
         gaps, and rewards findings that combine channels. Always call this first, then pick the
-        three strongest to write up."""
+        three strongest to write up. Pass category="quali_character" to see only qualifying
+        car-character candidates (top-speed/grip deltas, quali progression, pace-vs-speed
+        residual); blank for all categories."""
         with sf() as db:
             wid = _weekend_id(db, year, round_num)
-            rows = db.exec(
-                select(CandidateInsight)
-                .where(CandidateInsight.weekend_id == wid)
-                .order_by(CandidateInsight.rank)
-                .limit(n)
-            ).all()
+            query = select(CandidateInsight).where(CandidateInsight.weekend_id == wid)
+            if category:
+                query = query.where(CandidateInsight.category == category)
+            rows = db.exec(query.order_by(CandidateInsight.rank).limit(n)).all()
             return json.dumps(
                 [
                     {
@@ -357,11 +366,86 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
             rows.sort(key=lambda r: r["harvesting_slope_ms2_per_kmh"])
             return json.dumps(rows)
 
+    @tool
+    def get_quali_character() -> str:
+        """Car-character comparison from the top teams' fastest qualifying laps: lap time, top
+        speed, minimum speed (mechanical grip), speed through the fastest corner (picked once
+        across the compared teams, so every team's downforce is read through the same corner),
+        and full-throttle percentage, per constructor's fastest qualifier. drag_label is a
+        rank-relative read within the compared teams: "efficient, low drag", "draggy,
+        high-downforce", "lacks efficiency", or "balanced". is_top_speed_leader /
+        is_corner_speed_leader / is_grip_leader flag the single best car on that metric.
+        sector_dominance names, per sector, the constructor with the best time and its margin
+        over the next-best. Limited to the top teams by qualifying pace so labels reflect the
+        front of the field, not the whole grid."""
+        with sf() as db:
+            wid = _weekend_id(db, year, round_num)
+            sid = _session_id(db, wid, "Q") if wid is not None else None
+            if sid is None:
+                return json.dumps(
+                    {"rows": [], "fastest_corner_number": None, "sector_dominance": []}
+                )
+            qc_rows = db.exec(select(QualiCharacter).where(QualiCharacter.session_id == sid)).all()
+            driver_rows = [
+                {
+                    "constructor": r.constructor,
+                    "driver": r.driver,
+                    "lap_time_s": r.lap_time_s,
+                    "top_speed_kmh": r.top_speed_kmh,
+                    "min_speed_kmh": r.min_speed_kmh,
+                    "full_throttle_pct": r.full_throttle_pct,
+                    "corner_speeds": {int(k): v for k, v in (r.corner_speeds_json or {}).items()},
+                }
+                for r in qc_rows
+                if r.constructor and r.lap_time_s is not None
+            ]
+            reps = fastest_qualifier_per_constructor(driver_rows)[:TOP_TEAMS_N]
+            labeled = label_car_character(reps)
+
+            dc = {r.driver: r.constructor for r in qc_rows if r.constructor}
+            sector_rows = [
+                {"driver": r.driver, "sector": r.sector, "best_time_s": r.best_time_s, "constructor": dc.get(r.driver)}
+                for r in db.exec(select(SectorBest).where(SectorBest.session_id == sid)).all()
+            ]
+            dominance = sector_dominance(sector_rows)
+
+            return json.dumps(
+                {
+                    "rows": [
+                        {
+                            "constructor": r.constructor,
+                            "driver": r.driver,
+                            "lap_time_s": r.lap_time_s,
+                            "top_speed_kmh": r.top_speed_kmh,
+                            "min_speed_kmh": r.min_speed_kmh,
+                            "full_throttle_pct": r.full_throttle_pct,
+                            "fastest_corner_kmh": r.fastest_corner_kmh,
+                            "drag_label": r.drag_label,
+                            "is_top_speed_leader": r.is_top_speed_leader,
+                            "is_corner_speed_leader": r.is_corner_speed_leader,
+                            "is_grip_leader": r.is_grip_leader,
+                        }
+                        for r in labeled
+                    ],
+                    "fastest_corner_number": pick_fastest_corner(reps),
+                    "sector_dominance": [
+                        {
+                            "sector": d.sector,
+                            "constructor": d.constructor,
+                            "best_time_s": d.best_time_s,
+                            "margin_s": d.margin_s,
+                        }
+                        for d in dominance
+                    ],
+                }
+            )
+
     return [
         get_candidate_insights,
         get_race_control_events,
         get_deployment,
         get_race_deployment_character,
+        get_quali_character,
         get_straight_speed,
         get_corner_delta,
         get_lap_evolution,

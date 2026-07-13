@@ -8,7 +8,9 @@ from telogify.agent.tools import build_tools
 from telogify.models import (
     CandidateInsight,
     ConstructorIndex,
+    QualiCharacter,
     RaceWeekend,
+    SectorBest,
     Session as SessionRow,
     StraightSegment,
 )
@@ -46,6 +48,33 @@ def seeded(test_engine):
                 source_refs_json={"subject": "Ferrari", "refs": []},
             )
         )
+        db.add(
+            CandidateInsight(
+                weekend_id=wk.id, rank=2, category="quali_character",
+                signal_type="quali_top_speed_delta", magnitude=4.0, confidence=1.0,
+                robustness_score=1.0, source_refs_json={"subject": "McLaren", "refs": []},
+            )
+        )
+        quali = SessionRow(weekend_id=wk.id, session_type="Q", status="loaded")
+        db.add(quali)
+        db.commit()
+        db.refresh(quali)
+        db.add(
+            QualiCharacter(
+                session_id=quali.id, driver="LEC", constructor="Ferrari", lap_time_s=66.3,
+                top_speed_kmh=325.0, min_speed_kmh=71.0, full_throttle_pct=0.64,
+                corner_speeds_json={"8": 244.0},
+            )
+        )
+        db.add(
+            QualiCharacter(
+                session_id=quali.id, driver="NOR", constructor="McLaren", lap_time_s=66.5,
+                top_speed_kmh=326.0, min_speed_kmh=72.0, full_throttle_pct=0.54,
+                corner_speeds_json={"8": 239.0},
+            )
+        )
+        db.add(SectorBest(session_id=quali.id, driver="LEC", sector=1, best_time_s=20.1))
+        db.add(SectorBest(session_id=quali.id, driver="NOR", sector=1, best_time_s=20.4))
         db.commit()
     return lambda: Session(test_engine)
 
@@ -81,6 +110,23 @@ def test_tool_call_loop(seeded):
     payload = json.loads(messages[-1].content)
     assert payload[0]["rank"] == 1
     assert payload[0]["signal_type"] == "cross_session"
+
+
+def test_get_candidate_insights_filters_by_category(seeded):
+    tools = _by_name(build_tools(2025, 11, session_factory=seeded))
+    out = json.loads(tools["get_candidate_insights"].invoke({"n": 10, "category": "quali_character"}))
+    assert len(out) == 1
+    assert out[0]["signal_type"] == "quali_top_speed_delta"
+
+
+def test_get_quali_character_tool(seeded):
+    tools = _by_name(build_tools(2025, 11, session_factory=seeded))
+    out = json.loads(tools["get_quali_character"].invoke({}))
+    by_constructor = {r["constructor"]: r for r in out["rows"]}
+    assert by_constructor["Ferrari"]["drag_label"] == "draggy, high-downforce"
+    assert by_constructor["McLaren"]["is_grip_leader"] is True
+    assert out["fastest_corner_number"] == 8
+    assert out["sector_dominance"][0]["constructor"] == "Ferrari"
 
 
 def test_constructor_ranking_tool(seeded):
