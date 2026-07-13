@@ -20,6 +20,10 @@ export interface InsightItem {
   explanation_web: string
 }
 
+export interface QualiInsightItem extends InsightItem {
+  team: string | null
+}
+
 // Strongest insight of the most recent analysed weekend (landing live-insight block).
 export interface LatestInsight extends InsightItem {
   year: number

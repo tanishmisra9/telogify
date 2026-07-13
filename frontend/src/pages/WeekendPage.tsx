@@ -20,6 +20,7 @@ import {
   type InsightItem,
   type PaceData,
   type QualiCharacterData,
+  type QualiInsightItem,
   type QualiTraceData,
   type ResultRow,
   type SectorBestRow,
@@ -312,6 +313,7 @@ export function WeekendPage() {
   const sectors = useApi<SectorsData>(`${base}/sectors`)
   const topspeeds = useApi<TopSpeedsData>(`${base}/topspeeds`)
   const qualiCharacter = useApi<QualiCharacterData>(`${base}/quali-character`)
+  const qualiInsights = useApi<QualiInsightItem[]>(`${base}/quali-insights`)
   const qualiTrace = useApi<QualiTraceData>(`${base}/quali-trace`)
   const sprintPace = useApi<PaceData>(`${base}/pace?session=SPRINT`)
   const pace = useApi<PaceData>(`${base}/pace`)
@@ -469,7 +471,7 @@ export function WeekendPage() {
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {qualiCharacter.data ? (
               <ScrollReveal>
-                <QualiCharacterTable data={qualiCharacter.data} />
+                <QualiCharacterTable data={qualiCharacter.data} insights={qualiInsights.data ?? []} />
               </ScrollReveal>
             ) : (
               <SkeletonCard label="Car character" className="min-h-[520px]" />

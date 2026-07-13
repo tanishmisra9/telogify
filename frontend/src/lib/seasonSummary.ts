@@ -4,7 +4,7 @@ import type { SeasonConstructorRow } from '@/lib/api'
 // as a GAP to the field leader on that metric, so the numbers agree exactly with the ranking table
 // above it (which is anchored to the leader too). A genuinely poor car keeps its weaknesses but
 // shows no strength rather than dressing up a bottom-third rank with an up-mark. Templated, not
-// generated: the model has no role here, same register as qualiInsights.ts.
+// generated: the model has no role here.
 
 export interface Trait {
   text: string // the headline, e.g. "2nd-quickest race pace"

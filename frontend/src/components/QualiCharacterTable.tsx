@@ -3,24 +3,23 @@ import { AnimatePresence, m } from 'framer-motion'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { TeamMark, TeamRule } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
-import { emphasize } from '@/lib/emphasize'
+import { bindMetricSpaces, emphasize } from '@/lib/emphasize'
 import { heatBg, rankAsc, rankDesc } from '@/lib/heat'
 import { driverName } from '@/lib/drivers'
 import { expandTransition } from '@/lib/motion'
-import { qualiInsights, type QualiInsight } from '@/lib/qualiInsights'
 import { teamColorWithAlpha } from '@/lib/teamColors'
 import { useScrollFade } from '@/lib/useScrollFade'
-import type { QualiCharacterData } from '@/lib/api'
+import type { QualiCharacterData, QualiInsightItem } from '@/lib/api'
 
 // Collapsible to just its heading on mobile, open by default; desktop always shows the full
 // card outright (the chevron only renders on mobile, and the CSS override on the text keeps it
 // visible on desktop even in the state's closed default, so there's no toggle to reach for there).
-function InsightCard({ ins }: { ins: QualiInsight }) {
+function InsightCard({ item }: { item: QualiInsightItem }) {
   const [open, setOpen] = useState(true)
   return (
     <div
       className="rounded-[--radius-panel] border border-border p-5"
-      style={{ backgroundColor: teamColorWithAlpha(ins.team, 0.09) }}
+      style={item.team ? { backgroundColor: teamColorWithAlpha(item.team, 0.09) } : undefined}
     >
       <button
         type="button"
@@ -29,8 +28,8 @@ function InsightCard({ ins }: { ins: QualiInsight }) {
         className="flex w-full items-center justify-between gap-3 text-left md:pointer-events-none"
       >
         <div className="flex items-center gap-2">
-          <TeamRule team={ins.team} />
-          <p className="kicker text-accent">{ins.kicker}</p>
+          {item.team && <TeamRule team={item.team} />}
+          <p className="kicker text-accent">{item.team ?? 'Qualifying'}</p>
         </div>
         <m.svg
           width="16"
@@ -51,7 +50,10 @@ function InsightCard({ ins }: { ins: QualiInsight }) {
       </button>
       {/* Desktop: always shown, nothing to animate. Mobile: animated height/opacity collapse,
           matching every other disclosure on the site instead of CSS `hidden`'s instant snap. */}
-      <p className="mt-3 hidden text-[15px] leading-relaxed text-ink md:block">{emphasize(ins.text)}</p>
+      <div className="hidden md:block">
+        <p className="mt-3 text-[15px] font-semibold leading-snug text-ink">{bindMetricSpaces(item.header)}</p>
+        <p className="mt-2 text-[15px] leading-relaxed text-ink">{emphasize(item.explanation_web)}</p>
+      </div>
       <div className="md:hidden">
         <AnimatePresence initial={false}>
           {open && (
@@ -62,7 +64,8 @@ function InsightCard({ ins }: { ins: QualiInsight }) {
               transition={expandTransition}
               className="overflow-hidden"
             >
-              <p className="mt-3 text-[15px] leading-relaxed text-ink">{emphasize(ins.text)}</p>
+              <p className="mt-3 text-[15px] font-semibold leading-snug text-ink">{bindMetricSpaces(item.header)}</p>
+              <p className="mt-2 text-[15px] leading-relaxed text-ink">{emphasize(item.explanation_web)}</p>
             </m.div>
           )}
         </AnimatePresence>
@@ -71,12 +74,12 @@ function InsightCard({ ins }: { ins: QualiInsight }) {
   )
 }
 
-function CharacterInsights({ insights }: { insights: QualiInsight[] }) {
+function CharacterInsights({ insights }: { insights: QualiInsightItem[] }) {
   if (insights.length === 0) return null
   return (
     <div className="mt-5 grid gap-4 border-b border-border pb-6 sm:grid-cols-2">
-      {insights.map((ins) => (
-        <InsightCard key={ins.kicker} ins={ins} />
+      {insights.map((item) => (
+        <InsightCard key={item.slot} item={item} />
       ))}
     </div>
   )
@@ -100,7 +103,13 @@ function HeadCell({ label, hint, align = 'right' }: { label: React.ReactNode; hi
   )
 }
 
-export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
+export function QualiCharacterTable({
+  data,
+  insights,
+}: {
+  data: QualiCharacterData
+  insights: QualiInsightItem[]
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canScrollRight = useScrollFade(containerRef)
 
@@ -115,7 +124,6 @@ export function QualiCharacterTable({ data }: { data: QualiCharacterData }) {
   const minSpeedRanks = rankDesc(rows.map((r) => r.min_speed_kmh))
   const cornerRanks = rankDesc(rows.map((r) => r.fastest_corner_kmh))
   const throttleRanks = rankDesc(rows.map((r) => r.full_throttle_pct))
-  const insights = qualiInsights(rows, data.fastest_corner_number)
 
   return (
     <div className="glass rounded-[--radius-panel] p-6">
