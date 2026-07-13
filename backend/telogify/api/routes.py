@@ -37,6 +37,7 @@ from telogify.db import get_session
 from telogify.models import (
     Insight,
     QualiCharacter,
+    QualiInsight,
     QualiTrace,
     RaceWeekend,
     SectorBest,
@@ -217,6 +218,18 @@ def weekend_insights(year: int, round: int, db: Session = Depends(get_session)):
     ).all()
     return [
         {"slot": r.slot, "header": r.header, "explanation_web": r.explanation_web} for r in rows
+    ]
+
+
+@router.get("/weekends/{year}/{round}/quali-insights")
+def weekend_quali_insights(year: int, round: int, db: Session = Depends(get_session)):
+    w = _weekend(db, year, round)
+    rows = db.exec(
+        select(QualiInsight).where(QualiInsight.weekend_id == w.id).order_by(QualiInsight.slot)
+    ).all()
+    return [
+        {"slot": r.slot, "team": r.team, "header": r.header, "explanation_web": r.explanation_web}
+        for r in rows
     ]
 
 

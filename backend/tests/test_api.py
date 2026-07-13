@@ -7,6 +7,7 @@ from telogify.db import get_session
 from telogify.models import (
     Insight,
     QualiCharacter,
+    QualiInsight,
     RaceWeekend,
     SectorBest,
     Session as SessionRow,
@@ -88,6 +89,7 @@ def client(test_engine):
             ))
 
         db.add(Insight(weekend_id=wk.id, slot=1, header="H1", explanation_web="W1", explanation_email="E1", source_tool_calls_json=[]))
+        db.add(QualiInsight(weekend_id=wk.id, slot=1, team="Ferrari", header="QH1", explanation_web="QW1", explanation_email="QE1", source_tool_calls_json=[]))
         db.commit()
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -113,6 +115,11 @@ def test_weekend_detail_includes_race_laps(client):
 def test_insights(client):
     r = client.get("/weekends/2025/11/insights")
     assert [i["header"] for i in r.json()] == ["H1"]
+
+
+def test_quali_insights(client):
+    r = client.get("/weekends/2025/11/quali-insights")
+    assert r.json() == [{"slot": 1, "team": "Ferrari", "header": "QH1", "explanation_web": "QW1"}]
 
 
 def test_latest_insight_picks_recent_weekend_slot1(client, test_engine):
