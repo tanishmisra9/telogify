@@ -268,6 +268,19 @@ class Insight(SQLModel, table=True):
     source_tool_calls_json: list = Field(default_factory=list, sa_column=Column(JSON))
 
 
+class QualiInsight(SQLModel, table=True):
+    __tablename__ = "quali_insight"
+
+    id: int | None = Field(default=None, primary_key=True)
+    weekend_id: int = Field(foreign_key="race_weekend.id", index=True)
+    slot: int  # 1-2
+    team: str | None = None
+    header: str
+    explanation_web: str
+    explanation_email: str
+    source_tool_calls_json: list = Field(default_factory=list, sa_column=Column(JSON))
+
+
 class Subscriber(SQLModel, table=True):
     __tablename__ = "subscriber"
 
