@@ -14,6 +14,7 @@ from telogify.models import Insight
 from telogify.serialize import round_prose_numbers, strip_em_dashes
 
 _REQUIRED_KEYS = ("header", "explanation_web", "explanation_email")
+_QUALI_REQUIRED_KEYS = ("team", "header", "explanation_web", "explanation_email")
 
 
 def _content_text(content) -> str:
@@ -52,17 +53,19 @@ def _first_json_array(text: str) -> str | None:
     return None
 
 
-def parse_insights(final_text: str) -> list[dict]:
-    """Parse the final message into exactly 3 insight dicts. Fails loud on bad output."""
+def parse_insights(
+    final_text: str, count: int = 3, required_keys: tuple[str, ...] = _REQUIRED_KEYS
+) -> list[dict]:
+    """Parse the final message into exactly `count` insight dicts. Fails loud on bad output."""
     array = _first_json_array(final_text)
     if array is None:
         raise ValueError("Agent final message contained no JSON array of insights.")
     data = json.loads(array)
-    if not isinstance(data, list) or len(data) < 3:
-        raise ValueError(f"Expected 3 insights, got {len(data) if isinstance(data, list) else '?'}.")
-    insights = data[:3]
+    if not isinstance(data, list) or len(data) < count:
+        raise ValueError(f"Expected {count} insights, got {len(data) if isinstance(data, list) else '?'}.")
+    insights = data[:count]
     for ins in insights:
-        missing = [k for k in _REQUIRED_KEYS if k not in ins]
+        missing = [k for k in required_keys if k not in ins]
         if missing:
             raise ValueError(f"Insight missing keys: {missing}")
     return insights
@@ -88,12 +91,21 @@ def extract_trace(messages: list) -> list[dict]:
 
 
 def persist_insights(
-    weekend_id: int, insights: list[dict], trace: list[dict], db: DBSession
-) -> list[Insight]:
-    """Write the 3 insights (slots 1-3), em-dash-stripped, each carrying the full trace."""
-    db.exec(delete(Insight).where(Insight.weekend_id == weekend_id))
+    weekend_id: int,
+    insights: list[dict],
+    trace: list[dict],
+    db: DBSession,
+    *,
+    model: type = Insight,
+    count: int = 3,
+) -> list:
+    """Write the `count` insights (slots 1..count), em-dash-stripped, each carrying the full
+    trace. `model` is any SQLModel table shaped like Insight (weekend_id, slot, header,
+    explanation_web, explanation_email, source_tool_calls_json); a `team` key in an insight
+    dict is only set on the row if the model has a `team` column (QualiInsight does)."""
+    db.exec(delete(model).where(model.weekend_id == weekend_id))
     rows = []
-    for slot, ins in enumerate(insights[:3], start=1):
+    for slot, ins in enumerate(insights[:count], start=1):
         header = round_prose_numbers(strip_em_dashes(ins["header"]))
         web = round_prose_numbers(strip_em_dashes(ins["explanation_web"]))
         email = round_prose_numbers(strip_em_dashes(ins["explanation_email"]))
@@ -103,13 +115,15 @@ def persist_insights(
         if flagged:
             print(f"[guardrail] insight {slot} contains unsupported claim phrases: {flagged}")
 
-        row = Insight(
+        extra = {"team": ins["team"]} if "team" in ins and hasattr(model, "team") else {}
+        row = model(
             weekend_id=weekend_id,
             slot=slot,
             header=header,
             explanation_web=web,
             explanation_email=email,
             source_tool_calls_json=trace,
+            **extra,
         )
         db.add(row)
         rows.append(row)

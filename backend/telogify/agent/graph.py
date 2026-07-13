@@ -8,13 +8,13 @@ from telogify.agent.prompts import SYSTEM_PROMPT
 from telogify.agent.tools import build_tools
 
 
-def build_agent(year: int, round: int, session_factory=None):
+def build_agent(year: int, round: int, session_factory=None, system_prompt: str = SYSTEM_PROMPT):
     """Construct the ReAct insight agent for one weekend. Fails loud without an API key."""
     provider = resolve_provider()
     tools = build_tools(year, round, session_factory=session_factory)
     return create_react_agent(
         provider.build_model(),
         tools,
-        prompt=provider.build_system_message(SYSTEM_PROMPT),
+        prompt=provider.build_system_message(system_prompt),
         checkpointer=MemorySaver(),
     )

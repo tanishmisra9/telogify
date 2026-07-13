@@ -17,7 +17,15 @@ from sqlmodel import Session
 from telogify.agent.graph import build_agent
 from telogify.agent.tools import _weekend_id
 from telogify.agent.guardrails import flag_unsupported_claims, format_insight_validation_feedback
-from telogify.agent.insights import _content_text, extract_trace, parse_insights, persist_insights
+from telogify.agent.insights import (
+    _content_text,
+    _QUALI_REQUIRED_KEYS,
+    _REQUIRED_KEYS,
+    extract_trace,
+    parse_insights,
+    persist_insights,
+)
+from telogify.agent.prompts import QUALI_SYSTEM_PROMPT
 from telogify.agent.validation import validate_insights
 from telogify.analysis.attribution import store_attributions
 from telogify.analysis.candidates import compute_candidates
@@ -35,6 +43,7 @@ from telogify.ingest.results import store_results
 from telogify.ingest.sectors import store_sector_bests
 from telogify.ingest.stints import store_stints
 from telogify.ingest.straights import store_straights
+from telogify.models import Insight, QualiInsight
 
 
 class PipelineState(TypedDict, total=False):
@@ -42,6 +51,7 @@ class PipelineState(TypedDict, total=False):
     round: int
     weekend_id: int
     insight_count: int
+    quali_insight_count: int
 
 
 def _ingest(state: PipelineState) -> dict:
@@ -95,8 +105,16 @@ def _merge_flags(*maps: dict[int, list[str]]) -> dict[int, list[str]]:
     return merged
 
 
-def _insights(state: PipelineState, agent_runner) -> dict:
-    """Generate the 3 insights, rejecting and re-prompting on any guardrail violation.
+def _insights(
+    state: PipelineState,
+    agent_runner,
+    *,
+    count: int = 3,
+    model: type = Insight,
+    required_keys: tuple[str, ...] = _REQUIRED_KEYS,
+    result_key: str = "insight_count",
+) -> dict:
+    """Generate `count` insights, rejecting and re-prompting on any guardrail violation.
     Nothing is persisted, and the pipeline fails loud, unless a clean set is produced within
     _MAX_INSIGHT_ATTEMPTS: shipping a fabricated claim is worse than shipping nothing."""
     feedback = None
@@ -107,7 +125,7 @@ def _insights(state: PipelineState, agent_runner) -> dict:
         messages = agent_runner(state["year"], state["round"], feedback=feedback)
         final = _content_text(messages[-1].content)
         try:
-            insights = parse_insights(final)
+            insights = parse_insights(final, count=count, required_keys=required_keys)
         except ValueError as e:
             parse_failures += 1
             last_parse_error = str(e)
@@ -115,9 +133,9 @@ def _insights(state: PipelineState, agent_runner) -> dict:
             # feed the error back and let the agent re-emit rather than crashing the run.
             feedback = (
                 f"Your last message could not be parsed ({e}). Your final message must "
-                "contain a raw JSON array of exactly 3 objects with keys header, "
-                "explanation_web, and explanation_email. Do not wrap the array in Markdown "
-                "backticks or add conversational filler."
+                f"contain a raw JSON array of exactly {count} objects with keys "
+                f"{', '.join(required_keys)}. Do not wrap the array in Markdown backticks or "
+                "add conversational filler."
             )
             continue
         trace = extract_trace(messages)
@@ -128,8 +146,8 @@ def _insights(state: PipelineState, agent_runner) -> dict:
         if not flagged:
             trace = extract_trace(messages)
             with Session(engine) as db:
-                rows = persist_insights(state["weekend_id"], insights, trace, db)
-            return {"insight_count": len(rows)}
+                rows = persist_insights(state["weekend_id"], insights, trace, db, model=model, count=count)
+            return {result_key: len(rows)}
         feedback = format_insight_validation_feedback(flagged)
     if parse_failures == _MAX_INSIGHT_ATTEMPTS and not flagged:
         raise RuntimeError(
@@ -139,6 +157,19 @@ def _insights(state: PipelineState, agent_runner) -> dict:
     raise RuntimeError(
         f"Insight agent kept producing unsupported claims after {_MAX_INSIGHT_ATTEMPTS} "
         f"attempts for {state['year']} round {state['round']}: {flagged}"
+    )
+
+
+def _quali_insights(state: PipelineState, agent_runner) -> dict:
+    """The 2 qualifying car-character insights: same hard gate as `_insights`, targeting
+    QualiInsight instead of Insight."""
+    return _insights(
+        state,
+        agent_runner,
+        count=2,
+        model=QualiInsight,
+        required_keys=_QUALI_REQUIRED_KEYS,
+        result_key="quali_insight_count",
     )
 
 
@@ -154,22 +185,39 @@ def _default_agent_runner(year: int, round: int, feedback: str | None = None) ->
     return result["messages"]
 
 
-def build_pipeline(agent_runner):
+def _default_quali_agent_runner(year: int, round: int, feedback: str | None = None) -> list:
+    agent = build_agent(year, round, system_prompt=QUALI_SYSTEM_PROMPT)
+    task = f"Write the 2 qualifying car-character insights for {year} round {round}."
+    if feedback:
+        task = f"{task}\n\n{feedback}"
+    result = agent.invoke(
+        {"messages": [("user", task)]},
+        config={"configurable": {"thread_id": f"quali-agent-{year}-{round}"}},
+    )
+    return result["messages"]
+
+
+def build_pipeline(agent_runner, quali_agent_runner):
     g = StateGraph(PipelineState)
     g.add_node("ingest", _ingest)
     g.add_node("analyze", _analyze)
     g.add_node("candidates", _candidates)
     g.add_node("insights", lambda s: _insights(s, agent_runner))
+    g.add_node("quali_insights", lambda s: _quali_insights(s, quali_agent_runner))
     g.add_edge(START, "ingest")
     g.add_edge("ingest", "analyze")
     g.add_edge("analyze", "candidates")
     g.add_edge("candidates", "insights")
-    g.add_edge("insights", END)
+    g.add_edge("insights", "quali_insights")
+    g.add_edge("quali_insights", END)
     return g.compile(checkpointer=MemorySaver())
 
 
-def run_weekend(year: int, round: int, agent_runner=None) -> PipelineState:
-    pipeline = build_pipeline(agent_runner or _default_agent_runner)
+def run_weekend(year: int, round: int, agent_runner=None, quali_agent_runner=None) -> PipelineState:
+    pipeline = build_pipeline(
+        agent_runner or _default_agent_runner,
+        quali_agent_runner or _default_quali_agent_runner,
+    )
     return pipeline.invoke(
         {"year": year, "round": round},
         config={"configurable": {"thread_id": f"weekend-{year}-{round}"}},
@@ -190,6 +238,7 @@ class RoundResult:
     round: int
     ok: bool
     insight_count: int = 0
+    quali_insight_count: int = 0
     error: str | None = None
 
 
@@ -210,6 +259,7 @@ def run_season(
     year: int,
     agent_runner=None,
     *,
+    quali_agent_runner=None,
     now: datetime | None = None,
     continue_on_error: bool = True,
     on_round_start: Callable[[int, int, int], None] | None = None,
@@ -223,8 +273,13 @@ def run_season(
         if on_round_start:
             on_round_start(rnd, i, total)
         try:
-            state = run_weekend(year, rnd, agent_runner=agent_runner)
-            result = RoundResult(round=rnd, ok=True, insight_count=state.get("insight_count", 0))
+            state = run_weekend(year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner)
+            result = RoundResult(
+                round=rnd,
+                ok=True,
+                insight_count=state.get("insight_count", 0),
+                quali_insight_count=state.get("quali_insight_count", 0),
+            )
         except Exception as exc:
             result = RoundResult(round=rnd, ok=False, error=str(exc))
         outcome.results.append(result)
@@ -239,6 +294,7 @@ def run_insights_season(
     year: int,
     agent_runner=None,
     *,
+    quali_agent_runner=None,
     now: datetime | None = None,
     continue_on_error: bool = True,
     on_round_start: Callable[[int, int, int], None] | None = None,
@@ -252,8 +308,13 @@ def run_insights_season(
         if on_round_start:
             on_round_start(rnd, i, total)
         try:
-            state = regen_insights(year, rnd, agent_runner=agent_runner)
-            result = RoundResult(round=rnd, ok=True, insight_count=state.get("insight_count", 0))
+            state = regen_insights(year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner)
+            result = RoundResult(
+                round=rnd,
+                ok=True,
+                insight_count=state.get("insight_count", 0),
+                quali_insight_count=state.get("quali_insight_count", 0),
+            )
         except Exception as exc:
             result = RoundResult(round=rnd, ok=False, error=str(exc))
         outcome.results.append(result)
@@ -264,11 +325,15 @@ def run_insights_season(
     return outcome
 
 
-def regen_insights(year: int, round: int, agent_runner=None) -> dict:
-    """Regenerate only the 3 insights from already-ingested data: recompute candidates (so a
-    scoring change shows) and re-run the agent. Skips FastF1 ingest and analysis, whose inputs
-    haven't changed, so there is no re-download and no cost beyond the agent itself."""
+def regen_insights(year: int, round: int, agent_runner=None, quali_agent_runner=None) -> dict:
+    """Regenerate the 3 race insights and the 2 qualifying insights from already-ingested data:
+    recompute candidates (so a scoring change shows) and re-run both agents. Skips FastF1
+    ingest and analysis, whose inputs haven't changed, so there is no re-download and no cost
+    beyond the agents themselves. If the qualifying insights fail their guardrail/validation
+    gate, the RuntimeError propagates even though the 3 race insights already persisted this
+    run: each insight batch is its own hard gate, same "never ship a fabricated claim" rule."""
     runner = agent_runner or _default_agent_runner
+    quali_runner = quali_agent_runner or _default_quali_agent_runner
     with Session(engine) as db:
         weekend_id = _weekend_id(db, year, round)
         if weekend_id is None:
@@ -276,4 +341,7 @@ def regen_insights(year: int, round: int, agent_runner=None) -> dict:
                 f"No ingested weekend for {year} round {round}. Run run-weekend first."
             )
         compute_candidates(weekend_id, db)
-    return _insights({"year": year, "round": round, "weekend_id": weekend_id}, runner)
+    state: PipelineState = {"year": year, "round": round, "weekend_id": weekend_id}
+    race_result = _insights(state, runner)
+    quali_result = _quali_insights(state, quali_runner)
+    return {**race_result, **quali_result}

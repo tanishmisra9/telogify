@@ -5,7 +5,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from sqlmodel import Session, select
 
 from telogify.agent.insights import extract_trace, parse_insights, persist_insights
-from telogify.models import Insight, RaceWeekend
+from telogify.models import Insight, QualiInsight, RaceWeekend
 from telogify.serialize import round_prose_numbers, strip_em_dashes
 
 
@@ -172,3 +172,52 @@ def test_persist_insights_strips_dashes_and_logs_trace(db_session):
     # every insight carries the auditable trace
     assert stored[0].source_tool_calls_json == trace
     assert "330.5" in stored[0].source_tool_calls_json[0]["result"]
+
+
+def test_parse_insights_supports_count_two_with_team_key():
+    text = json.dumps(
+        [
+            {"team": "Mercedes", "header": "H1", "explanation_web": "W1", "explanation_email": "E1"},
+            {"team": "Ferrari", "header": "H2", "explanation_web": "W2", "explanation_email": "E2"},
+        ]
+    )
+    out = parse_insights(text, count=2, required_keys=("team", "header", "explanation_web", "explanation_email"))
+    assert len(out) == 2
+    assert out[0]["team"] == "Mercedes"
+
+
+def test_parse_insights_count_two_rejects_missing_team():
+    text = json.dumps(
+        [
+            {"header": "H1", "explanation_web": "W1", "explanation_email": "E1"},
+            {"header": "H2", "explanation_web": "W2", "explanation_email": "E2"},
+        ]
+    )
+    with pytest.raises(ValueError, match="missing keys"):
+        parse_insights(text, count=2, required_keys=("team", "header", "explanation_web", "explanation_email"))
+
+
+def test_persist_insights_targets_quali_insight_model_with_team(db_session):
+    wk = RaceWeekend(year=2026, round=8, circuit_name="Spielberg", country="Austria", event_name="A")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    insights = [
+        {"team": "Mercedes", "header": "H1", "explanation_web": "W1", "explanation_email": "E1"},
+        {"team": "Ferrari", "header": "H2 — claim", "explanation_web": "W2", "explanation_email": "E2"},
+    ]
+    trace = [{"tool": "get_quali_character", "args": {}, "result": "{}"}]
+
+    rows = persist_insights(wk.id, insights, trace, db_session, model=QualiInsight, count=2)
+
+    assert len(rows) == 2
+    stored = db_session.exec(
+        select(QualiInsight).where(QualiInsight.weekend_id == wk.id).order_by(QualiInsight.slot)
+    ).all()
+    assert [r.slot for r in stored] == [1, 2]
+    assert [r.team for r in stored] == ["Mercedes", "Ferrari"]
+    assert "—" not in stored[1].header  # serializer pass still applied
+
+    # the race Insight table is untouched by a quali persist
+    assert db_session.exec(select(Insight).where(Insight.weekend_id == wk.id)).all() == []

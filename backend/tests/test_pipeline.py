@@ -14,6 +14,10 @@ _GOOD_INSIGHTS = [
     {"header": f"H{i}", "explanation_web": f"W{i}", "explanation_email": f"E{i}"}
     for i in range(1, 4)
 ]
+_GOOD_QUALI_INSIGHTS = [
+    {"team": f"Team{i}", "header": f"QH{i}", "explanation_web": f"QW{i}", "explanation_email": f"QE{i}"}
+    for i in range(1, 3)
+]
 _BAD_INSIGHTS = [
     {"header": "Maiden win for Antonelli", "explanation_web": "W1", "explanation_email": "E1"},
     {"header": "H2", "explanation_web": "W2", "explanation_email": "E2"},
@@ -148,8 +152,14 @@ def test_regen_insights_recomputes_candidates_and_skips_ingest(db_session, monke
     monkeypatch.setattr(pipeline, "_ingest", lambda s: called.append("ingest"))
     monkeypatch.setattr(pipeline, "_analyze", lambda s: called.append("analyze"))
 
-    state = pipeline.regen_insights(2025, 14, agent_runner=lambda y, r, feedback=None: _fake_messages(_GOOD_INSIGHTS))
+    state = pipeline.regen_insights(
+        2025,
+        14,
+        agent_runner=lambda y, r, feedback=None: _fake_messages(_GOOD_INSIGHTS),
+        quali_agent_runner=lambda y, r, feedback=None: _fake_messages(_GOOD_QUALI_INSIGHTS),
+    )
     assert state["insight_count"] == 3
+    assert state["quali_insight_count"] == 2
     assert called == [wk.id]  # candidates recomputed, ingest/analyze skipped
 
 
@@ -183,22 +193,34 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
         assert s["weekend_id"] == 1  # state threaded from ingest
         return {"insight_count": len(runner(s["year"], s["round"]))}
 
+    def fake_quali_insights(s, runner):
+        calls.append("quali_insights")
+        assert s["weekend_id"] == 1
+        return {"quali_insight_count": len(runner(s["year"], s["round"]))}
+
     monkeypatch.setattr(pipeline, "_insights", fake_insights)
+    monkeypatch.setattr(pipeline, "_quali_insights", fake_quali_insights)
 
-    # agent_runner returns 3 fake "messages"; pipeline never calls Anthropic here.
-    state = pipeline.run_weekend(2025, 11, agent_runner=lambda y, r: ["m1", "m2", "m3"])
+    # agent_runners return fake "messages"; pipeline never calls Anthropic here.
+    state = pipeline.run_weekend(
+        2025,
+        11,
+        agent_runner=lambda y, r: ["m1", "m2", "m3"],
+        quali_agent_runner=lambda y, r: ["m1", "m2"],
+    )
 
-    assert calls == ["ingest", "analyze", "candidates", "insights"]
+    assert calls == ["ingest", "analyze", "candidates", "insights", "quali_insights"]
     assert state["insight_count"] == 3
+    assert state["quali_insight_count"] == 2
 
 
 def test_run_season_runs_each_planned_round(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     calls = []
 
-    def fake_run_weekend(year, round, agent_runner=None):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None):
         calls.append(round)
-        return {"insight_count": 3}
+        return {"insight_count": 3, "quali_insight_count": 2}
 
     monkeypatch.setattr(pipeline, "run_weekend", fake_run_weekend)
 
@@ -212,10 +234,10 @@ def test_run_season_runs_each_planned_round(monkeypatch):
 def test_run_season_continues_after_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_run_weekend(year, round, agent_runner=None):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None):
         if round == 2:
             raise RuntimeError("guardrail failure")
-        return {"insight_count": 3}
+        return {"insight_count": 3, "quali_insight_count": 2}
 
     monkeypatch.setattr(pipeline, "run_weekend", fake_run_weekend)
 
@@ -243,9 +265,9 @@ def test_run_insights_season_calls_regen_not_full_pipeline(monkeypatch):
     regen_calls = []
     ingest_calls = []
 
-    def fake_regen(year, round, agent_runner=None):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None):
         regen_calls.append(round)
-        return {"insight_count": 3}
+        return {"insight_count": 3, "quali_insight_count": 2}
 
     monkeypatch.setattr(pipeline, "regen_insights", fake_regen)
     monkeypatch.setattr(pipeline, "run_weekend", lambda *a, **k: ingest_calls.append(1))
@@ -261,10 +283,10 @@ def test_run_insights_season_calls_regen_not_full_pipeline(monkeypatch):
 def test_run_insights_season_continues_after_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_regen(year, round, agent_runner=None):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None):
         if round == 2:
             raise RuntimeError("guardrail failure")
-        return {"insight_count": 3}
+        return {"insight_count": 3, "quali_insight_count": 2}
 
     monkeypatch.setattr(pipeline, "regen_insights", fake_regen)
 
@@ -291,9 +313,9 @@ def test_run_season_progress_callbacks_fire_in_order(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     events = []
 
-    def fake_run_weekend(year, round, agent_runner=None):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None):
         events.append(("work", round))
-        return {"insight_count": 3}
+        return {"insight_count": 3, "quali_insight_count": 2}
 
     monkeypatch.setattr(pipeline, "run_weekend", fake_run_weekend)
 
@@ -326,10 +348,10 @@ def test_run_insights_season_progress_callbacks_on_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     events = []
 
-    def fake_regen(year, round, agent_runner=None):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None):
         if round == 2:
             raise RuntimeError("guardrail failure")
-        return {"insight_count": 3}
+        return {"insight_count": 3, "quali_insight_count": 2}
 
     monkeypatch.setattr(pipeline, "regen_insights", fake_regen)
 
