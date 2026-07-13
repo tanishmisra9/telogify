@@ -25,7 +25,8 @@ def _on_round_complete(result: RoundResult, index: int, total: int) -> None:
     if result.ok:
         _progress(
             f"  round {result.round} ({index}/{total}): ok, "
-            f"{result.insight_count} insight(s) persisted"
+            f"{result.insight_count} insight(s), "
+            f"{result.quali_insight_count} qualifying insight(s) persisted"
         )
     else:
         _progress(f"  round {result.round} ({index}/{total}): failed - {result.error}")
@@ -43,7 +44,10 @@ def _echo_season_final_summary(summary) -> None:
     _progress("Summary:")
     for result in summary.results:
         if result.ok:
-            _progress(f"  R{result.round}: {result.insight_count} insights")
+            _progress(
+                f"  R{result.round}: {result.insight_count} insights, "
+                f"{result.quali_insight_count} qualifying insights"
+            )
         else:
             _progress(f"  R{result.round}: FAILED ({result.error})")
 
@@ -61,7 +65,10 @@ def _run_insights_one(year: int, round: int) -> None:
     _echo_llm_model()
     _progress(f"Regenerating insights for {year} round {round}...")
     state = regen_insights(year, round)
-    _progress(f"Done: persisted {state.get('insight_count', 0)} insights.")
+    _progress(
+        f"Done: persisted {state.get('insight_count', 0)} insights, "
+        f"{state.get('quali_insight_count', 0)} qualifying insights."
+    )
 
 
 @app.command("run-weekend")
@@ -84,7 +91,10 @@ def run_weekend_cmd(
 
         _progress(f"Running weekend {year} round {round}...")
         state = run(year, round)
-        _progress(f"Done: persisted {state.get('insight_count', 0)} insights.")
+        _progress(
+            f"Done: persisted {state.get('insight_count', 0)} insights, "
+            f"{state.get('quali_insight_count', 0)} qualifying insights."
+        )
         return
 
     from telogify.pipeline import run_season, season_rounds
@@ -213,7 +223,7 @@ def list_insights(year: int | None = None) -> None:
     from sqlmodel import Session, select
 
     from telogify.db import engine
-    from telogify.models import Insight, RaceWeekend
+    from telogify.models import Insight, QualiInsight, RaceWeekend
 
     with Session(engine) as db:
         query = select(RaceWeekend).order_by(RaceWeekend.year, RaceWeekend.round)
@@ -231,6 +241,11 @@ def list_insights(year: int | None = None) -> None:
                 .where(Insight.weekend_id == weekend.id)
                 .order_by(Insight.slot)
             ).all()
+            quali_insights = db.exec(
+                select(QualiInsight)
+                .where(QualiInsight.weekend_id == weekend.id)
+                .order_by(QualiInsight.slot)
+            ).all()
 
             typer.echo("=" * 78)
             typer.echo(
@@ -241,10 +256,20 @@ def list_insights(year: int | None = None) -> None:
 
             if not insights:
                 typer.echo("  (no insights persisted)\n")
+            else:
+                for insight in insights:
+                    typer.echo(f"\n[{insight.slot}] {insight.header}")
+                    typer.echo("-" * 78)
+                    typer.echo(insight.explanation_web)
+                typer.echo("")
+
+            if not quali_insights:
+                typer.echo("  (no qualifying insights persisted)\n")
                 continue
 
-            for insight in insights:
-                typer.echo(f"\n[{insight.slot}] {insight.header}")
+            typer.echo("Qualifying:")
+            for insight in quali_insights:
+                typer.echo(f"\n[{insight.slot}] {insight.team}: {insight.header}")
                 typer.echo("-" * 78)
                 typer.echo(insight.explanation_web)
             typer.echo("")
