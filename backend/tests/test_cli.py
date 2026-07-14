@@ -92,3 +92,66 @@ def test_ingest_single_round_done(monkeypatch):
     assert result.exit_code == 0
     assert calls == [(2026, 8)]
     assert "Done" in plain(result.output)
+
+
+def _fake_run_season(rounds, results):
+    def fake(year, agent_runner=None, quali_agent_runner=None, on_round_start=None, on_round_complete=None):
+        from telogify.pipeline import RoundResult, SeasonRunResult
+
+        for i, (rnd, result) in enumerate(zip(rounds, results), start=1):
+            if on_round_start:
+                on_round_start(rnd, i, len(rounds))
+            if on_round_complete:
+                on_round_complete(result, i, len(rounds))
+        return SeasonRunResult(year=year, rounds=rounds, results=results)
+
+    return fake
+
+
+def test_run_weekend_season_all_ok_shows_table(monkeypatch):
+    from telogify.pipeline import RoundResult
+
+    monkeypatch.setattr("telogify.pipeline.season_rounds", lambda year: [1, 2])
+    results = [
+        RoundResult(round=1, ok=True, insight_count=3, quali_insight_count=2),
+        RoundResult(round=2, ok=True, insight_count=3, quali_insight_count=2),
+    ]
+    monkeypatch.setattr("telogify.pipeline.run_season", _fake_run_season([1, 2], results))
+    result = runner.invoke(cli.app, ["run-weekend", "2026"])
+    out = plain(result.output)
+    assert result.exit_code == 0
+    assert "Summary" in out and "OK" in out and "Done" in out
+
+
+def test_run_insights_season_one_failure_exits_nonzero(monkeypatch):
+    from telogify.pipeline import RoundResult
+
+    monkeypatch.setattr("telogify.pipeline.season_rounds", lambda year: [1, 2])
+    monkeypatch.setattr("telogify.config.configured_llm_label", lambda: "openai / gpt-5.5")
+    results = [
+        RoundResult(round=1, ok=True, insight_count=3, quali_insight_count=2),
+        RoundResult(round=2, ok=False, error="untraceable number(s): ['54.0']"),
+    ]
+    monkeypatch.setattr("telogify.pipeline.run_insights_season", _fake_run_season([1, 2], results))
+    result = runner.invoke(cli.app, ["run-insights", "2026"])
+    out = plain(result.output)
+    assert result.exit_code == 1
+    assert "FAILED" in out
+    assert "untraceable number" in out
+    assert "1 round(s) failed" in out
+
+
+def test_ingest_season_reports_per_round_and_summary(monkeypatch):
+    monkeypatch.setattr("telogify.pipeline.season_rounds", lambda year: [1, 2, 3])
+
+    def fake_run_ingest(year, round):
+        if round == 2:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("telogify.pipeline.run_ingest", fake_run_ingest)
+    result = runner.invoke(cli.app, ["ingest", "2026"])
+    out = plain(result.output)
+    assert result.exit_code == 1
+    assert "Summary" in out
+    assert "boom" in out
+    assert "1 round(s) failed" in out

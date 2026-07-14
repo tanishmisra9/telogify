@@ -1,11 +1,12 @@
 """Telogify CLI. Manual triggers only (no scheduler)."""
 
-import sys
 import time
 
 import typer
 from rich.console import Console
 from rich.markup import escape
+from rich.status import Status
+from rich.table import Table
 
 from telogify.pipeline import RoundResult
 
@@ -14,11 +15,6 @@ app = typer.Typer(
     help="Telogify: 3 quantified telemetry insights per F1 race weekend.",
 )
 console = Console(highlight=False)
-
-
-def _progress(msg: str) -> None:
-    typer.echo(msg)
-    sys.stdout.flush()
 
 
 def _format_elapsed(seconds: float) -> str:
@@ -31,25 +27,43 @@ def _format_elapsed(seconds: float) -> str:
 # Keyed by round number: single-threaded, sequential season loop, so this is safe.
 _round_start_times: dict[int, float] = {}
 _round_elapsed: dict[int, str] = {}
+_round_statuses: dict[int, Status] = {}
 
 
 def _on_round_start(round: int, index: int, total: int) -> None:
     _round_start_times[round] = time.monotonic()
-    _progress(f"  round {round} ({index}/{total}): running...")
+    status = console.status(f"[bold cyan]round {round} ({index}/{total}): running...[/bold cyan]")
+    status.start()
+    _round_statuses[round] = status
 
 
 def _on_round_complete(result: RoundResult, index: int, total: int) -> None:
+    status = _round_statuses.pop(result.round, None)
+    if status is not None:
+        status.stop()
     started = _round_start_times.pop(result.round, None)
     elapsed = _format_elapsed(time.monotonic() - started) if started is not None else "?"
     _round_elapsed[result.round] = elapsed
     if result.ok:
-        _progress(
-            f"  round {result.round} ({index}/{total}): ok, "
-            f"{result.insight_count} insight(s), "
-            f"{result.quali_insight_count} qualifying insight(s) persisted ({elapsed})"
+        console.print(
+            f"  [green]✓[/green] round [bold]{result.round}[/bold] ({index}/{total}): "
+            f"[bold]{result.insight_count}[/bold] insight(s), "
+            f"[bold]{result.quali_insight_count}[/bold] qualifying insight(s) persisted [dim]({elapsed})[/dim]"
         )
     else:
-        _progress(f"  round {result.round} ({index}/{total}): failed ({elapsed}) - {result.error}")
+        console.print(
+            f"  [red]✗[/red] round [bold]{result.round}[/bold] ({index}/{total}): "
+            f"[red]failed[/red] [dim]({elapsed})[/dim] - {escape(result.error or '')}"
+        )
+
+
+def _print_failures(failed: list[tuple[int, str]]) -> None:
+    """failed: [(round, error), ...]. Shared tail for every season-loop summary."""
+    console.print()
+    console.print("[bold red]Failures:[/bold red]")
+    for round_number, error in failed:
+        console.print(f"  [bold]R{round_number}[/bold]: {escape(error)}")
+    console.print(f"\n[red]{len(failed)} round(s) failed.[/red]")
 
 
 def _echo_llm_model() -> None:
@@ -70,25 +84,33 @@ def _echo_dry_run_rounds(year: int, rounds: list[int]) -> None:
 
 
 def _echo_season_final_summary(summary) -> None:
-    """Aggregate summary after all rounds have been logged live."""
-    _progress("")
-    _progress("Summary:")
+    """Aggregate summary, as a table, after all rounds have been logged live."""
+    console.print()
+    table = Table(title="Summary")
+    table.add_column("Round", justify="right")
+    table.add_column("Status")
+    table.add_column("Insights", justify="right")
+    table.add_column("Qualifying", justify="right")
+    table.add_column("Time", justify="right")
+
+    failed: list[tuple[int, str]] = []
     for result in summary.results:
         elapsed = _round_elapsed.pop(result.round, "?")
         if result.ok:
-            _progress(
-                f"  R{result.round}: {result.insight_count} insights, "
-                f"{result.quali_insight_count} qualifying insights ({elapsed})"
+            table.add_row(
+                str(result.round), "[green]OK[/green]",
+                str(result.insight_count), str(result.quali_insight_count), elapsed,
             )
         else:
-            _progress(f"  R{result.round}: FAILED ({elapsed}) - {result.error}")
+            table.add_row(str(result.round), "[red]FAILED[/red]", "-", "-", elapsed)
+            failed.append((result.round, result.error or ""))
+    console.print(table)
 
-    failed = [r for r in summary.results if not r.ok]
     if failed:
-        _progress(f"\n{len(failed)} round(s) failed.")
+        _print_failures(failed)
         raise typer.Exit(code=1)
 
-    _progress(f"\nDone: {len(summary.results)} round(s) completed.")
+    console.print(f"\n[green]Done:[/green] {len(summary.results)} round(s) completed.")
 
 
 def _report_insights_done(state: dict, elapsed: str) -> None:
@@ -145,7 +167,7 @@ def run_weekend_cmd(
         _echo_dry_run_rounds(year, rounds)
         return
 
-    _progress(f"Running season {year}: {len(rounds)} completed round(s)...")
+    console.print(f"[bold]Running season {year}[/bold]: {len(rounds)} completed round(s)...")
     summary = run_season(
         year,
         on_round_start=_on_round_start,
@@ -186,7 +208,7 @@ def run_insights_cmd(
         return
 
     _echo_llm_model()
-    _progress(f"Regenerating insights for season {year}: {len(rounds)} completed round(s)...")
+    console.print(f"[bold]Regenerating insights for season {year}[/bold]: {len(rounds)} completed round(s)...")
     summary = run_insights_season(
         year,
         on_round_start=_on_round_start,
@@ -226,20 +248,38 @@ def ingest_cmd(
         _echo_dry_run_rounds(year, rounds)
         return
 
-    _progress(f"Ingesting season {year}: {len(rounds)} completed round(s)...")
-    failures = 0
+    console.print(f"[bold]Ingesting season {year}[/bold]: {len(rounds)} completed round(s)...")
+    table = Table(title="Summary")
+    table.add_column("Round", justify="right")
+    table.add_column("Status")
+    table.add_column("Time", justify="right")
+    failed: list[tuple[int, str]] = []
     for i, rnd in enumerate(rounds, start=1):
-        _progress(f"  round {rnd} ({i}/{len(rounds)}): ingesting...")
+        started = time.monotonic()
+        status = console.status(f"[bold cyan]round {rnd} ({i}/{len(rounds)}): ingesting...[/bold cyan]")
+        status.start()
         try:
             run_ingest(year, rnd)
-            _progress(f"  round {rnd} ({i}/{len(rounds)}): ok")
+            status.stop()
+            elapsed = _format_elapsed(time.monotonic() - started)
+            console.print(f"  [green]✓[/green] round [bold]{rnd}[/bold] ({i}/{len(rounds)}): ok [dim]({elapsed})[/dim]")
+            table.add_row(str(rnd), "[green]OK[/green]", elapsed)
         except Exception as exc:
-            failures += 1
-            _progress(f"  round {rnd} ({i}/{len(rounds)}): failed - {exc}")
-    if failures:
-        _progress(f"\n{failures} round(s) failed.")
+            status.stop()
+            elapsed = _format_elapsed(time.monotonic() - started)
+            console.print(
+                f"  [red]✗[/red] round [bold]{rnd}[/bold] ({i}/{len(rounds)}): "
+                f"[red]failed[/red] [dim]({elapsed})[/dim] - {escape(str(exc))}"
+            )
+            table.add_row(str(rnd), "[red]FAILED[/red]", elapsed)
+            failed.append((rnd, str(exc)))
+
+    console.print()
+    console.print(table)
+    if failed:
+        _print_failures(failed)
         raise typer.Exit(code=1)
-    _progress(f"\nDone: {len(rounds)} round(s) ingested.")
+    console.print(f"\n[green]Done:[/green] {len(rounds)} round(s) ingested.")
 
 
 @app.command("diagnose")
