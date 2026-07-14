@@ -91,18 +91,22 @@ def _echo_season_final_summary(summary) -> None:
     _progress(f"\nDone: {len(summary.results)} round(s) completed.")
 
 
+def _report_insights_done(state: dict, elapsed: str) -> None:
+    console.print(
+        f"[green]Done:[/green] persisted [bold]{state.get('insight_count', 0)}[/bold] insights, "
+        f"[bold]{state.get('quali_insight_count', 0)}[/bold] qualifying insights [dim]({elapsed})[/dim]."
+    )
+
+
 def _run_insights_one(year: int, round: int) -> None:
     from telogify.pipeline import regen_insights
 
     _echo_llm_model()
-    _progress(f"Regenerating insights for {year} round {round}...")
     started = time.monotonic()
-    state = regen_insights(year, round)
+    with console.status(f"[bold cyan]Regenerating insights for {year} round {round}...[/bold cyan]"):
+        state = regen_insights(year, round)
     elapsed = _format_elapsed(time.monotonic() - started)
-    _progress(
-        f"Done: persisted {state.get('insight_count', 0)} insights, "
-        f"{state.get('quali_insight_count', 0)} qualifying insights ({elapsed})."
-    )
+    _report_insights_done(state, elapsed)
 
 
 @app.command("run-weekend")
@@ -123,14 +127,11 @@ def run_weekend_cmd(
     if round is not None:
         from telogify.pipeline import run_weekend as run
 
-        _progress(f"Running weekend {year} round {round}...")
         started = time.monotonic()
-        state = run(year, round)
+        with console.status(f"[bold cyan]Running weekend {year} round {round}...[/bold cyan]"):
+            state = run(year, round)
         elapsed = _format_elapsed(time.monotonic() - started)
-        _progress(
-            f"Done: persisted {state.get('insight_count', 0)} insights, "
-            f"{state.get('quali_insight_count', 0)} qualifying insights ({elapsed})."
-        )
+        _report_insights_done(state, elapsed)
         return
 
     from telogify.pipeline import run_season, season_rounds
@@ -211,9 +212,9 @@ def ingest_cmd(
     from telogify.pipeline import run_ingest, season_rounds
 
     if round is not None:
-        _progress(f"Ingesting {year} round {round}...")
-        run_ingest(year, round)
-        _progress("Done.")
+        with console.status(f"[bold cyan]Ingesting {year} round {round}...[/bold cyan]"):
+            run_ingest(year, round)
+        console.print("[green]Done.[/green]")
         return
 
     rounds = season_rounds(year)

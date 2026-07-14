@@ -58,3 +58,37 @@ def test_ingest_no_completed_rounds(monkeypatch):
     result = runner.invoke(cli.app, ["ingest", "2026"])
     assert result.exit_code == 0
     assert "No completed rounds found for 2026" in plain(result.output)
+
+
+def test_run_weekend_single_round_reports_counts(monkeypatch):
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round: {"insight_count": 3, "quali_insight_count": 2},
+    )
+    result = runner.invoke(cli.app, ["run-weekend", "2026", "8"])
+    assert result.exit_code == 0
+    out = plain(result.output)
+    assert "Done" in out and "3" in out and "2" in out
+
+
+def test_run_insights_single_round_reports_counts(monkeypatch):
+    monkeypatch.setattr("telogify.config.configured_llm_label", lambda: "openai / gpt-5.5")
+    monkeypatch.setattr(
+        "telogify.pipeline.regen_insights",
+        lambda year, round: {"insight_count": 3, "quali_insight_count": 2},
+    )
+    result = runner.invoke(cli.app, ["run-insights", "2026", "8"])
+    assert result.exit_code == 0
+    out = plain(result.output)
+    assert "gpt-5.5" in out and "Done" in out and "3" in out and "2" in out
+
+
+def test_ingest_single_round_done(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "telogify.pipeline.run_ingest", lambda year, round: calls.append((year, round))
+    )
+    result = runner.invoke(cli.app, ["ingest", "2026", "8"])
+    assert result.exit_code == 0
+    assert calls == [(2026, 8)]
+    assert "Done" in plain(result.output)
