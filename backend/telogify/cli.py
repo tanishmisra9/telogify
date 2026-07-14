@@ -1,6 +1,7 @@
 """Telogify CLI. Manual triggers only (no scheduler)."""
 
 import sys
+import time
 
 import typer
 
@@ -17,19 +18,35 @@ def _progress(msg: str) -> None:
     sys.stdout.flush()
 
 
+def _format_elapsed(seconds: float) -> str:
+    if seconds >= 60:
+        minutes, rest = divmod(seconds, 60)
+        return f"{int(minutes)}m {rest:.1f}s"
+    return f"{seconds:.1f}s"
+
+
+# Keyed by round number: single-threaded, sequential season loop, so this is safe.
+_round_start_times: dict[int, float] = {}
+_round_elapsed: dict[int, str] = {}
+
+
 def _on_round_start(round: int, index: int, total: int) -> None:
+    _round_start_times[round] = time.monotonic()
     _progress(f"  round {round} ({index}/{total}): running...")
 
 
 def _on_round_complete(result: RoundResult, index: int, total: int) -> None:
+    started = _round_start_times.pop(result.round, None)
+    elapsed = _format_elapsed(time.monotonic() - started) if started is not None else "?"
+    _round_elapsed[result.round] = elapsed
     if result.ok:
         _progress(
             f"  round {result.round} ({index}/{total}): ok, "
             f"{result.insight_count} insight(s), "
-            f"{result.quali_insight_count} qualifying insight(s) persisted"
+            f"{result.quali_insight_count} qualifying insight(s) persisted ({elapsed})"
         )
     else:
-        _progress(f"  round {result.round} ({index}/{total}): failed - {result.error}")
+        _progress(f"  round {result.round} ({index}/{total}): failed ({elapsed}) - {result.error}")
 
 
 def _echo_llm_model() -> None:
@@ -43,13 +60,14 @@ def _echo_season_final_summary(summary) -> None:
     _progress("")
     _progress("Summary:")
     for result in summary.results:
+        elapsed = _round_elapsed.pop(result.round, "?")
         if result.ok:
             _progress(
                 f"  R{result.round}: {result.insight_count} insights, "
-                f"{result.quali_insight_count} qualifying insights"
+                f"{result.quali_insight_count} qualifying insights ({elapsed})"
             )
         else:
-            _progress(f"  R{result.round}: FAILED ({result.error})")
+            _progress(f"  R{result.round}: FAILED ({elapsed}) - {result.error}")
 
     failed = [r for r in summary.results if not r.ok]
     if failed:
@@ -64,10 +82,12 @@ def _run_insights_one(year: int, round: int) -> None:
 
     _echo_llm_model()
     _progress(f"Regenerating insights for {year} round {round}...")
+    started = time.monotonic()
     state = regen_insights(year, round)
+    elapsed = _format_elapsed(time.monotonic() - started)
     _progress(
         f"Done: persisted {state.get('insight_count', 0)} insights, "
-        f"{state.get('quali_insight_count', 0)} qualifying insights."
+        f"{state.get('quali_insight_count', 0)} qualifying insights ({elapsed})."
     )
 
 
@@ -90,10 +110,12 @@ def run_weekend_cmd(
         from telogify.pipeline import run_weekend as run
 
         _progress(f"Running weekend {year} round {round}...")
+        started = time.monotonic()
         state = run(year, round)
+        elapsed = _format_elapsed(time.monotonic() - started)
         _progress(
             f"Done: persisted {state.get('insight_count', 0)} insights, "
-            f"{state.get('quali_insight_count', 0)} qualifying insights."
+            f"{state.get('quali_insight_count', 0)} qualifying insights ({elapsed})."
         )
         return
 

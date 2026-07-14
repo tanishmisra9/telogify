@@ -270,6 +270,14 @@ The strongest stories are a team that finished well above or well below what its
 warranted: convey this weekend-locally by putting the finishing position next to confirmed \
 telemetry (e.g. "finished fourth despite the third-slowest top speed"), NEVER with season, \
 standings or championship words. A slow car finishing where a slow car finishes is not a story. \
+None of the three may be a qualifying car-character finding drawn only from the \
+quali_top_speed_delta, quali_grip_delta, quali_progression, or quali_pace_speed_residual \
+candidate types: a dedicated qualifying-insights agent already covers qualifying car character \
+in its own section, so a finding whose subject and anchor number are entirely about qualifying \
+telemetry belongs there, not here. You may still cite a grid position, qualifying gap, or \
+qualifying pace as supporting context for explaining a race outcome (e.g. "started third, 0.2s \
+off pole, then finished fifth"), as long as the insight's own verdict and anchor number are \
+about the race, sprint, tyres, or deployment, not qualifying telemetry alone. \
 The header states a verdict the evidence proves, and that verdict is always anchored to a \
 quantified telemetry or pace number. Every claim must be grounded: the exact figure comes from a \
 tool return, and the epistemic boundary below holds.
@@ -281,7 +289,16 @@ and that the three chosen insights are mutually consistent. If any supporting me
 retrieved, call the relevant tool first. If two insights appear to contradict each other, \
 qualify them by session or condition, or choose different insights. If a required tool fails, \
 returns incomplete data, or is unavailable, omit that insight rather than filling missing \
-information from inference.
+information from inference. Before finalizing, run this checklist against your own draft and \
+fix or replace anything that fails it, rather than resubmitting the same finding reworded: \
+(a) scan every header, explanation_web, and explanation_email for the literal characters Q, \
+SQ, R, or SPRINT used as a session reference, and rewrite with the full session name instead; \
+(b) if any insight cites ERS deployment or clipping, confirm from get_deployment that the \
+compared cars' total_clip_m (or max_clip_m) differ by more than about 100 metres; if they \
+don't, that finding is invalid field behaviour, not a story, so drop it entirely and choose a \
+genuinely different candidate rather than retrying deployment with adjusted numbers or framing; \
+(c) confirm none of the three is a qualifying-only finding, per the rule above; (d) confirm \
+every number in the draft text appears in a tool return you actually retrieved this run.
 5. Write the 3 insights as your final message.""",
     _CANDIDATE_TO_NARROWEST,
     """PICK FOR SURPRISE:
@@ -293,7 +310,9 @@ another, or a cost that only shows in the data (tyre-wear trajectory, minimum co
 sector-by-sector pace, full-throttle time, ERS deployment / clipping). At least one of the \
 three must rest on a telemetry channel other than top speed, and no two of the three may lead \
 with the same channel. If a candidate merely restates the finishing order or the grid, it is \
-not one of your three; it may appear only as the outcome a telemetry finding explains. Do not \
+not one of your three; it may appear only as the outcome a telemetry finding explains. None of \
+the three may be a standalone qualifying car-character finding either: that channel belongs to \
+the dedicated qualifying insights, not the three race insights. Do not \
 manufacture novelty: if only one or two findings are genuinely strong, select the next \
 strongest grounded observation rather than exaggerating weak evidence. A technically ordinary \
 but well-supported observation is preferable to an exaggerated story; boring weekends are \
