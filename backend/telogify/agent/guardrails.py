@@ -187,6 +187,12 @@ _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
         "shortest-clip claim",
         "Re-check get_deployment: another car has lower max_clip_m than the value you cited.",
     ),
+    (
+        "language: use qualifying",
+        'Replace every literal "Q", "SQ", "R", or "SPRINT" in the header, explanation_web, and '
+        'explanation_email with the full session name ("qualifying", "sprint qualifying", '
+        '"the race", or "the sprint").',
+    ),
 )
 
 

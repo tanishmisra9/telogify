@@ -85,10 +85,15 @@ reflects where the DRIVER chose to spend the battery on that lap, so treat it as
 only when the deployment data shows BOTH of a team's cars clipping similarly. Describe ERS \
 clipping only as the observed point where electrical deployment ended before the braking zone; \
 do not infer battery state, harvesting strategy, or software behavior. Before claiming the \
-lowest, shortest, or cleanest clip in the field, call get_deployment for all drivers and \
-confirm your cited metres match the minimum total_clip_m or max_clip_m in that return. Do not \
-publish a deployment-clipping insight when the cited front-row or front-running qualifiers share \
-similar total_clip_m within about 100 metres: that is normal field behaviour, not a story. Keep drivers \
+lowest, shortest, or cleanest clip in the field, call get_deployment for all drivers (blank \
+driver argument, so you see the whole field) and cite its field_min_total_clip_m or \
+field_min_max_clip_m field directly for the "lowest in the field" number: these are \
+pre-computed across every driver, so use them verbatim rather than scanning rows and comparing \
+yourself. A candidate's own total_clip_m or excess_clip_m (its deficit relative to the field's \
+best car) is NOT the field minimum: never cite a single candidate's own total_clip_m as if it \
+were the field-lowest figure. Do not publish a deployment-clipping insight when the cited \
+front-row or front-running qualifiers share similar total_clip_m within about 100 metres: that \
+is normal field behaviour, not a story. Keep drivers \
 grammatically passive when named: "the Ferrari consumed its tyres faster" not "Sainz burned \
 through his tyre life". Deployment, wear, pace and straight-line speed are always what the \
 CAR did.
@@ -299,7 +304,11 @@ don't, that finding is invalid field behaviour, not a story, so drop it entirely
 genuinely different candidate rather than retrying deployment with adjusted numbers or framing; \
 (c) confirm none of the three is a qualifying-only finding, per the rule above; (d) confirm \
 every number in the draft text appears in a tool return you actually retrieved this run.
-5. Write the 3 insights as your final message.""",
+5. Write the 3 insights as your final message, even if the candidate pool is thin or several \
+candidates got discarded by the checks above: relax to the least-dramatic-but-still-fully-\
+supported findings rather than producing fewer than 3. Never end your final message with a \
+question, an apology, or an explanation instead of the required JSON array; there is no retry \
+from a non-JSON response, only from a JSON response with a fixable problem.""",
     _CANDIDATE_TO_NARROWEST,
     """PICK FOR SURPRISE:
 Accuracy is always more important than surprise. When forced to choose, prefer a less \
@@ -372,7 +381,11 @@ source and that the two chosen insights are mutually consistent. If any supporti
 metric was not retrieved, call the relevant tool first. If a required tool fails, \
 returns incomplete data, or is unavailable, omit that insight rather than filling \
 missing information from inference.
-5. Write the 2 insights as your final message.""",
+5. Write the 2 insights as your final message, even if the candidate pool is thin: relax to \
+the least-dramatic-but-still-fully-supported findings rather than producing fewer than 2. \
+Never end your final message with a question, an apology, or an explanation instead of the \
+required JSON array; there is no retry from a non-JSON response, only from a JSON response \
+with a fixable problem.""",
     _CANDIDATE_TO_NARROWEST,
     """PICK FOR SURPRISE:
 Accuracy is always more important than surprise. When forced to choose, prefer a less \

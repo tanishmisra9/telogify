@@ -291,15 +291,24 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
         super-clipping inferred from acceleration residuals at wide-open throttle. Per driver:
         top_speed_kmh, total_clip_m (depletion + superclip, higher = runs out sooner),
         total_depletion_m, total_superclip_m, max_clip_m, max_clip_severity_ms2, and per-straight
-        clip segments. Pass a 3-letter code to filter, blank for all."""
+        clip segments. Rows are ordered lowest total_clip_m (best) first, and every row also
+        carries field_min_total_clip_m/field_min_max_clip_m (computed across the WHOLE field,
+        not just the rows returned) so a "lowest/shortest clip" claim can be checked against an
+        explicit number rather than requiring you to scan and compare rows yourself. Pass a
+        3-letter code to filter, blank for all."""
         with sf() as db:
             sid = _session_id(db, _weekend_id(db, year, round_num), session_type)
             if sid is None:
                 return json.dumps([])
-            q = select(DeploymentTrace).where(DeploymentTrace.session_id == sid)
-            if driver:
-                q = q.where(DeploymentTrace.driver == driver)
-            rows = db.exec(q.order_by(DeploymentTrace.total_clip_m.desc())).all()
+            all_rows = db.exec(
+                select(DeploymentTrace).where(DeploymentTrace.session_id == sid)
+            ).all()
+            if not all_rows:
+                return json.dumps([])
+            field_min_total_clip_m = min(r.total_clip_m for r in all_rows)
+            field_min_max_clip_m = min(r.max_clip_m for r in all_rows)
+            rows = [r for r in all_rows if not driver or r.driver == driver]
+            rows.sort(key=lambda r: r.total_clip_m)
             return json.dumps(
                 [
                     {
@@ -313,6 +322,8 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
                         "max_clip_m": r.max_clip_m,
                         "max_clip_severity_ms2": r.max_clip_severity_ms2,
                         "clip_straights": [st for st in (r.straights_json or []) if st.get("is_clip")],
+                        "field_min_total_clip_m": field_min_total_clip_m,
+                        "field_min_max_clip_m": field_min_max_clip_m,
                     }
                     for r in rows
                 ]

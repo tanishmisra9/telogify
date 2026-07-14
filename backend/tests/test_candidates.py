@@ -138,3 +138,36 @@ def test_linear_regression_none_without_x_spread():
 
 def test_linear_regression_none_with_fewer_than_two_points():
     assert linear_regression([300.0], [90.0]) is None
+
+
+def test_mine_deployment_excludes_deficits_at_or_below_the_weak_cluster_bar(db_session):
+    from telogify.analysis.candidates import _mine_deployment
+    from telogify.models import DeploymentTrace, RaceWeekend, Session as SessionRow
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    quali = SessionRow(weekend_id=wk.id, session_type="Q", status="loaded")
+    db_session.add(quali)
+    db_session.commit()
+    db_session.refresh(quali)
+
+    # All three constructors clip on both cars (the consistency gate needs >=2 clippers per
+    # team). Ferrari is the field's best (min=40). Williams (min=55) is only 15m behind Ferrari,
+    # normal field behaviour; McLaren (min=150) is 110m behind, a genuine deficit.
+    rows = [
+        DeploymentTrace(session_id=quali.id, driver="LEC", constructor="Ferrari", total_clip_m=40.0, max_clip_m=40.0),
+        DeploymentTrace(session_id=quali.id, driver="HAM", constructor="Ferrari", total_clip_m=45.0, max_clip_m=45.0),
+        DeploymentTrace(session_id=quali.id, driver="ALB", constructor="Williams", total_clip_m=55.0, max_clip_m=55.0),
+        DeploymentTrace(session_id=quali.id, driver="SAI", constructor="Williams", total_clip_m=60.0, max_clip_m=60.0),
+        DeploymentTrace(session_id=quali.id, driver="NOR", constructor="McLaren", total_clip_m=150.0, max_clip_m=150.0),
+        DeploymentTrace(session_id=quali.id, driver="PIA", constructor="McLaren", total_clip_m=160.0, max_clip_m=160.0),
+    ]
+    for r in rows:
+        db_session.add(r)
+    db_session.commit()
+
+    signals = _mine_deployment(db_session, [quali])
+    subjects = {s.subject for s in signals}
+    assert subjects == {"McLaren"}

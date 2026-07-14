@@ -83,6 +83,39 @@ def _by_name(tools):
     return {t.name: t for t in tools}
 
 
+def test_get_deployment_reports_field_min_and_sorts_ascending(db_session):
+    from telogify.models import DeploymentTrace
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    quali = SessionRow(weekend_id=wk.id, session_type="Q", status="loaded")
+    db_session.add(quali)
+    db_session.commit()
+    db_session.refresh(quali)
+
+    db_session.add(DeploymentTrace(session_id=quali.id, driver="LEC", constructor="Ferrari", total_clip_m=375.6, max_clip_m=200.0))
+    db_session.add(DeploymentTrace(session_id=quali.id, driver="NOR", constructor="McLaren", total_clip_m=155.9, max_clip_m=90.0))
+    db_session.add(DeploymentTrace(session_id=quali.id, driver="VER", constructor="Red Bull Racing", total_clip_m=260.0, max_clip_m=140.0))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_deployment"].invoke({"driver": "", "session_type": "Q"}))
+
+    # ascending by total_clip_m: field-best (lowest) first, not the old descending order
+    assert [r["driver"] for r in out] == ["NOR", "VER", "LEC"]
+    # every row carries the true field minimum, computed across the whole field
+    assert all(r["field_min_total_clip_m"] == 155.9 for r in out)
+    assert all(r["field_min_max_clip_m"] == 90.0 for r in out)
+
+    # filtering by driver must not change the field-wide minimum to just that driver's own value
+    filtered = json.loads(tools["get_deployment"].invoke({"driver": "LEC", "session_type": "Q"}))
+    assert len(filtered) == 1
+    assert filtered[0]["total_clip_m"] == 375.6
+    assert filtered[0]["field_min_total_clip_m"] == 155.9
+
+
 def test_bound_tool_reads_exact_db_value(seeded):
     tools = _by_name(build_tools(2025, 11, session_factory=seeded))
     out = json.loads(tools["get_straight_speed"].invoke({"driver": "LEC", "session_type": "R", "drs_zone": 2}))

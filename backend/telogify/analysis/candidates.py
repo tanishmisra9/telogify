@@ -826,11 +826,18 @@ def _actual_ranks(sessions: list[Session], db: DBSession) -> dict[str, int]:
     return {c: i + 1 for i, c in enumerate(ordered)}
 
 
+_MIN_DEPLOYMENT_DEFICIT_M = 100.0  # matches validation.flag_weak_deployment_cluster's own bar
+
+
 def _mine_deployment(db, sessions):
     """ERS deployment weakness: a car that clips more (its speed falls at full throttle before the
     braking zone) runs out of electrical deployment sooner and is passable at the end of straights.
     Per-constructor mean clip distance on the qualifying lap, as a deficit to the field's best
-    (lowest-clipping) car. A distinct 'deployment' channel, so it can fuse with a race outcome."""
+    (lowest-clipping) car. A distinct 'deployment' channel, so it can fuse with a race outcome.
+    Deficits at or below _MIN_DEPLOYMENT_DEFICIT_M are excluded here (not just at the insight-writing
+    stage): they read as normal field behaviour, not a story, and validation.py's
+    flag_weak_deployment_cluster already rejects any insight built on them, so surfacing them as
+    high-confidence candidates only tempts the agent into a finding guaranteed to fail the gate."""
     out = []
     for stype in ("Q", "SQ"):
         session = pick_session(sessions, (stype,))
@@ -859,7 +866,7 @@ def _mine_deployment(db, sessions):
         for c in con_clip:
             rs = by_con[c]
             deficit = con_clip[c] - best
-            if deficit <= 0:
+            if deficit <= _MIN_DEPLOYMENT_DEFICIT_M:
                 continue
             worst = max(
                 (st for r in rs for st in (r.straights_json or []) if st.get("is_clip")),
