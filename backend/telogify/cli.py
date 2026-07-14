@@ -4,6 +4,8 @@ import sys
 import time
 
 import typer
+from rich.console import Console
+from rich.markup import escape
 
 from telogify.pipeline import RoundResult
 
@@ -11,6 +13,7 @@ app = typer.Typer(
     add_completion=False,
     help="Telogify: 3 quantified telemetry insights per F1 race weekend.",
 )
+console = Console(highlight=False)
 
 
 def _progress(msg: str) -> None:
@@ -52,7 +55,18 @@ def _on_round_complete(result: RoundResult, index: int, total: int) -> None:
 def _echo_llm_model() -> None:
     from telogify.config import configured_llm_label
 
-    _progress(f"Model: {configured_llm_label()}")
+    console.print(f"[bold]Model:[/bold] [cyan]{escape(configured_llm_label())}[/cyan]")
+
+
+def _echo_no_completed_rounds(year: int) -> None:
+    console.print(f"[yellow]No completed rounds found for {year}.[/yellow]")
+
+
+def _echo_dry_run_rounds(year: int, rounds: list[int]) -> None:
+    round_list = ", ".join(str(r) for r in rounds)
+    console.print(
+        f"[bold]{year}[/bold] completed rounds [dim]({len(rounds)})[/dim]: [cyan]{round_list}[/cyan]"
+    )
 
 
 def _echo_season_final_summary(summary) -> None:
@@ -123,11 +137,11 @@ def run_weekend_cmd(
 
     rounds = season_rounds(year)
     if not rounds:
-        _progress(f"No completed rounds found for {year}.")
+        _echo_no_completed_rounds(year)
         return
 
     if dry_run:
-        _progress(f"{year} completed rounds ({len(rounds)}): {', '.join(str(r) for r in rounds)}")
+        _echo_dry_run_rounds(year, rounds)
         return
 
     _progress(f"Running season {year}: {len(rounds)} completed round(s)...")
@@ -162,12 +176,12 @@ def run_insights_cmd(
 
     rounds = season_rounds(year)
     if not rounds:
-        _progress(f"No completed rounds found for {year}.")
+        _echo_no_completed_rounds(year)
         return
 
     if dry_run:
         _echo_llm_model()
-        _progress(f"{year} completed rounds ({len(rounds)}): {', '.join(str(r) for r in rounds)}")
+        _echo_dry_run_rounds(year, rounds)
         return
 
     _echo_llm_model()
@@ -204,11 +218,11 @@ def ingest_cmd(
 
     rounds = season_rounds(year)
     if not rounds:
-        _progress(f"No completed rounds found for {year}.")
+        _echo_no_completed_rounds(year)
         return
 
     if dry_run:
-        _progress(f"{year} completed rounds ({len(rounds)}): {', '.join(str(r) for r in rounds)}")
+        _echo_dry_run_rounds(year, rounds)
         return
 
     _progress(f"Ingesting season {year}: {len(rounds)} completed round(s)...")
@@ -236,7 +250,7 @@ def diagnose(year: int, round: int) -> None:
     from telogify.db import engine
 
     with Session(engine) as db:
-        typer.echo(run_diagnose(year, round, db))
+        console.print(escape(run_diagnose(year, round, db)))
 
 
 @app.command("list-insights")
@@ -307,7 +321,35 @@ def send_digest(year: int, round: int) -> None:
 
     with Session(engine) as db:
         sent = run_send(year, round, db)
-    typer.echo(f"Sent digest to {sent} recipient(s).")
+    console.print(f"[green]Sent digest to {sent} recipient(s).[/green]")
+
+
+@app.command("preview-digest")
+def preview_digest(
+    year: int,
+    round: int,
+    out: str = typer.Option("digest-preview.html", "--out", help="Path to write the rendered HTML."),
+) -> None:
+    """Render the email digest to a local HTML file for browser preview. No send, no API key."""
+    from pathlib import Path
+
+    from sqlmodel import Session
+
+    from telogify.db import engine
+    from telogify.email import render_digest_preview
+
+    with Session(engine) as db:
+        html_body = render_digest_preview(year, round, db)
+    # Wrap in a minimal standards-mode shell for browser preview only (real sends stay a bare
+    # fragment; without a doctype, browsers render file:// fragments in quirks mode, which
+    # breaks the box model and causes horizontal overflow that doesn't happen in an inbox).
+    page = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'></head>"
+        f"<body style='margin:0'>{html_body}</body></html>"
+    )
+    Path(out).write_text(page)
+    console.print(f"[green]Wrote preview to[/green] [cyan]{escape(out)}[/cyan]")
 
 
 if __name__ == "__main__":
