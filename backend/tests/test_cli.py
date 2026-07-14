@@ -141,6 +141,63 @@ def test_run_insights_season_one_failure_exits_nonzero(monkeypatch):
     assert "1 round(s) failed" in out
 
 
+def test_list_insights_no_weekends(monkeypatch, test_engine):
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    result = runner.invoke(cli.app, ["list-insights"])
+    assert result.exit_code == 0
+    assert "No race weekends found" in plain(result.output)
+
+
+def test_list_insights_renders_panel_and_escapes_brackets(monkeypatch, test_engine):
+    from sqlmodel import Session
+
+    from telogify.models import Insight, QualiInsight, RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        wk = RaceWeekend(
+            year=2026, round=8, circuit_name="Spielberg", country="Austria",
+            event_name="Austrian Grand Prix",
+        )
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        db.add(Insight(
+            weekend_id=wk.id, slot=1, header="Ferrari [scuderia] led sector one",
+            explanation_web="body text", explanation_email="e", source_tool_calls_json=[],
+        ))
+        db.add(QualiInsight(
+            weekend_id=wk.id, slot=1, team="Mercedes", header="Mercedes swept every sector",
+            explanation_web="qualifying body", explanation_email="qe", source_tool_calls_json=[],
+        ))
+        db.commit()
+
+    result = runner.invoke(cli.app, ["list-insights", "--year", "2026"])
+    out = plain(result.output)
+    assert result.exit_code == 0
+    assert "Austrian Grand Prix" in out
+    assert "Ferrari [scuderia] led sector one" in out
+    assert "Mercedes" in out and "swept every sector" in out
+
+
+def test_list_insights_empty_weekend_shows_placeholders(monkeypatch, test_engine):
+    from sqlmodel import Session
+
+    from telogify.models import RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(wk)
+        db.commit()
+
+    result = runner.invoke(cli.app, ["list-insights", "--year", "2026"])
+    out = plain(result.output)
+    assert result.exit_code == 0
+    assert "no insights persisted" in out
+    assert "none persisted" in out
+
+
 def test_ingest_season_reports_per_round_and_summary(monkeypatch):
     monkeypatch.setattr("telogify.pipeline.season_rounds", lambda year: [1, 2, 3])
 

@@ -5,6 +5,7 @@ import time
 import typer
 from rich.console import Console
 from rich.markup import escape
+from rich.panel import Panel
 from rich.status import Status
 from rich.table import Table
 
@@ -294,6 +295,14 @@ def diagnose(year: int, round: int) -> None:
         console.print(escape(run_diagnose(year, round, db)))
 
 
+def _render_insight_block(slot: int, header: str, body: str, *, team: str | None = None) -> str:
+    label = f"[bold]{escape(team)}[/bold]: " if team else ""
+    return (
+        f"[cyan]({slot})[/cyan] {label}[bold]{escape(header)}[/bold]\n"
+        f"[dim]{escape(body)}[/dim]"
+    )
+
+
 @app.command("list-insights")
 def list_insights(year: int | None = None) -> None:
     """Print all persisted insights, grouped by race weekend."""
@@ -309,7 +318,7 @@ def list_insights(year: int | None = None) -> None:
         weekends = db.exec(query).all()
 
         if not weekends:
-            typer.echo("No race weekends found.")
+            console.print("[yellow]No race weekends found.[/yellow]")
             return
 
         for weekend in weekends:
@@ -324,32 +333,28 @@ def list_insights(year: int | None = None) -> None:
                 .order_by(QualiInsight.slot)
             ).all()
 
-            typer.echo("=" * 78)
-            typer.echo(
-                f"{weekend.year} Round {weekend.round}: {weekend.event_name} "
-                f"({weekend.circuit_name}, {weekend.country})"
-            )
-            typer.echo("=" * 78)
-
+            blocks: list[str] = []
             if not insights:
-                typer.echo("  (no insights persisted)\n")
+                blocks.append("[dim](no insights persisted)[/dim]")
             else:
-                for insight in insights:
-                    typer.echo(f"\n[{insight.slot}] {insight.header}")
-                    typer.echo("-" * 78)
-                    typer.echo(insight.explanation_web)
-                typer.echo("")
+                blocks.extend(
+                    _render_insight_block(i.slot, i.header, i.explanation_web) for i in insights
+                )
 
-            if not quali_insights:
-                typer.echo("  (no qualifying insights persisted)\n")
-                continue
+            if quali_insights:
+                blocks.append("[bold]Qualifying:[/bold]")
+                blocks.extend(
+                    _render_insight_block(i.slot, i.header, i.explanation_web, team=i.team)
+                    for i in quali_insights
+                )
+            else:
+                blocks.append("[bold]Qualifying:[/bold] [dim](none persisted)[/dim]")
 
-            typer.echo("Qualifying:")
-            for insight in quali_insights:
-                typer.echo(f"\n[{insight.slot}] {insight.team}: {insight.header}")
-                typer.echo("-" * 78)
-                typer.echo(insight.explanation_web)
-            typer.echo("")
+            title = (
+                f"{weekend.year} Round {weekend.round}: {escape(weekend.event_name)} "
+                f"({escape(weekend.circuit_name)}, {escape(weekend.country)})"
+            )
+            console.print(Panel("\n\n".join(blocks), title=title, title_align="left", border_style="cyan"))
 
 
 @app.command("send-digest")
