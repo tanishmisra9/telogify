@@ -13,6 +13,7 @@ import { Results } from '@/components/Results'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionTitle } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
+import { Tooltip } from '@/components/Tooltip'
 import { expandTransition, spring } from '@/lib/motion'
 import {
   useApi,
@@ -237,22 +238,25 @@ function MethodologyDisclosure() {
         className="flex w-full items-center justify-between gap-4 text-left"
       >
         <p className="font-display text-[1.35rem] font-semibold tracking-tight text-ink">How these are made</p>
-        <m.svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-          className="shrink-0 text-muted"
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={expandTransition}
-        >
-          <path d="m6 9 6 6 6-6" />
-        </m.svg>
+        <Tooltip label={open ? 'Collapse' : 'Expand'}>
+          <span className="-m-3 flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20">
+            <m.svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              animate={{ rotate: open ? 180 : 0 }}
+              transition={expandTransition}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </m.svg>
+          </span>
+        </Tooltip>
       </button>
       <AnimatePresence initial={false}>
         {open && (

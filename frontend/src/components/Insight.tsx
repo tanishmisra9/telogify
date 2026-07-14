@@ -48,7 +48,8 @@ function CopyButton({ text }: { text: string }) {
         aria-label={copied ? 'Copied insight to clipboard' : 'Copy insight to clipboard'}
         // -m-3 + p-3 grows the tap target to a real 40px square (matches ThemeToggle's h-10
         // w-10 convention) without shifting the visible icon's position in the header row.
-        className="-m-3 mt-[-2px] flex shrink-0 cursor-pointer items-center justify-center p-3 text-muted transition-colors hover:text-accent"
+        // rounded-full turns that square into a circular hover/active highlight behind the icon.
+        className="-m-3 mt-[-2px] flex shrink-0 cursor-pointer items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
@@ -87,7 +88,7 @@ export function Insight({
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-6">
             {collapsible ? (
               <button
                 type="button"
@@ -96,22 +97,30 @@ export function Insight({
                 className="flex flex-1 items-start justify-between gap-4 text-left"
               >
                 {heading}
-                <m.svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                  className="mt-1.5 shrink-0 text-muted"
-                  animate={{ rotate: open ? 180 : 0 }}
-                  transition={expandTransition}
-                >
-                  <path d="m6 9 6 6 6-6" />
-                </m.svg>
+                <Tooltip label={open ? 'Collapse' : 'Expand'}>
+                  <span
+                    // -m-3 + p-3 matches CopyButton's 40px tap target: the hover-color trigger
+                    // area is scoped to just this icon, not the whole heading row (which is
+                    // also clickable to toggle), so it's close-but-comfortable, not room-wide.
+                    className="-m-3 mt-[-0.375rem] flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+                  >
+                    <m.svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                      animate={{ rotate: open ? 180 : 0 }}
+                      transition={expandTransition}
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </m.svg>
+                  </span>
+                </Tooltip>
               </button>
             ) : (
               <div className="flex-1">{heading}</div>

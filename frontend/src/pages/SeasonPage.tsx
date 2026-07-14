@@ -7,6 +7,7 @@ import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
+import { Tooltip } from '@/components/Tooltip'
 import { heatBg, rankAsc } from '@/lib/heat'
 import { expandTransition } from '@/lib/motion'
 import { seasonSummary, type Trait } from '@/lib/seasonSummary'
@@ -171,22 +172,25 @@ function FormGuideRow({
           </h3>
           <ConfidenceChip confidence={r.confidence} />
         </div>
-        <m.svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-          className="shrink-0 text-muted"
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={expandTransition}
-        >
-          <path d="m6 9 6 6 6-6" />
-        </m.svg>
+        <Tooltip label={open ? 'Collapse' : 'Expand'}>
+          <span className="-m-3 flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20">
+            <m.svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              animate={{ rotate: open ? 180 : 0 }}
+              transition={expandTransition}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </m.svg>
+          </span>
+        </Tooltip>
       </button>
       <AnimatePresence initial={false}>
         {open && (

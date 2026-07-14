@@ -31,22 +31,29 @@ function InsightCard({ item }: { item: QualiInsightItem }) {
           {item.team && <TeamRule team={item.team} />}
           <p className="kicker text-accent">{item.team ?? 'Qualifying'}</p>
         </div>
-        <m.svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-          className="shrink-0 text-muted md:hidden"
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={expandTransition}
-        >
-          <path d="m6 9 6 6 6-6" />
-        </m.svg>
+        <Tooltip label={open ? 'Collapse' : 'Expand'}>
+          <span
+            // Same 40px tap-target convention as Insight.tsx's chevron: the hover-color area is
+            // scoped to the icon, not the whole (also-clickable) header row.
+            className="-m-3 flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20 md:hidden"
+          >
+            <m.svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              animate={{ rotate: open ? 180 : 0 }}
+              transition={expandTransition}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </m.svg>
+          </span>
+        </Tooltip>
       </button>
       {/* Desktop: always shown, nothing to animate. Mobile: animated height/opacity collapse,
           matching every other disclosure on the site instead of CSS `hidden`'s instant snap. */}
