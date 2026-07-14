@@ -109,6 +109,121 @@ def _deployments(trace: list[dict]) -> list[dict]:
     return [row for row in _parse_tool_results(trace, "get_deployment") if "total_clip_m" in row]
 
 
+def _numeric_leaves(obj) -> list[float]:
+    """Recursively collect every int/float value nested anywhere in a JSON structure."""
+    out: list[float] = []
+    if isinstance(obj, bool):
+        return out
+    if isinstance(obj, (int, float)):
+        out.append(float(obj))
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            out.extend(_numeric_leaves(v))
+    elif isinstance(obj, list):
+        for v in obj:
+            out.extend(_numeric_leaves(v))
+    return out
+
+
+def _candidate_session_type(cand: dict) -> str | None:
+    """Pull the session_type a candidate's source_refs were mined from, if any."""
+    refs = cand.get("source_refs")
+    if isinstance(refs, str):
+        try:
+            refs = json.loads(refs)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    if isinstance(refs, dict):
+        refs = [refs]
+    if isinstance(refs, list):
+        for ref in refs:
+            if isinstance(ref, dict) and ref.get("session_type"):
+                return ref["session_type"]
+    return None
+
+
+def _is_quali_sourced_deployment(cand: dict) -> bool:
+    """category=="deployment" candidates come from two miners: qualifying-lap clipping
+    (_mine_deployment, session_type Q/SQ) and race-session ERS harvesting character
+    (_mine_ers_character, session_type R). Only the former is qualifying-sourced."""
+    return cand.get("category") == "deployment" and _candidate_session_type(cand) in ("Q", "SQ")
+
+
+def _quali_character_only_numbers(trace: list[dict]) -> set[float]:
+    """Numbers sourced only from qualifying-session data: get_quali_character's own return,
+    get_candidate_insights entries tagged category=="quali_character", get_deployment's tool
+    return (it reads the qualifying lap only, per its docstring), and category=="deployment"
+    candidates mined from the Q/SQ clipping data (as opposed to race-session ERS character)."""
+    numbers: list[float] = []
+    for row in _parse_tool_results(trace, "get_quali_character"):
+        numbers.extend(_numeric_leaves(row))
+    for row in _parse_tool_results(trace, "get_deployment"):
+        numbers.extend(_numeric_leaves(row))
+    for cand in _parse_tool_results(trace, "get_candidate_insights"):
+        if not isinstance(cand, dict):
+            continue
+        if cand.get("category") == "quali_character" or _is_quali_sourced_deployment(cand):
+            numbers.extend(_numeric_leaves(cand))
+    return {round(n, 3) for n in numbers}
+
+
+def _non_quali_character_numbers(trace: list[dict]) -> set[float]:
+    """Numbers from every other tool call (race results, stints, race control, straight/corner
+    deltas, race-session deployment character, non-quali_character candidates, etc.).
+    get_deployment (qualifying-lap clipping) is deliberately excluded here: it belongs in the
+    qualifying-only pool above, not treated as race-anchoring support."""
+    numbers: list[float] = []
+    for entry in trace:
+        tool = entry.get("tool")
+        if tool in ("get_quali_character", "get_deployment"):
+            continue
+        result = entry.get("result")
+        if not result:
+            continue
+        try:
+            data = json.loads(result) if isinstance(result, str) else result
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if tool == "get_candidate_insights":
+            rows = data if isinstance(data, list) else [data]
+            for cand in rows:
+                if not isinstance(cand, dict):
+                    continue
+                if cand.get("category") == "quali_character" or _is_quali_sourced_deployment(cand):
+                    continue
+                numbers.extend(_numeric_leaves(cand))
+        else:
+            numbers.extend(_numeric_leaves(data))
+    return {round(n, 3) for n in numbers}
+
+
+def flag_qualifying_only_finding(text: str, trace: list[dict]) -> list[str]:
+    """Block an insight whose every cited number traces only to qualifying-session data
+    (get_quali_character, get_deployment's Q/SQ clipping, or quali_character/qualifying-lap
+    deployment candidates) with no supporting number from anything else: that finding belongs
+    in the dedicated qualifying insights, not one of the three race insights."""
+    quali_only = _quali_character_only_numbers(trace)
+    if not quali_only:
+        return []
+    quantities = extract_prose_quantities(text)
+    if not quantities:
+        return []
+    other = _non_quali_character_numbers(trace)
+
+    def _in_pool(pool: set[float], qty: float) -> bool:
+        return any(math.isclose(qty, v, rel_tol=1e-4, abs_tol=0.01) for v in pool)
+
+    if all(_in_pool(quali_only, q) for q in quantities) and not any(
+        _in_pool(other, q) for q in quantities
+    ):
+        return [
+            "qualifying-only finding: every cited number traces only to qualifying-session "
+            "data (car-character data, or qualifying-lap deployment clipping); that belongs "
+            "in the dedicated qualifying insights, not the three"
+        ]
+    return []
+
+
 def _practice_sector_deficits(trace: list[dict]) -> set[float]:
     deficits: set[float] = set()
     for cand in _parse_tool_results(trace, "get_candidate_insights"):
@@ -204,7 +319,7 @@ def flag_false_deployment_superlative(text: str, trace: list[dict]) -> list[str]
 
 
 _QUANTITY_RE = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%)"
+    r"(\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%|metres?|meters?)"
     r"|(?:\(\s*(\d+(?:\.\d+)?)\s*mph\s*\))",
     re.IGNORECASE,
 )
@@ -356,8 +471,15 @@ def flag_cross_insight_conflicts(insights: list[dict]) -> list[str]:
     return conflicts
 
 
-def validate_insights(insights: list[dict], trace: list[dict]) -> dict[int, list[str]]:
-    """Return per-slot validation issues (empty dict = pass). Slot keys are 1-based."""
+def validate_insights(
+    insights: list[dict], trace: list[dict], *, allow_qualifying_only: bool = False
+) -> dict[int, list[str]]:
+    """Return per-slot validation issues (empty dict = pass). Slot keys are 1-based.
+
+    allow_qualifying_only must be True for the dedicated qualifying-insights agent's own 2
+    insights (which are qualifying-only BY DESIGN) and False (default) for the 3 race
+    insights, where a qualifying-only finding is exactly what flag_qualifying_only_finding
+    exists to catch."""
     flagged: dict[int, list[str]] = {}
     for i, ins in enumerate(insights, start=1):
         text = _insight_text(ins)
@@ -374,6 +496,9 @@ def validate_insights(insights: list[dict], trace: list[dict]) -> dict[int, list
             flagged.setdefault(i, []).append(issue)
         for issue in flag_session_abbreviations(text):
             flagged.setdefault(i, []).append(issue)
+        if not allow_qualifying_only:
+            for issue in flag_qualifying_only_finding(text, trace):
+                flagged.setdefault(i, []).append(issue)
     for conflict in flag_cross_insight_conflicts(insights):
         # Attach cross-insight conflicts to every slot mentioned in the message.
         for slot in re.findall(r"\d+", conflict.split(" contradict")[0]):

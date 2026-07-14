@@ -5,6 +5,7 @@ from telogify.agent.validation import (
     flag_cross_insight_conflicts,
     flag_false_deployment_superlative,
     flag_false_retirement_causation,
+    flag_qualifying_only_finding,
     flag_qualifying_practice_sector_mismatch,
     flag_session_abbreviations,
     flag_untraceable_numbers,
@@ -215,3 +216,134 @@ def test_flag_weak_deployment_cluster():
 def test_flag_session_abbreviations():
     assert flag_session_abbreviations("The quick Q cars were giving up speed.")
     assert not flag_session_abbreviations("The quick qualifying cars were giving up speed.")
+
+
+def _quali_candidate_trace():
+    return [
+        {
+            "tool": "get_candidate_insights",
+            "args": {"category": "quali_character"},
+            "result": json.dumps(
+                [
+                    {
+                        "rank": 1,
+                        "category": "quali_character",
+                        "signal_type": "quali_top_speed_delta",
+                        "magnitude": 8.0,
+                        "confidence": 1.0,
+                        "source_refs": [
+                            {"type": "quali_top_speed_delta", "constructor": "McLaren", "deficit_kmh": 8.0}
+                        ],
+                    }
+                ]
+            ),
+        },
+        {
+            "tool": "get_quali_character",
+            "args": {},
+            "result": json.dumps(
+                {
+                    "rows": [
+                        {"constructor": "McLaren", "top_speed_kmh": 322.0, "drag_label": "lacks efficiency"},
+                        {"constructor": "Ferrari", "top_speed_kmh": 330.0, "drag_label": "efficient, low drag"},
+                    ],
+                    "fastest_corner_number": 8,
+                    "sector_dominance": [],
+                }
+            ),
+        },
+    ]
+
+
+def test_flag_qualifying_only_finding_blocks_pure_quali_character_claim():
+    trace = _quali_candidate_trace()
+    text = "McLaren was 8 km/h down on top speed, at 322 km/h, the field's lowest in qualifying."
+    issues = flag_qualifying_only_finding(text, trace)
+    assert len(issues) == 1
+    assert "qualifying-only" in issues[0]
+
+
+def test_flag_qualifying_only_finding_blocks_qualifying_lap_deployment_clipping():
+    # get_deployment reads the qualifying lap only (per its own docstring): a finding built
+    # entirely on it is qualifying-only, even though it's a "deployment" category candidate.
+    trace = _quali_candidate_trace() + [
+        {
+            "tool": "get_deployment",
+            "args": {},
+            "result": json.dumps([{"driver": "NOR", "constructor": "McLaren", "total_clip_m": 240.5, "max_clip_m": 150.0}]),
+        }
+    ]
+    text = "McLaren's electrical deployment ran out for 240.5 metres before the braking zone."
+    issues = flag_qualifying_only_finding(text, trace)
+    assert len(issues) == 1
+    assert "qualifying-only" in issues[0]
+
+
+def test_flag_qualifying_only_finding_allows_race_session_deployment_character():
+    # _mine_ers_character candidates are session_type="R" (race full-throttle acceleration
+    # trace), a genuinely race-sourced deployment finding distinct from Q/SQ clipping.
+    trace = _quali_candidate_trace() + [
+        {
+            "tool": "get_candidate_insights",
+            "args": {"category": "deployment"},
+            "result": json.dumps(
+                [
+                    {
+                        "rank": 1,
+                        "category": "deployment",
+                        "signal_type": "ers_deployment_character",
+                        "magnitude": 0.038,
+                        "confidence": 0.7,
+                        "source_refs": [
+                            {
+                                "type": "ers_deployment_character",
+                                "constructor": "McLaren",
+                                "harvesting_slope_ms2_per_kmh": -0.115,
+                                "session_type": "R",
+                            }
+                        ],
+                    }
+                ]
+            ),
+        }
+    ]
+    text = "McLaren's race acceleration trace showed a -0.115 harvesting slope through the band."
+    assert flag_qualifying_only_finding(text, trace) == []
+
+
+def test_flag_qualifying_only_finding_allows_qualifying_context_for_a_race_finding():
+    trace = _quali_candidate_trace() + [
+        {
+            "tool": "get_session_results",
+            "args": {"session_type": "R"},
+            "result": json.dumps([{"position": 4, "driver": "NOR", "gap_to_leader": 12.5}]),
+        }
+    ]
+    # cites a qualifying-sourced number (322 km/h) purely as context, plus a race-only number
+    # (12.5s gap) that anchors the actual finding: must NOT be flagged.
+    text = "McLaren qualified with a 322 km/h top speed but finished 12.5 seconds off the winner."
+    assert flag_qualifying_only_finding(text, trace) == []
+
+
+def test_flag_qualifying_only_finding_skips_when_no_quali_data_in_trace():
+    trace = [{"tool": "get_session_results", "args": {}, "result": "[]"}]
+    assert flag_qualifying_only_finding("Some insight with 42 seconds cited.", trace) == []
+
+
+def test_validate_insights_allow_qualifying_only_flag_scopes_the_check():
+    trace = _quali_candidate_trace()
+    insights = [
+        {
+            "team": "McLaren",
+            "header": "McLaren lacked top speed",
+            "explanation_web": "McLaren was 8 km/h down on top speed, at 322 km/h, the field's lowest.",
+            "explanation_email": "McLaren was the slowest car in qualifying.",
+        }
+    ]
+    # Race scope (default): the qualifying-only finding must be caught.
+    flagged = validate_insights(insights, trace)
+    assert 1 in flagged and any("qualifying-only" in issue for issue in flagged[1])
+
+    # Qualifying-agent scope: the exact same insight is legitimate and must NOT be flagged.
+    flagged_quali = validate_insights(insights, trace, allow_qualifying_only=True)
+    assert not any("qualifying-only" in issue for issues in flagged_quali.values() for issue in issues)

@@ -113,6 +113,7 @@ def _insights(
     model: type = Insight,
     required_keys: tuple[str, ...] = _REQUIRED_KEYS,
     result_key: str = "insight_count",
+    allow_qualifying_only: bool = False,
 ) -> dict:
     """Generate `count` insights, rejecting and re-prompting on any guardrail violation.
     Nothing is persisted, and the pipeline fails loud, unless a clean set is produced within
@@ -141,7 +142,7 @@ def _insights(
         trace = extract_trace(messages)
         flagged = _merge_flags(
             _flag_all(insights),
-            validate_insights(insights, trace),
+            validate_insights(insights, trace, allow_qualifying_only=allow_qualifying_only),
         )
         if not flagged:
             trace = extract_trace(messages)
@@ -170,6 +171,7 @@ def _quali_insights(state: PipelineState, agent_runner) -> dict:
         model=QualiInsight,
         required_keys=_QUALI_REQUIRED_KEYS,
         result_key="quali_insight_count",
+        allow_qualifying_only=True,
     )
 
 

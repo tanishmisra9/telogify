@@ -193,6 +193,15 @@ _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
         'explanation_email with the full session name ("qualifying", "sprint qualifying", '
         '"the race", or "the sprint").',
     ),
+    (
+        "qualifying-only finding",
+        "Discard this candidate entirely, do not just reword it. Pick a genuinely different "
+        "finding anchored in race, sprint, or tyre evidence, or race-session deployment "
+        "character (get_race_deployment_character); qualifying-lap deployment clipping "
+        "(get_deployment) counts as qualifying data too, so pair it with a real race-session "
+        "number if you use it. A qualifying position or gap is fine as supporting context, but "
+        "not as the insight's own subject and number.",
+    ),
 )
 
 
