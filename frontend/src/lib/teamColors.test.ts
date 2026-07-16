@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { teamCode, resolveTeamColor, teamColorWithAlpha, teamShortName } from './teamColors'
+import { teamCode, resolveTeamColor, teamColorWithAlpha, teamShortName, teammateShade } from './teamColors'
 
 describe('teamShortName', () => {
   it('shortens the officially-long names', () => {
@@ -34,6 +34,20 @@ describe('resolveTeamColor', () => {
   it('falls back for unknown or null', () => {
     expect(resolveTeamColor('Nope')).toBe('var(--color-muted)')
     expect(resolveTeamColor(null)).toBe('var(--color-muted)')
+  })
+})
+
+describe('teammateShade', () => {
+  it('darkens light team colors (Mercedes cyan)', () => {
+    // #27F4D2 halved toward black
+    expect(teammateShade('Mercedes')).toBe('rgb(20, 122, 105)')
+  })
+  it('lightens dark team colors (Ferrari red)', () => {
+    // #E8002D halved toward white
+    expect(teammateShade('Ferrari')).toBe('rgb(244, 128, 150)')
+  })
+  it('passes the fallback var through untouched', () => {
+    expect(teammateShade(null)).toBe('var(--color-muted)')
   })
 })
 

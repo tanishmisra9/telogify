@@ -82,6 +82,24 @@ export function resolveTeamColor(teamName: string | null): string {
   return (teamName && TEAM_COLORS[teamName]) || FALLBACK_COLOR
 }
 
+/**
+ * A dramatically different shade of the team color for the second of two same-team lines
+ * (the usual pole fight this season is teammates). Direction adapts to the color, not the
+ * theme: light colors (Mercedes cyan) darken, dark colors (Ferrari red) lighten — so the two
+ * shades stay far apart on BOTH the cream and espresso themes. (Mixing toward the theme ink
+ * was tried first and failed in night mode: it lightens there, converging with already-light
+ * team colors.)
+ */
+export function teammateShade(teamName: string | null): string {
+  const hex = resolveTeamColor(teamName)
+  if (!hex.startsWith('#') || hex.length < 7) return hex
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+  const toward = luminance > 0.45 ? 0 : 255
+  const mix = (c: number) => Math.round(c + (toward - c) * 0.5)
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`
+}
+
 /** Fill with reduced opacity for box surfaces. */
 export function teamColorWithAlpha(teamName: string | null, alpha: number): string {
   const hex = resolveTeamColor(teamName)

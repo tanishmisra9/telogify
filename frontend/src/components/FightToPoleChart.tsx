@@ -1,7 +1,8 @@
 import { useState, type MouseEvent } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
+import { ChartTabs } from '@/components/ChartTabs'
 import { driverName } from '@/lib/drivers'
-import { resolveTeamColor } from '@/lib/teamColors'
+import { resolveTeamColor, teammateShade } from '@/lib/teamColors'
 import { drawTransition } from '@/lib/motion'
 import { useSvgTextScale } from '@/lib/useSvgTextScale'
 import type { QualiTraceData, QualiTraceDriver } from '@/lib/api'
@@ -46,20 +47,11 @@ function yScale(values: number[], height: number, opts?: { includeZero?: boolean
   return { min, max, y: (v: number) => height * (1 - (v - min) / (max - min)) }
 }
 
-function DriverBadge({ driver, color, dashed }: { driver: QualiTraceDriver; color: string; dashed: boolean }) {
+function DriverBadge({ driver, color }: { driver: QualiTraceDriver; color: string }) {
   return (
     <div className="flex items-center gap-2">
       <svg width="20" height="8" aria-hidden="true">
-        <line
-          x1={0}
-          x2={20}
-          y1={4}
-          y2={4}
-          stroke={color}
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeDasharray={dashed ? '4 3' : undefined}
-        />
+        <line x1={0} x2={20} y1={4} y2={4} stroke={color} strokeWidth={2.5} strokeLinecap="round" />
       </svg>
       <div>
         <p className="font-display text-sm font-semibold text-ink">{driverName(driver.driver)}</p>
@@ -76,6 +68,10 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   const reduce = useReducedMotion()
   const { ref: svgRef, textPx } = useSvgTextScale(WIDTH)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  // SVG-space y of the cursor, so the readout follows the mouse instead of sitting pinned to
+  // the top of the chart.
+  const [hoveredY, setHoveredY] = useState(0)
+  const [unit, setUnit] = useState<'kmh' | 'mph'>('kmh')
 
   const [p1, p2] = data.drivers
   if (!p1 || !p2 || data.grid_m.length === 0) {
@@ -83,11 +79,19 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   }
 
   const p1Color = resolveTeamColor(p1.constructor)
-  const p2Color = resolveTeamColor(p2.constructor)
+  const p2Base = resolveTeamColor(p2.constructor)
   // Keyed off the resolved colors, not the raw constructor strings: two drivers with missing
   // team data both fall back to the same muted color and need the same disambiguation a real
   // same-team pair does.
-  const sameTeam = p1Color === p2Color
+  const sameTeam = p1Color === p2Base
+  // Teammates (the usual pole fight this season): the same hue twice is unreadable, so P2 takes
+  // a dramatically ink-shifted shade of the team color instead.
+  const p2Color = sameTeam ? teammateShade(p2.constructor) : p2Base
+
+  // Chart geometry stays in km/h regardless of unit (a linear conversion doesn't change the
+  // curve's shape); only the displayed numbers convert.
+  const toDisplay = (v: number) => (unit === 'mph' ? v * 0.621371 : v)
+  const unitLabel = unit === 'mph' ? 'mph' : 'km/h'
 
   const maxDist = data.grid_m[data.grid_m.length - 1] || 1
   const x = (m: number) => (m / maxDist) * INNER_W
@@ -112,7 +116,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   const throttle = yScale([], PANEL_H, { fixed: [0, 100] })
 
   const panels = [
-    { key: 'speed', label: 'Top speed (km/h)', offset: 0, scale: speed, p1: p1.speed_kmh, p2: p2.speed_kmh },
+    { key: 'speed', label: `Top speed (${unitLabel})`, offset: 0, scale: speed, p1: p1.speed_kmh, p2: p2.speed_kmh },
     { key: 'delta', label: 'Delta to pole (s)', offset: PANEL_H + PANEL_GAP, scale: delta, p1: p1.delta_s, p2: p2.delta_s },
     { key: 'throttle', label: 'Throttle (%)', offset: 2 * (PANEL_H + PANEL_GAP), scale: throttle, p1: p1.throttle_pct, p2: p2.throttle_pct },
   ]
@@ -121,18 +125,31 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
     const svg = svgRef.current
     if (!svg) return
     const rect = svg.getBoundingClientRect()
+    // One scale factor serves both axes: the viewBox aspect ratio is preserved.
     const scale = WIDTH / rect.width
     const xSvg = (e.clientX - rect.left) * scale - MARGIN.left
     const frac = Math.min(1, Math.max(0, xSvg / INNER_W))
     setHoveredIndex(Math.round(frac * (data.grid_m.length - 1)))
+    setHoveredY((e.clientY - rect.top) * scale - MARGIN.top)
   }
 
   return (
     <div className="glass w-full rounded-[--radius-panel] p-5">
-      <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">The fight to pole</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">The fight to pole</h2>
+        <ChartTabs
+          ariaLabel="Speed unit"
+          active={unit}
+          onChange={setUnit}
+          tabs={[
+            { value: 'kmh', label: 'KM/H', hint: 'kilometres per hour' },
+            { value: 'mph', label: 'MPH', hint: 'miles per hour' },
+          ]}
+        />
+      </div>
       <div className="mt-4 flex flex-wrap gap-8">
-        <DriverBadge driver={p1} color={p1Color} dashed={false} />
-        <DriverBadge driver={p2} color={p2Color} dashed={sameTeam} />
+        <DriverBadge driver={p1} color={p1Color} />
+        <DriverBadge driver={p2} color={p2Color} />
       </div>
 
       <svg
@@ -193,7 +210,6 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
                 strokeWidth={2.5}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeDasharray={sameTeam ? '6 4' : undefined}
                 initial={reduce ? false : { pathLength: 0, opacity: 0 }}
                 animate={{ pathLength: 1, opacity: 1 }}
                 transition={reduce ? { duration: 0 } : drawTransition}
@@ -220,27 +236,27 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
           {hoveredIndex != null && (
             <foreignObject
               x={Math.min(INNER_W - 210, Math.max(0, xs[hoveredIndex] + 12))}
-              y={0}
+              // Tracks the cursor (offset below it, clamped inside the panels) rather than
+              // sitting pinned to the top of the chart.
+              y={Math.min(PANELS_H - 130, Math.max(0, hoveredY + 16))}
               width={210}
               height={130}
               className="pointer-events-none"
             >
               <div className="glass rounded-xl px-3 py-2 text-xs text-ink">
                 <div className="text-muted">{Math.round(data.grid_m[hoveredIndex])}m</div>
-                {[{ d: p1, color: p1Color, dashed: false }, { d: p2, color: p2Color, dashed: sameTeam }].map(
-                  ({ d: drv, color, dashed }) => (
-                    <div key={drv.driver} className="mt-1.5 flex items-center gap-2">
-                      <svg width="14" height="6" aria-hidden="true">
-                        <line x1={0} x2={14} y1={3} y2={3} stroke={color} strokeWidth={2} strokeDasharray={dashed ? '3 2' : undefined} />
-                      </svg>
-                      <div className="leading-tight">
-                        <span className="num font-semibold text-ink">{drv.speed_kmh[hoveredIndex].toFixed(0)} km/h</span>
-                        <span className="ml-2 num text-muted">{drv.delta_s[hoveredIndex] >= 0 ? '+' : ''}{drv.delta_s[hoveredIndex].toFixed(3)}s</span>
-                        <span className="ml-2 num text-muted">{drv.throttle_pct[hoveredIndex].toFixed(0)}%</span>
-                      </div>
+                {[{ d: p1, color: p1Color }, { d: p2, color: p2Color }].map(({ d: drv, color }) => (
+                  <div key={drv.driver} className="mt-1.5 flex items-center gap-2">
+                    <svg width="14" height="6" aria-hidden="true">
+                      <line x1={0} x2={14} y1={3} y2={3} stroke={color} strokeWidth={2} />
+                    </svg>
+                    <div className="leading-tight">
+                      <span className="num font-semibold text-ink">{toDisplay(drv.speed_kmh[hoveredIndex]).toFixed(0)} {unitLabel}</span>
+                      <span className="ml-2 num text-muted">{drv.delta_s[hoveredIndex] >= 0 ? '+' : ''}{drv.delta_s[hoveredIndex].toFixed(3)}s</span>
+                      <span className="ml-2 num text-muted">{drv.throttle_pct[hoveredIndex].toFixed(0)}%</span>
                     </div>
-                  )
-                )}
+                  </div>
+                ))}
               </div>
             </foreignObject>
           )}
@@ -250,8 +266,9 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
       <p className="mt-4 text-xs text-muted">
         Telemetry from each driver's fastest qualifying lap, aligned by position on track; dotted
         lines mark turn numbers. Delta is the running time gap to the pole lap: below the line means
-        ahead at that point, above means behind, and where it ends is the final gap. Move over the
-        chart to scrub through the lap.
+        ahead at that point, above means behind, and where it ends is the final gap. Throttle is how
+        much of full power the driver is asking for: 100% is flat out, and every dip is a braking
+        zone or a corner taken partly lifted. Move over the chart to scrub through the lap.
       </p>
     </div>
   )
