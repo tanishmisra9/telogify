@@ -116,7 +116,16 @@ function PracticeTopSpeeds({ data }: { data: TopSpeedsData }) {
         />
       </div>
       <div className="mt-5">
-        <BarChart rows={bars} formatValue={(v) => `${v.toFixed(0)} ${unitLabel}`} domainMin={domainMin} />
+        <BarChart
+          rows={bars}
+          // Axis ticks call this with a synthetic row (id: '', see BarChart's own tick
+          // comment) and are left-anchored inside a fixed 60px margin: appending the unit
+          // there overflows the SVG's left edge and gets clipped ("331 km/h" -> "31 km/h").
+          // The KM/H/MPH toggle already states the unit, so ticks stay bare; only the hover
+          // callout (which has its own sized panel) shows the full "331 km/h".
+          formatValue={(v, row) => (row?.id === '' ? v.toFixed(0) : `${v.toFixed(0)} ${unitLabel}`)}
+          domainMin={domainMin}
+        />
       </div>
       <p className="mt-2 text-xs text-muted">
         Indicative: engine modes and fuel loads vary between practice runs, so a deficit here may
