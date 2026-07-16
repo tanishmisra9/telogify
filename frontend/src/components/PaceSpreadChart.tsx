@@ -17,7 +17,11 @@ const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 // fits the whole field for free; a narrow phone card only fits a handful, so the chart scrolls
 // horizontally instead of shrinking a fluid-scaled column until the longest label line (the
 // tyre-compound string, sometimes 2-3x wider than a driver code) overlaps its neighbor.
-const MIN_SLOT = 60
+// A floor, not a target: slots only compress to this when the container is tight, where the
+// alternative is a horizontal scrollbar for a handful of px. 52px still clears the widest
+// bottom label stack (driver code / mean / gap / tyre string); a full 21-driver field fits a
+// 1280px viewport without scrolling.
+const MIN_SLOT = 52
 
 // Inline d3-scaleBand (paddingInner 0.35, paddingOuter 0.12) so we don't pull in d3-scale.
 function bandLayout(innerW: number, n: number) {
@@ -52,7 +56,10 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width))
+    // Floored: contentRect.width is fractional, and the SVG (max-w-none) sized from it can come
+    // out a sub-pixel wider than the container's integer layout box -- which reads as a phantom
+    // 1px horizontal scrollbar even when the whole field fits.
+    const observer = new ResizeObserver(([entry]) => setContainerWidth(Math.floor(entry.contentRect.width)))
     observer.observe(el)
     let scrollEndTimeout: ReturnType<typeof setTimeout>
     const onScroll = () => {
