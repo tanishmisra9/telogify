@@ -20,7 +20,11 @@ def create(settings: Settings) -> LLMProvider:
         return ChatOpenAI(
             model=settings.openai_model,
             api_key=settings.openai_api_key,
-            max_tokens=4096,
+            # Reasoning models spend this budget on hidden reasoning tokens BEFORE any text:
+            # 4096 produced fully-empty final messages on long sprint-weekend transcripts
+            # (2026 R2, three parse failures in a row). 16384 leaves reasoning headroom while
+            # still capping a runaway response; the JSON answer itself is only ~600 tokens.
+            max_tokens=16384,
         )
 
     def build_system_message(prompt: str) -> SystemMessage:

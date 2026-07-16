@@ -76,7 +76,9 @@ def test_openai_build_model_passes_settings(monkeypatch):
     provider.build_model()
     assert captured["model"] == "gpt-4.1"
     assert captured["api_key"] == "sk-test"
-    assert captured["max_tokens"] == 4096
+    # Reasoning models spend max_tokens on hidden reasoning before any text; 4096 produced
+    # empty final messages on sprint weekends (see agent/llm/openai.py).
+    assert captured["max_tokens"] == 16384
     assert "temperature" not in captured
 
 
