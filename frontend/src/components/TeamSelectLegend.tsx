@@ -4,6 +4,10 @@ import { teamColorWithAlpha } from '@/lib/teamColors'
 export interface TeamSelectRow {
   team: string
   value?: string
+  // A row with no data for the current filter (e.g. a team that never ran the selected tyre
+  // compound): rendered greyed, non-interactive, and unranked. Consumers that never have this
+  // case (SeasonTrendChart, SeasonDeploymentChart) simply omit it.
+  disabled?: boolean
 }
 
 // Click-to-isolate chart legend, shared by every chart that lets you click a team to isolate
@@ -31,6 +35,19 @@ export function TeamSelectLegend({
   return (
     <ol className="[column-count:2] [column-gap:0]">
       {rows.map((r, i) => {
+        // Disabled rows are the array suffix (consumers append them), so ranked rows keep a
+        // contiguous 1..K numbering off the index; disabled rows show no number at all.
+        if (r.disabled) {
+          return (
+            <li key={r.team}>
+              <div className="grid min-h-11 w-full [break-inside:avoid] grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1 text-sm opacity-40">
+                <span aria-hidden />
+                <TeamMark team={r.team} className="font-medium" />
+                {r.value && <span className="num text-xs text-muted">{r.value}</span>}
+              </div>
+            </li>
+          )
+        }
         const isSelected = selected.has(r.team)
         const isDimmed = isFiltering && !isSelected
         return (

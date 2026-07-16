@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
 import { TeamMark } from '@/components/TeamMark'
-import { TeamSelectLegend } from '@/components/TeamSelectLegend'
+import { TeamSelectLegend, type TeamSelectRow } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
 import { useSvgTextScale } from '@/lib/useSvgTextScale'
@@ -15,47 +15,25 @@ const MARGIN = { top: 16, right: 24, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 
-// A compound switch can change the panel's natural height (a compound with no laps swaps the
-// whole chart for a one-line message; legend row counts differ per compound). Tweening the
-// wrapper's measured height turns that jump into the same 0.6s morph the fit lines use.
-function SmoothHeight({ children }: { children: React.ReactNode }) {
-  const reduce = useReducedMotion()
-  const innerRef = useRef<HTMLDivElement>(null)
-  const [height, setHeight] = useState<number | 'auto'>('auto')
-
-  useEffect(() => {
-    const el = innerRef.current
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => setHeight(entry.contentRect.height))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  return (
-    <m.div
-      animate={{ height }}
-      transition={reduce ? { duration: 0 } : morphTransition}
-      className="overflow-hidden"
-    >
-      <div ref={innerRef}>{children}</div>
-    </m.div>
-  )
-}
-
 // Mobile has no chart to isolate a line on, so the click-to-select legend would be a control
-// with nothing to control. This is the same ranking, read-only.
-function DegradationRankingList({ rows }: { rows: { team: string; value: string }[] }) {
+// with nothing to control. This is the same ranking, read-only. Rows are a constant set across
+// compound switches (a team without a stint on the selected compound is greyed and appended,
+// not removed), so the list height never changes.
+function DegradationRankingList({ rows }: { rows: TeamSelectRow[] }) {
   return (
     <ol className="flex flex-col gap-1">
       {rows.map((r, i) => (
         <li
           key={r.team}
-          className="grid min-h-11 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-sm px-2 py-1 text-sm"
-          style={{ backgroundColor: teamColorWithAlpha(r.team, 0.09) }}
+          className={`grid min-h-11 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-sm px-2 py-1 text-sm ${
+            r.disabled ? 'opacity-40' : ''
+          }`}
+          style={r.disabled ? undefined : { backgroundColor: teamColorWithAlpha(r.team, 0.09) }}
         >
-          <span className="num text-xs text-muted">{i + 1}</span>
+          {/* Disabled rows are the array suffix, so ranked rows keep a contiguous 1..K count. */}
+          {r.disabled ? <span aria-hidden /> : <span className="num text-xs text-muted">{i + 1}</span>}
           <TeamMark team={r.team} className="font-medium" />
-          <span className="num text-xs text-ink">{r.value}</span>
+          <span className={`num text-xs ${r.disabled ? 'text-muted' : 'text-ink'}`}>{r.value}</span>
         </li>
       ))}
     </ol>
@@ -114,13 +92,23 @@ export function DegradationChart({ data }: { data: DegradationData }) {
       : [p.tyre_age, p.tyre_age]
   }
 
-  // Ranked worst-wear-first (steepest slope first) so the chart's most-flagged line and the
-  // list's top row are the same story read two ways, not two columns whose order is ambiguous.
+  // Constant row set across compound switches: every team that produced any fit, so the list
+  // (and thus the panel) never changes height. Teams WITH a stint on the selected compound are
+  // ranked worst-wear-first at the top (the chart's most-flagged line and the list's top row are
+  // the same story read two ways); teams WITHOUT one are greyed, unranked, and appended in a
+  // stable order rather than removed.
+  const allTeams = Array.from(new Set(data.fits.map((f) => f.constructor)))
   const rankedFits = [...fits].sort((a, b) => b.slope_s_per_lap - a.slope_s_per_lap)
-  const rankedRows = rankedFits.map((f) => ({
+  const activeRows: TeamSelectRow[] = rankedFits.map((f) => ({
     team: f.constructor,
     value: `${f.slope_s_per_lap >= 0 ? '+' : ''}${f.slope_s_per_lap.toFixed(3)}s/lap`,
   }))
+  const activeTeams = new Set(rankedFits.map((f) => f.constructor))
+  const greyedRows: TeamSelectRow[] = allTeams
+    .filter((t) => !activeTeams.has(t))
+    .sort((a, b) => a.localeCompare(b))
+    .map((team) => ({ team, value: 'not run', disabled: true }))
+  const legendRows = [...activeRows, ...greyedRows]
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4)
   const xTickCount = Math.min(6, xMax + 1)
   const xTicks = Array.from({ length: xTickCount }, (_, i) => Math.round((xMax * i) / (xTickCount - 1 || 1)))
@@ -142,7 +130,6 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         />
       </div>
 
-      <SmoothHeight>
       {points.length === 0 ? (
         <p className="text-sm text-muted">No {compound.toLowerCase()} laps this race.</p>
       ) : (
@@ -225,22 +212,21 @@ export function DegradationChart({ data }: { data: DegradationData }) {
       <div className="mt-6 border-t border-border pt-5">
         <div className="hidden md:block">
           <TeamSelectLegend
-            rows={rankedRows}
+            rows={legendRows}
             selected={selected}
             onToggle={toggleTeam}
             isFiltering={isFiltering}
           />
         </div>
         <div className="md:hidden">
-          <DegradationRankingList rows={rankedRows} />
+          <DegradationRankingList rows={legendRows} />
         </div>
       </div>
       <p className="mt-4 hidden text-xs text-muted md:block">
         Fuel-corrected lap time against tyre age; a bold line marks wear well above the field.
         Ranked worst wear first below — click a team to isolate its line, click again to bring it
-        back.
+        back. Teams that never ran the selected compound are greyed out.
       </p>
-      </SmoothHeight>
     </m.div>
   )
 }
