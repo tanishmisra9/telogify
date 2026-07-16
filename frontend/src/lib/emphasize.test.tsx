@@ -37,6 +37,13 @@ describe('emphasize', () => {
   it('does not swallow the first letter of the next word after a bare number', () => {
     expect(accents('on lap 7, served notice that it could win')).toEqual(['7,'])
   })
+  it('does not read digits embedded in name tokens as data', () => {
+    expect(accents('Haas F1 Team lost 0.3 seconds')).toEqual(['0.3 seconds'])
+    expect(accents('the W17 chassis')).toEqual([])
+  })
+  it('still accents the second number of a hyphenated range', () => {
+    expect(accents('through 250-290 km/h')).toEqual(['250', '290 km/h'])
+  })
 })
 
 describe('bindMetricSpaces', () => {

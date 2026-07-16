@@ -12,9 +12,13 @@ export function bindMetricSpaces(text: string): string {
   return text.replace(re, '$1\u00a0$2')
 }
 
-// The trailing (?![a-zA-Z]) stops the bare "s"/"m" unit alternatives from swallowing the first
-// letter of the next word ("lap 7, served" must not match "7, s" out of "served").
-const NUM_RE = /(\d[\d.,]*(?:st|nd|rd|th|\s?(?:seconds?|metres?|meters?|km\/h|mph|m\/s²|°C|%|km|m|s)(?![a-zA-Z]))?)/g
+// The leading (?<![A-Za-z\d]) stops digits embedded in name tokens from reading as data ("Haas
+// F1 Team" must not highlight the "1"); \d is in the lookbehind too so a blocked run stays
+// blocked ("W17" must not fall through to match the "7"). A real number is never preceded by a
+// bare digit: the earlier digit would have started the match itself. The trailing (?![a-zA-Z])
+// stops the bare "s"/"m" unit alternatives from swallowing the first letter of the next word
+// ("lap 7, served" must not match "7, s" out of "served").
+const NUM_RE = /(?<![A-Za-z\d])(\d[\d.,]*(?:st|nd|rd|th|\s?(?:seconds?|metres?|meters?|km\/h|mph|m\/s²|°C|%|km|m|s)(?![a-zA-Z]))?)/g
 
 export function emphasize(text: string): ReactNode[] {
   return text.split(NUM_RE).map((part, i) =>
