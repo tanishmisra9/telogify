@@ -1,15 +1,16 @@
-import { TeamRule } from '@/components/TeamMark'
 import { driverName } from '@/lib/drivers'
-import { teamColorWithAlpha } from '@/lib/teamColors'
+import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import type { ResultRow } from '@/lib/api'
 
 // No items-center: a cell with genuinely empty content (no points scored) would then get a
 // shorter box than its text-bearing row-mates, leaving a gap in the team-color wash. Default
 // stretch fills every cell to the row's full height instead; the shared py-3 padding already
 // centers content visually.
-// Driver column narrows on mobile: with the full name hidden there (room's sake), the 3-letter
-// code alone doesn't need 10rem.
-const GRID = 'grid grid-cols-[3rem_5rem_1fr_7.5rem_3.5rem_7rem] sm:grid-cols-[3rem_10rem_1fr_7.5rem_3.5rem_7rem]'
+// First column is the full-height team-color bar (the F1 timing-graphics idiom) — a real grid
+// cell, not a border-left, so cell-stretch gives it the row's full height for free.
+// Driver shows the full name on sm+ and just the 3-letter code on mobile, so the column is
+// narrow there. On sm+ driver and team split the slack (1.2fr/1fr) instead of team hoarding it.
+const GRID = 'grid grid-cols-[6px_2.75rem_3.5rem_1fr_7.5rem_3.5rem_6.5rem] sm:grid-cols-[6px_3.5rem_1.2fr_1fr_8.5rem_4rem_7.5rem]'
 const HEAD = 'border-b border-border px-2 pb-2 text-sm font-semibold text-ink'
 
 // Cells touch (no grid gap) with matching horizontal padding instead, so a row's border-top
@@ -28,6 +29,7 @@ export function Results({ rows }: { rows: ResultRow[] }) {
       <ol className={`${GRID} min-w-[440px] sm:min-w-[560px]`} aria-label="Finishing order">
         <li className="contents" aria-hidden>
           <span className={HEAD} />
+          <span className={HEAD} />
           <span className={HEAD}>Driver</span>
           <span className={HEAD}>Team</span>
           <span className={HEAD}>Tyres</span>
@@ -39,15 +41,13 @@ export function Results({ rows }: { rows: ResultRow[] }) {
           const cell = { backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }
           return (
             <li key={`${r.position}-${r.driver}`} className="contents">
+              {/* No border-t here: the bars stay contiguous down the table's left edge, and the
+                  row separators read as belonging to the content columns. */}
+              <span aria-hidden style={{ backgroundColor: resolveTeamColor(r.constructor) }} />
               <span className={`num px-2 py-3 text-sm text-muted ${b}`} style={cell}>{r.position ?? '–'}</span>
-              <span className={`flex items-center gap-2 px-2 py-3 ${b}`} style={cell}>
-                <TeamRule team={r.constructor} className="w-[4px]" />
-                <span className="min-w-0">
-                  <span className="hidden font-display font-medium text-ink sm:block">{driverName(r.driver)}</span>
-                  <span className="block font-display text-sm font-medium text-ink sm:text-xs sm:font-normal sm:text-muted">
-                    {r.driver}
-                  </span>
-                </span>
+              <span className={`px-2 py-3 ${b}`} style={cell}>
+                <span className="hidden font-display font-medium text-ink sm:block">{driverName(r.driver)}</span>
+                <span className="block font-display text-sm font-medium text-ink sm:hidden">{r.driver}</span>
               </span>
               <span className={`px-2 py-3 text-sm text-ink ${b}`} style={cell}>{r.constructor}</span>
               <span className={`num px-2 py-3 text-sm tracking-wide text-ink ${b}`} style={cell}>{r.strategy}</span>
