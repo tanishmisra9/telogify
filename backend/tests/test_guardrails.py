@@ -103,6 +103,32 @@ def test_flags_drs_mentions():
     assert flag_unsupported_claims("Hamilton set the fastest final sector") == []
 
 
+def test_flags_analysis_jargon_leaks():
+    # Internal category/tool/field labels must never leak into prose (real leaks from the
+    # July 2026 quali insights).
+    assert "car-character" in flag_unsupported_claims(
+        "set the benchmark in this qualifying car-character sample"
+    )
+    assert "readout" in flag_unsupported_claims("the sector readout has Mercedes quickest")
+    assert "corner check" in flag_unsupported_claims("McLaren led the shared fast-corner check")
+    assert "shared fastest corner" in flag_unsupported_claims(
+        "quickest through the shared fastest corner"
+    )
+    assert "drag label" in flag_unsupported_claims('a drag label of "draggy, high-downforce"')
+    # retrieval-process scope hedges (second round of observed leaks)
+    assert "returned here" in flag_unsupported_claims("the lowest top speed among the five cars returned here")
+    assert "returned as" in flag_unsupported_claims("the only car returned as quickest for top speed")
+    assert "returned data" in flag_unsupported_claims("the sharpest slope in the returned data")
+    assert "compared group" in flag_unsupported_claims("the quickest lap in the compared group")
+    assert "compared cars" in flag_unsupported_claims("the highest minimum speed among the compared cars")
+    assert "labelled" in flag_unsupported_claims("was labelled efficient, low drag")
+    assert "benchmark" in flag_unsupported_claims("0.809 seconds slower than the Mercedes benchmark")
+    assert "checked" in flag_unsupported_claims("among the leading finishers checked")
+    # plain corner language and plain subset scoping must not false-fire
+    assert flag_unsupported_claims("quickest through Turn 8, the fastest corner on the track") == []
+    assert flag_unsupported_claims("the highest minimum speed among the five fastest qualifiers") == []
+
+
 def test_clean_prose_is_not_flagged():
     text = (
         "George Russell converted pole into a controlled win, finishing 1.6 seconds clear. "

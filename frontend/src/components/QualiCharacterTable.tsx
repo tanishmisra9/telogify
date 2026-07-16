@@ -14,6 +14,9 @@ import type { QualiCharacterData, QualiInsightItem } from '@/lib/api'
 // Collapsible to just its heading on mobile, open by default; desktop always shows the full
 // card outright (the chevron only renders on mobile, and the CSS override on the text keeps it
 // visible on desktop even in the state's closed default, so there's no toggle to reach for there).
+// No team-name kicker: the LLM header IS the card's top line (it names the team itself), with
+// the TeamRule + background wash carrying team identity — a kicker repeating the header's first
+// word read as noise.
 function InsightCard({ item }: { item: QualiInsightItem }) {
   const [open, setOpen] = useState(true)
   return (
@@ -25,11 +28,13 @@ function InsightCard({ item }: { item: QualiInsightItem }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 text-left md:pointer-events-none"
+        className="flex w-full items-start justify-between gap-3 text-left md:pointer-events-none"
       >
-        <div className="flex items-center gap-2">
-          {item.team && <TeamRule team={item.team} />}
-          <p className="kicker text-accent">{item.team ?? 'Qualifying'}</p>
+        <div className="flex items-start gap-2.5">
+          {item.team && <TeamRule team={item.team} className="mt-1.5 w-[4px]" />}
+          <p className="font-display text-xl font-semibold leading-snug tracking-tight text-ink">
+            {bindMetricSpaces(item.header)}
+          </p>
         </div>
         <Tooltip label={open ? 'Collapse' : 'Expand'}>
           <span
@@ -58,8 +63,7 @@ function InsightCard({ item }: { item: QualiInsightItem }) {
       {/* Desktop: always shown, nothing to animate. Mobile: animated height/opacity collapse,
           matching every other disclosure on the site instead of CSS `hidden`'s instant snap. */}
       <div className="hidden md:block">
-        <p className="mt-3 text-[15px] font-semibold leading-snug text-ink">{bindMetricSpaces(item.header)}</p>
-        <p className="mt-2 text-[15px] leading-relaxed text-ink">{emphasize(item.explanation_web)}</p>
+        <p className="mt-2.5 text-[15px] leading-relaxed text-ink">{emphasize(item.explanation_web)}</p>
       </div>
       <div className="md:hidden">
         <AnimatePresence initial={false}>
@@ -71,8 +75,7 @@ function InsightCard({ item }: { item: QualiInsightItem }) {
               transition={expandTransition}
               className="overflow-hidden"
             >
-              <p className="mt-3 text-[15px] font-semibold leading-snug text-ink">{bindMetricSpaces(item.header)}</p>
-              <p className="mt-2 text-[15px] leading-relaxed text-ink">{emphasize(item.explanation_web)}</p>
+              <p className="mt-2.5 text-[15px] leading-relaxed text-ink">{emphasize(item.explanation_web)}</p>
             </m.div>
           )}
         </AnimatePresence>

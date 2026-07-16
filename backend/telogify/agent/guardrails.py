@@ -95,6 +95,32 @@ _BLOCKLIST = [
     "retired because",
     # causal retirement narratives tied to steward-noted incidents (see validation.py too)
     "retirement traces",
+    # analysis-pipeline jargon leaking into prose: internal category/tool/field labels are
+    # not broadcaster language ("qualifying car-character sample", "the sector readout has",
+    # "led the shared fast-corner check", 'a drag label of "draggy, high-downforce"')
+    "car-character",
+    "car character",
+    "character sample",
+    "readout",
+    "corner check",
+    "shared fastest corner",
+    "shared fast-corner",
+    "drag label",
+    "drag_label",
+    # data-retrieval process leaking into prose as scope hedges ("the five cars returned
+    # here", "the only car returned as quickest", "in the returned data", "the compared
+    # group", "was labelled efficient, low drag", "the Mercedes benchmark")
+    "returned here",
+    "returned as",
+    "returned data",
+    "data returned",
+    "compared group",
+    "compared cars",
+    "compared qualifying",
+    "labelled",
+    "labeled",
+    "benchmark",
+    "checked",
 ]
 
 _NUMBER_WORD = (
