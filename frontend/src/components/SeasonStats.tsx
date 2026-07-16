@@ -2,7 +2,7 @@ import { useApi, type SeasonStats as SeasonStatsData, type WeekendSummary } from
 
 const STATS = [
   { key: 'total_laps', label: 'Laps analysed', format: (v: number) => v.toLocaleString() },
-  { key: 'total_km', label: 'Km of telemetry', format: (v: number) => Math.round(v).toLocaleString() },
+  { key: 'total_km', label: 'Km ingested', format: (v: number) => Math.round(v).toLocaleString() },
 ] as const
 
 // Landing-page proof-of-scale, below the live insight (not inside the countdown): two headline
@@ -29,7 +29,7 @@ export function SeasonStats() {
           {STATS.map(({ key, label, format }) => (
             <div key={key} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               {/* Label sits beside the number, not below it, so the number is sized to leave
-                  room for the widest label ("Km of telemetry") next to it on one line even at
+                  room for the widest label ("Laps analysed") next to it on one line even at
                   a narrow mobile width -- one step down from Countdown's own text-5xl, which
                   was sized for a bare digit pair with nothing beside it. */}
               <span className="num text-4xl leading-none tracking-tight text-ink tabular-nums sm:text-6xl xl:text-8xl">

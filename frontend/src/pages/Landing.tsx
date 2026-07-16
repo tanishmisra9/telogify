@@ -6,18 +6,38 @@ import { SeasonStats } from '@/components/SeasonStats'
 import { Tooltip } from '@/components/Tooltip'
 import { useApi, type LatestInsight } from '@/lib/api'
 
+// Key phrases bolded in ink so each muted paragraph carries one scannable claim.
+function Key({ children }: { children: React.ReactNode }) {
+  return <strong className="font-semibold text-ink">{children}</strong>
+}
+
 const STEPS = [
   {
     title: 'Every session.',
-    body: 'Practice through race, nothing left out. Sector bests, top speeds, tyre stints, lap by lap.',
+    body: (
+      <>
+        Practice through race, <Key>nothing left out</Key>. Sector bests, top speeds, tyre
+        stints, <Key>lap by lap</Key>.
+      </>
+    ),
   },
   {
     title: 'Every figure.',
-    body: 'Computed from official timing, not estimated. Pace, degradation, car character: each number stored before the agent writes a word.',
+    body: (
+      <>
+        Computed from <Key>official timing, not estimated</Key>. Pace, degradation, car
+        character: each number stored <Key>before the agent writes a word</Key>.
+      </>
+    ),
   },
   {
     title: 'Three verdicts.',
-    body: "What the telemetry shows that the broadcast couldn't. The cross-channel finding that explains the result.",
+    body: (
+      <>
+        What the telemetry shows that <Key>the broadcast couldn&apos;t</Key>. The{' '}
+        <Key>cross-channel finding</Key> that explains the result.
+      </>
+    ),
   },
 ]
 
@@ -56,10 +76,12 @@ function LiveInsight() {
   // opacity 0). The data-load itself is the reveal.
   return (
     <section className="mt-24 sm:mt-32">
-      <p className="kicker text-sm! text-accent">Latest verdict · {data.event_name}</p>
-      <div className="mt-4">
-        <Insight item={data} showSlot={false} contextLabel={data.event_name} />
-      </div>
+      <Insight
+        item={data}
+        showSlot={false}
+        contextLabel={data.event_name}
+        kicker={`Latest verdict · ${data.event_name}`}
+      />
       <p className="mt-3 text-xs text-muted">Every figure traced to official timing data. Nothing estimated.</p>
     </section>
   )
@@ -113,7 +135,7 @@ export function Landing() {
                   <span className="font-display text-6xl leading-none text-accent">
                     {String(i + 1).padStart(2, '0')}
                   </span>
-                  <h3 className="font-display text-3xl tracking-tight">{step.title}</h3>
+                  <h3 className="font-display text-4xl tracking-tight">{step.title}</h3>
                 </div>
                 <p className="mt-3 leading-relaxed text-muted">{step.body}</p>
               </div>

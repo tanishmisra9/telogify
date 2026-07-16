@@ -62,6 +62,7 @@ export function Insight({
   showSlot = true,
   collapsible = false,
   contextLabel,
+  kicker,
 }: {
   item: InsightItem
   showSlot?: boolean
@@ -69,6 +70,9 @@ export function Insight({
   // Race weekend the insight belongs to (e.g. "British Grand Prix"), prefixed onto the copied
   // text so it still identifies itself once pasted somewhere without the page around it.
   contextLabel?: string
+  // Optional label line rendered inside the card, above the heading ("Latest verdict · ..."),
+  // so a standalone card can carry its own context within the panel.
+  kicker?: string
 }) {
   const [open, setOpen] = useState(true)
   const titleId = `insight-${item.slot}-title`
@@ -81,6 +85,7 @@ export function Insight({
 
   return (
     <article className="glass lift rounded-[--radius-panel] p-7 sm:p-8" aria-labelledby={titleId}>
+      {kicker && <p className="kicker mb-4 text-sm! text-accent">{kicker}</p>}
       <div className="flex items-start gap-4 sm:gap-5">
         {showSlot && (
           <span className="font-display text-[2.7rem] font-semibold leading-none text-accent sm:text-[4.05rem]" aria-hidden>

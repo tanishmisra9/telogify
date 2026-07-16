@@ -15,6 +15,9 @@ export function Weekends() {
           </h1>
           <span className="kicker whitespace-nowrap text-muted">{weekends.length} logged</span>
         </div>
+        <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
+          Every ingested race weekend, each with its verdicts traced to official timing data.
+        </p>
       </BlurFade>
 
       {loading && <p className="mt-8 text-muted">Loading...</p>}

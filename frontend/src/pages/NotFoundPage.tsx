@@ -10,7 +10,7 @@ export function NotFoundPage() {
           This page didn&apos;t finish the race.
         </h1>
         <p className="mt-4 max-w-lg text-lg text-muted">
-          There's nothing at this address. It may have retired, or never existed.
+          There's nothing at this grid slot. It may have retired, or never even started.
         </p>
         <div className="mt-8 flex flex-wrap gap-4">
           <Link

@@ -38,28 +38,33 @@ export function Footer() {
   return (
     <footer className="mt-24 border-t-[1.5px] border-ink pb-10">
       <div className="mx-auto max-w-[1312px] px-6 pt-8">
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
-          <p className="text-sm text-muted">
-            Methodology inputs by{' '}
-            <a
-              href="https://www.instagram.com/fdataanalysis/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-ink transition-colors hover:text-accent"
-            >
-              Mirco Bartolozzi @fdataanalysis
-              <InstagramIcon />
-            </a>{' '}
-            : clean-air filtering, fuel correction model, ERS depletion signal.
-          </p>
-          <p className="shrink-0 text-sm text-muted">Timing data via FastF1{year != null ? ` · ${year} season` : ''}</p>
-        </div>
-        {/* Ahead of the copyright row, not after: on mobile everything stacks in DOM order, and
-            the copyright line should read as the footer's actual final line. */}
-        <p className="mt-3 text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>
-        <div className="mt-1.5 flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
-          <p className="text-sm text-muted">Let&apos;s telogify this weekend.</p>
-          <p className="shrink-0 text-sm text-muted">© 2026 Tanish Misra</p>
+        {/* Two stacks with one shared gap so the vertical rhythm is even on both sides: the
+            copyright sits directly under the FastF1 line, and on mobile (DOM order) it still
+            reads as the footer's actual final line. */}
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm text-muted">
+              Methodology inputs by{' '}
+              <a
+                href="https://www.instagram.com/fdataanalysis/"
+                target="_blank"
+                rel="noopener noreferrer"
+                // -mx/-my offset the padding so the pill highlight appears without shifting the
+                // prose; same accent hover recipe as the copy/collapse icon buttons.
+                className="-mx-1.5 -my-1 inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-ink transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+              >
+                Mirco Bartolozzi @fdataanalysis
+                <InstagramIcon />
+              </a>{' '}
+              : clean-air filtering, fuel correction model, ERS depletion signal.
+            </p>
+            <p className="text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>
+            <p className="text-sm text-muted">Let&apos;s telogify this weekend.</p>
+          </div>
+          <div className="flex shrink-0 flex-col gap-1.5 sm:items-end sm:text-right">
+            <p className="text-sm text-muted">Timing data via FastF1{year != null ? ` · ${year} season` : ''}</p>
+            <p className="text-sm text-muted">© 2026 Tanish Misra</p>
+          </div>
         </div>
       </div>
       <div className="mt-6 text-ink">

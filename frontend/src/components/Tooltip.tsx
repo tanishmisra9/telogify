@@ -3,8 +3,17 @@ import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 
 // Accessible control hint: shows on hover AND keyboard focus, links to the trigger via
 // aria-describedby. Paper-card styling flips with the theme. Anchored below the trigger so
-// it never gets clipped by the charts' cards.
-export function Tooltip({ label, children }: { label: string; children: ReactElement }) {
+// it never gets clipped by the charts' cards. `align="start"` left-anchors the bubble instead
+// of centering it, for triggers sitting at the page's left edge where centering clips.
+export function Tooltip({
+  label,
+  children,
+  align = 'center',
+}: {
+  label: string
+  children: ReactElement
+  align?: 'center' | 'start'
+}) {
   const [open, setOpen] = useState(false)
   const id = useId()
   const reduce = useReducedMotion()
@@ -53,7 +62,9 @@ export function Tooltip({ label, children }: { label: string; children: ReactEle
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.14 }}
-            className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap border-[1.5px] border-ink bg-surface px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-ink shadow-[3px_3px_0_var(--color-shadow)]"
+            className={`pointer-events-none absolute top-full z-50 mt-2 whitespace-nowrap border-[1.5px] border-ink bg-surface px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-ink shadow-[3px_3px_0_var(--color-shadow)] ${
+              align === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2'
+            }`}
           >
             {label}
           </m.span>

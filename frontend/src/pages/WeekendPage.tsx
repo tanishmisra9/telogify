@@ -3,6 +3,7 @@ import { AnimatePresence, m } from 'framer-motion'
 import { Link, useParams } from 'react-router-dom'
 import { BarChart } from '@/components/BarChart'
 import { BlurFade } from '@/components/BlurFade'
+import { ChartTabs } from '@/components/ChartTabs'
 import { DegradationChart } from '@/components/DegradationChart'
 import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
 import { FightToPoleChart } from '@/components/FightToPoleChart'
@@ -27,6 +28,7 @@ import {
   type SectorBestRow,
   type SectorsData,
   type SessionInfo,
+  type TopSpeedRow,
   type TopSpeedsData,
   type WeekendSummary,
 } from '@/lib/api'
@@ -79,24 +81,42 @@ function PracticeSectors({ data }: { data: SectorsData }) {
 }
 
 function PracticeTopSpeeds({ data }: { data: TopSpeedsData }) {
+  // Both units are already in the payload (max_speed_mph is computed backend-side), so the
+  // toggle is pure presentation. Same ChartTabs language as the compound/metric switchers.
+  const [unit, setUnit] = useState<'kmh' | 'mph'>('kmh')
+
   if (data.drivers.length === 0) {
     return <p className="text-sm text-muted">No practice top-speed data yet.</p>
   }
 
-  const sorted = [...data.drivers].sort((a, b) => b.max_speed_kmh - a.max_speed_kmh)
+  const speedOf = (r: TopSpeedRow) => (unit === 'mph' ? r.max_speed_mph : r.max_speed_kmh)
+  const unitLabel = unit === 'mph' ? 'mph' : 'km/h'
+  const sorted = [...data.drivers].sort((a, b) => speedOf(b) - speedOf(a))
   const bars = sorted.map((r) => ({
     id: r.driver,
     label: r.driver,
-    value: r.max_speed_kmh,
+    value: speedOf(r),
     team: r.constructor,
   }))
-  const domainMin = Math.min(...sorted.map((r) => r.max_speed_kmh)) - 6
+  // The same visual headroom below the slowest bar in either unit (6 km/h ≈ 4 mph).
+  const domainMin = Math.min(...sorted.map(speedOf)) - (unit === 'mph' ? 4 : 6)
 
   return (
     <div className="glass rounded-[--radius-panel] p-6">
-      <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Top speeds (km/h)</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Top speeds</h2>
+        <ChartTabs
+          ariaLabel="Speed unit"
+          active={unit}
+          onChange={setUnit}
+          tabs={[
+            { value: 'kmh', label: 'KM/H', hint: 'kilometres per hour' },
+            { value: 'mph', label: 'MPH', hint: 'miles per hour' },
+          ]}
+        />
+      </div>
       <div className="mt-5">
-        <BarChart rows={bars} formatValue={(v) => v.toFixed(0)} domainMin={domainMin} />
+        <BarChart rows={bars} formatValue={(v) => `${v.toFixed(0)} ${unitLabel}`} domainMin={domainMin} />
       </div>
       <p className="mt-2 text-xs text-muted">
         Indicative: engine modes and fuel loads vary between practice runs, so a deficit here may
@@ -380,13 +400,20 @@ export function WeekendPage() {
         </>
       ) : (
         <BlurFade>
-          <Link to="/weekends" className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="m15 18-6-6 6-6" />
-            </svg>
-            Back to weekends
-          </Link>
-          <p className="kicker mt-6 text-accent">
+          <Tooltip label="Back to weekends" align="start">
+            <Link
+              to="/weekends"
+              aria-label="Back to weekends"
+              // Icon-only: the label lives in the tooltip. -m-3 + p-3 gives the same 40px
+              // circular hover/active target as the copy/collapse buttons.
+              className="-m-3 inline-flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </Link>
+          </Tooltip>
+          <p className="kicker mt-6 text-base! text-accent">
             {year} · Round {round}
           </p>
           <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
