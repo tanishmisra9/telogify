@@ -218,6 +218,16 @@ def test_flag_session_abbreviations():
     assert not flag_session_abbreviations("The quick qualifying cars were giving up speed.")
 
 
+def test_plain_english_sprint_is_not_a_session_code():
+    # The uppercase session CODE must flag; the plain English word must not — the retry
+    # feedback itself tells the agent to write "the sprint", so flagging it deadlocks the
+    # regen loop on sprint weekends (2026 R2 failed 6 straight attempts on this).
+    assert flag_session_abbreviations("fastest in SPRINT")
+    assert not flag_session_abbreviations("Ferrari was quicker in the sprint than the race.")
+    assert not flag_session_abbreviations("Sprint pace told a different story.")
+    assert not flag_session_abbreviations("its sprint qualifying lap was 96.5 seconds")
+
+
 def _quali_candidate_trace():
     return [
         {

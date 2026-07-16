@@ -69,7 +69,11 @@ _CLIP_SUPERLATIVE = re.compile(
 
 _CLIP_METRES = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b", re.IGNORECASE)
 
-_SESSION_ABBREV = re.compile(r"\b(?:\bin\s+)?(?:SQ|Q)\b|\bin\s+R\b|\bSPRINT\b", re.IGNORECASE)
+# (?-i:SPRINT) keeps the SPRINT alternative case-SENSITIVE inside the otherwise
+# case-insensitive pattern: it must catch the session CODE, not the plain English word
+# "sprint" — the retry feedback itself tells the agent to write "the sprint", so flagging
+# the word deadlocks the regen loop on sprint weekends.
+_SESSION_ABBREV = re.compile(r"\b(?:\bin\s+)?(?:SQ|Q)\b|\bin\s+R\b|\b(?-i:SPRINT)\b", re.IGNORECASE)
 
 _QUALIFYING_CTX = re.compile(
     r"\bqualifying\b|\bin q\b|q-lap|speed trap",
