@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
@@ -14,6 +14,33 @@ const HEIGHT = 420
 const MARGIN = { top: 16, right: 24, bottom: 52, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
+
+// A compound switch can change the panel's natural height (a compound with no laps swaps the
+// whole chart for a one-line message; legend row counts differ per compound). Tweening the
+// wrapper's measured height turns that jump into the same 0.6s morph the fit lines use.
+function SmoothHeight({ children }: { children: React.ReactNode }) {
+  const reduce = useReducedMotion()
+  const innerRef = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState<number | 'auto'>('auto')
+
+  useEffect(() => {
+    const el = innerRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setHeight(entry.contentRect.height))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <m.div
+      animate={{ height }}
+      transition={reduce ? { duration: 0 } : morphTransition}
+      className="overflow-hidden"
+    >
+      <div ref={innerRef}>{children}</div>
+    </m.div>
+  )
+}
 
 // Mobile has no chart to isolate a line on, so the click-to-select legend would be a control
 // with nothing to control. This is the same ranking, read-only.
@@ -115,6 +142,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         />
       </div>
 
+      <SmoothHeight>
       {points.length === 0 ? (
         <p className="text-sm text-muted">No {compound.toLowerCase()} laps this race.</p>
       ) : (
@@ -138,10 +166,23 @@ export function DegradationChart({ data }: { data: DegradationData }) {
                 Tyre age (laps)
               </text>
 
-              {/* Raw laps sit as a faint texture; the labeled fit line is the actual finding. */}
-              {visiblePoints.map((p, i) => (
-                <circle key={i} cx={x(p.tyre_age)} cy={y(p.lap_time_s)} r={1.5} fill={teamColorWithAlpha(p.constructor, 0.16)} />
-              ))}
+              {/* Raw laps sit as a faint texture; the labeled fit line is the actual finding.
+                  Crossfaded per compound (not morphed): dot i in one compound is an unrelated
+                  lap in the next, so moving dots would draw a false correspondence — the old
+                  field fades out where it was while the new one fades in. */}
+              <AnimatePresence initial={false}>
+                <m.g
+                  key={compound}
+                  initial={reduce ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={reduce ? { duration: 0 } : { duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  {visiblePoints.map((p, i) => (
+                    <circle key={i} cx={x(p.tyre_age)} cy={y(p.lap_time_s)} r={1.5} fill={teamColorWithAlpha(p.constructor, 0.16)} />
+                  ))}
+                </m.g>
+              </AnimatePresence>
 
               <AnimatePresence>
                 {visibleFits.map((f) => {
@@ -199,6 +240,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         Ranked worst wear first below — click a team to isolate its line, click again to bring it
         back.
       </p>
+      </SmoothHeight>
     </m.div>
   )
 }
