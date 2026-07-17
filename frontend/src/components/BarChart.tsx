@@ -198,12 +198,18 @@ export function BarChart({
             {hoveredRow &&
               (() => {
                 // A small enclosed tag, not bare text: reads as a callout instead of a stray
-                // number floating in the chart. X tracks the cursor (the hover hit-rect spans
-                // the bar's whole column, so the pointer is rarely at its exact center) so the
-                // tag sits under wherever you're actually pointing; Y stays pinned to the bar's
-                // own peak so it reads as "attached to this bar," not chasing the cursor
-                // vertically. Both clamp so the tag never runs off the SVG's edges.
-                const panelX = Math.min(Math.max(hoveredX - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
+                // number floating in the chart. X is magnetic: it leans toward the cursor but
+                // mostly stays parked at the bar's own center (only MAGNET of the cursor's
+                // offset from center actually shows), so sweeping the mouse around inside one
+                // driver's column doesn't drag the tag all over the place -- it only really
+                // moves once the cursor crosses into a different bar's column and the center
+                // itself jumps. Y stays pinned to the bar's own peak so it reads as "attached to
+                // this bar," not chasing the cursor vertically. Both clamp so the tag never runs
+                // off the SVG's edges.
+                const cx = center(rows.findIndex((r) => r.id === hoveredRow.id))
+                const MAGNET = 0.3
+                const magnetX = cx + (hoveredX - cx) * MAGNET
+                const panelX = Math.min(Math.max(magnetX - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
                 const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 8, -MARGIN.top + 4)
                 return (
                   // Blur fade for true open/close (safe here -- this is plain SVG, not a
