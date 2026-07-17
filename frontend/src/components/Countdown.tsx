@@ -5,8 +5,9 @@ const pad = (n: number) => String(n).padStart(2, '0')
 
 function parts(target: number) {
   const s = Math.max(0, Math.floor((target - Date.now()) / 1000))
+  const days = Math.floor(s / 86400)
   return [
-    ['Days', Math.floor(s / 86400)],
+    [days === 1 ? 'Day' : 'Days', days],
     ['Hours', Math.floor((s % 86400) / 3600)],
     ['Minutes', Math.floor((s % 3600) / 60)],
     ['Seconds', s % 60],
