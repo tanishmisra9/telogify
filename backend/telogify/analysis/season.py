@@ -132,6 +132,8 @@ def _weekend_metrics(db: DBSession, dc_map: dict[str, str], sessions: list[Sessi
                 "constructor": dc_map.get(st.driver),
                 "compound": st.compound,
                 "lap_times": st.lap_times_json or [],
+                "stint_number": st.stint_number,
+                "lap_start": st.lap_start,
             }
             for st in stints
             if dc_map.get(st.driver)

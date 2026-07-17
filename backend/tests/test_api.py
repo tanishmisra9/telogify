@@ -159,9 +159,9 @@ def test_next_race_picks_soonest_future(client, monkeypatch):
 
 def test_pace(client):
     data = client.get("/weekends/2025/11/pace").json()
-    # Chart path: mean-ranked, lap 1 excluded; season ranking still uses median elsewhere.
+    # Median-ranked, lap 1 excluded: the single canonical ranking, shared with the agent.
     assert "drivers" in data and "constructors" in data
-    assert data["rank_metric"] == "mean"
+    assert data["rank_metric"] == "median"
     assert data["excludes_lap_1"] is True
     drivers = {d["id"]: d for d in data["drivers"]}
     assert set(drivers) == {"NOR", "LEC"}

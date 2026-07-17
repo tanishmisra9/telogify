@@ -7,8 +7,6 @@ from telogify.analysis.race_pace import (
     PaceRow,
     _exclude_first_race_lap,
     box_stats,
-    chart_constructor_distributions,
-    chart_driver_distributions,
     clean_air_laps,
     constructor_distributions,
     constructor_median_gaps,
@@ -159,7 +157,7 @@ def test_stints_with_no_lap_times_ignored():
     assert "Ferrari" in ids
 
 
-# --- chart_distributions (mean-ranked, lap 1 excluded) -------------------
+# --- lap-1 exclusion (folded into driver_distributions / constructor_distributions) ------
 
 
 def test_exclude_first_race_lap_drops_opening_lap():
@@ -178,38 +176,39 @@ def test_exclude_first_race_lap_skips_non_opening_stint():
     assert filtered[0]["lap_times"] == [90.0, 90.0]
 
 
-def test_chart_driver_distributions_sorted_by_mean():
-    stints = [
-        {"driver": "VER", "constructor": "RB", "compound": "M", "stint_number": 1, "lap_start": 2, "lap_times": [90.0, 90.0, 100.0]},
-        {"driver": "HAM", "constructor": "Merc", "compound": "H", "stint_number": 1, "lap_start": 2, "lap_times": [92.0, 92.0, 92.0]},
-    ]
-    rows_median = driver_distributions(stints)
-    rows_chart = chart_driver_distributions(stints)
-    assert rows_median[0].id == "VER"
-    assert rows_chart[0].id == "HAM"
-    assert rows_chart[0].gap_to_fastest_s == 0.0
-    means = [r.stats.mean for r in rows_chart]
-    assert means == sorted(means)
-
-
-def test_chart_excludes_lap_one_from_pool():
+def test_driver_distributions_excludes_lap_one_from_pool():
     stints = [
         {"driver": "VER", "constructor": "RB", "compound": "M", "stint_number": 1, "lap_start": 1, "lap_times": [100.0, 90.0, 90.0]},
     ]
-    rows = chart_driver_distributions(stints)
+    rows = driver_distributions(stints)
     assert rows[0].stats.n_laps == 2
 
 
-def test_chart_constructor_distributions_mean_gap():
+def test_constructor_distributions_excludes_lap_one_from_pool():
     stints = [
         {"driver": "VER", "constructor": "RB", "compound": "M", "stint_number": 1, "lap_start": 2, "lap_times": [90.0, 90.0]},
-        {"driver": "PER", "constructor": "RB", "compound": "H", "stint_number": 1, "lap_start": 2, "lap_times": [91.0, 91.0]},
+        {"driver": "PER", "constructor": "RB", "compound": "H", "stint_number": 1, "lap_start": 1, "lap_times": [100.0, 91.0, 91.0]},
     ]
-    rows = chart_constructor_distributions(stints)
+    rows = constructor_distributions(stints)
     assert len(rows) == 1
     assert rows[0].id == "RB"
-    assert rows[0].stats.n_laps == 4
+    assert rows[0].stats.n_laps == 4  # PER's opening lap (100.0) dropped
     assert rows[0].gap_to_fastest_s == 0.0
+
+
+def test_pace_ranking_is_median_everywhere():
+    """The chart and any backend ranking must use the exact same function: no separate
+    mean-ranked chart variant. This is the regression test for the Ferrari 2nd-vs-3rd
+    contradiction between the /pace chart and the agent's constructor ranking."""
+    stints = [
+        {"driver": "VER", "constructor": "RB", "compound": "M", "stint_number": 2, "lap_start": 10, "lap_times": [90.0, 90.0, 90.0]},
+        {"driver": "LEC", "constructor": "Ferrari", "compound": "M", "stint_number": 2, "lap_start": 10, "lap_times": [90.5, 90.5, 90.5]},
+    ]
+    rows = constructor_distributions(stints)
+    gaps = constructor_median_gaps(stints)
+    assert [r.id for r in rows] == sorted(gaps, key=lambda c: gaps[c])
+    assert rows[0].gap_to_fastest_s == pytest.approx(gaps[rows[0].id])
+    assert rows[1].gap_to_fastest_s == pytest.approx(gaps[rows[1].id])
 
 
 def test_compound_tags_dedupe_and_abbreviate():

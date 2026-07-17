@@ -82,6 +82,8 @@ def _race_stints_as_dicts(
             "compound": st.compound,
             "lap_times": st.lap_times_json or [],
             "gaps_to_car_ahead": st.gaps_to_car_ahead_json or [],
+            "stint_number": st.stint_number,
+            "lap_start": st.lap_start,
         }
         for st in stints
         if dc_map.get(st.driver)

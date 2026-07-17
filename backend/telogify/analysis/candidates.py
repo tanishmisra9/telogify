@@ -264,6 +264,8 @@ def _mine_race_pace_for_session(
             "compound": st.compound,
             "lap_times": st.lap_times_json or [],
             "gaps_to_car_ahead": st.gaps_to_car_ahead_json or [],
+            "stint_number": st.stint_number,
+            "lap_start": st.lap_start,
         }
         for st in stints
         if dc_map.get(st.driver)
@@ -754,6 +756,8 @@ def _mine_sprint_vs_race_pace(db, sessions, dc_map) -> list[Signal]:
                 "constructor": dc_map.get(st.driver),
                 "compound": st.compound,
                 "lap_times": st.lap_times_json or [],
+                "stint_number": st.stint_number,
+                "lap_start": st.lap_start,
             }
             for st in stints
             if dc_map.get(st.driver)

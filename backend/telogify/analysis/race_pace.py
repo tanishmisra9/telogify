@@ -160,11 +160,7 @@ class _Group:
     gaps: list[float | None] = field(default_factory=list)
 
 
-def _pace_key(row: PaceRow, rank_by: str) -> float:
-    return row.stats.median if rank_by == "median" else row.stats.mean
-
-
-def _build_rows(groups: dict[str, _Group], *, rank_by: str = "median") -> list[PaceRow]:
+def _build_rows(groups: dict[str, _Group]) -> list[PaceRow]:
     rows: list[PaceRow] = []
     for gid, g in groups.items():
         if not g.laps:
@@ -179,11 +175,11 @@ def _build_rows(groups: dict[str, _Group], *, rank_by: str = "median") -> list[P
                 gap_to_fastest_s=0.0,
             )
         )
-    rows.sort(key=lambda r: _pace_key(r, rank_by))
+    rows.sort(key=lambda r: r.stats.median)
     if rows:
-        fastest = _pace_key(rows[0], rank_by)
+        fastest = rows[0].stats.median
         for r in rows:
-            r.gap_to_fastest_s = _pace_key(r, rank_by) - fastest
+            r.gap_to_fastest_s = r.stats.median - fastest
     return rows
 
 
@@ -199,14 +195,15 @@ def _exclude_first_race_lap(stints: list[dict]) -> list[dict]:
 
 
 def driver_distributions(stints: list[dict]) -> list[PaceRow]:
-    """Per-driver PaceRows from a list of stint dicts.
+    """Per-driver PaceRows from a list of stint dicts: median-ranked, opening lap excluded.
 
     Each dict must have: driver (str), constructor (str|None), compound (str|None),
     lap_times (list[float]), and optionally gaps_to_car_ahead (list[float|None],
-    index-aligned with lap_times) for the clean_air_median stat.
+    index-aligned with lap_times) for the clean_air_median stat. stint_number/lap_start
+    are used to drop the opening representative lap of stint 1 if present.
     """
     groups: dict[str, _Group] = {}
-    for st in stints:
+    for st in _exclude_first_race_lap(stints):
         driver = st["driver"]
         g = groups.setdefault(driver, _Group(team=st.get("constructor")))
         g.laps.extend(st.get("lap_times") or [])
@@ -216,9 +213,9 @@ def driver_distributions(stints: list[dict]) -> list[PaceRow]:
 
 
 def constructor_distributions(stints: list[dict]) -> list[PaceRow]:
-    """Per-constructor PaceRows from a list of stint dicts."""
+    """Per-constructor PaceRows from a list of stint dicts: median-ranked, opening lap excluded."""
     groups: dict[str, _Group] = {}
-    for st in stints:
+    for st in _exclude_first_race_lap(stints):
         key = st.get("constructor") or "?"
         g = groups.setdefault(key, _Group(team=st.get("constructor")))
         g.laps.extend(st.get("lap_times") or [])
@@ -227,33 +224,11 @@ def constructor_distributions(stints: list[dict]) -> list[PaceRow]:
     return _build_rows(groups)
 
 
-def chart_driver_distributions(stints: list[dict]) -> list[PaceRow]:
-    """Pace spread chart: lap 1 excluded, sorted and gapped by mean pace."""
-    groups: dict[str, _Group] = {}
-    for st in _exclude_first_race_lap(stints):
-        driver = st["driver"]
-        g = groups.setdefault(driver, _Group(team=st.get("constructor")))
-        g.laps.extend(st.get("lap_times") or [])
-        g.compounds.append(st.get("compound"))
-    return _build_rows(groups, rank_by="mean")
-
-
-def chart_constructor_distributions(stints: list[dict]) -> list[PaceRow]:
-    """Pace spread chart: lap 1 excluded, sorted and gapped by mean pace."""
-    groups: dict[str, _Group] = {}
-    for st in _exclude_first_race_lap(stints):
-        key = st.get("constructor") or "?"
-        g = groups.setdefault(key, _Group(team=st.get("constructor")))
-        g.laps.extend(st.get("lap_times") or [])
-        g.compounds.append(st.get("compound"))
-    return _build_rows(groups, rank_by="mean")
-
-
 def constructor_median_gaps(stints: list[dict]) -> dict[str, float]:
     """Return {constructor: gap_to_fastest_s} ranked by median pace.
 
-    Used by constructor_index and candidates. The pace spread chart uses
-    chart_constructor_distributions (mean-ranked, lap 1 excluded) instead.
+    The single canonical constructor-pace ranking: used by the /pace chart,
+    constructor_index, and candidates, so they can never disagree.
     """
     rows = constructor_distributions(stints)
     return {r.id: r.gap_to_fastest_s for r in rows}
