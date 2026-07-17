@@ -263,7 +263,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
         </g>
       </svg>
 
-      <p className="mt-4 text-xs text-muted">
+      <p className="mt-4 text-sm text-muted">
         Telemetry from each driver's fastest qualifying lap, aligned by position on track; dotted
         lines mark turn numbers. Delta is the running time gap to the pole lap: below the line means
         ahead at that point, above means behind, and where it ends is the final gap. Throttle is how

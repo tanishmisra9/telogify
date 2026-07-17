@@ -74,7 +74,7 @@ function PracticeSectors({ data }: { data: SectorsData }) {
           <PracticeSectorChart key={sector} sector={sector} rows={data.drivers} />
         ))}
       </div>
-      <p className="mt-2 text-xs text-muted">
+      <p className="mt-2 text-sm text-muted">
         Indicative: practice fuel loads and engine modes vary between runs, so this is a read on
         where time is, not a verdict. Bars are each driver's gap to the fastest sector time.
       </p>
@@ -129,7 +129,7 @@ function PracticeTopSpeeds({ data }: { data: TopSpeedsData }) {
           domainMin={domainMin}
         />
       </div>
-      <p className="mt-2 text-xs text-muted">
+      <p className="mt-2 text-sm text-muted">
         Indicative: engine modes and fuel loads vary between practice runs, so a deficit here may
         be a mode choice rather than a true weakness.
       </p>

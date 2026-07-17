@@ -192,7 +192,7 @@ export function SeasonDeploymentChart({
           />
         </div>
 
-        <p className="mt-4 text-xs text-muted">
+        <p className="mt-4 text-sm text-muted">
           Every point is a full-throttle, no-braking sample from up to five representative race laps per
           driver per weekend, pooled across the season; cornering samples (lateral acceleration at or above
           2 m/s²) are

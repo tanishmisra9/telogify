@@ -213,7 +213,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
           isFiltering={isFiltering}
         />
       </div>
-      <p className="mt-4 text-xs text-muted">
+      <p className="mt-4 text-sm text-muted">
         Gap to each round's fastest team, round by round. 100% is that round's fastest team on
         this metric; higher is further behind, so a line near the top ran at the front all season
         and a line dropping away lost ground. For race pace and cumulative, the percentage is an

@@ -168,7 +168,7 @@ function SeasonView({ year }: { year: number }) {
           <BlurFade>
             <div className="glass rounded-[--radius-panel] p-6">
               <RankingTable rows={rows} />
-              <p className="mt-4 text-xs text-muted">
+              <p className="mt-4 text-sm text-muted">
                 Each column is anchored to the season's best team: it shows "best" and every other
                 team its gap to it. Pace is the 60/40 race and qualifying blend that drives the
                 order. Tyre wear is measured on the compound the field ran most, so it reflects the car and
@@ -229,7 +229,7 @@ function SeasonView({ year }: { year: number }) {
                           // overwhelm; these are five spacious hero panels where the team color
                           // is the whole point, so it can carry more of the surface. The big
                           // rank number in full-strength team color is the second, bolder signal.
-                          tintColor={teamColorWithAlpha(item.works_team, 0.16)}
+                          tintColor={teamColorWithAlpha(item.works_team, 0.09)}
                           accentColor={teamColor}
                         />
                       </BlurFade>

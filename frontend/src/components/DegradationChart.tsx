@@ -222,7 +222,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
           <DegradationRankingList rows={legendRows} />
         </div>
       </div>
-      <p className="mt-4 hidden text-xs text-muted md:block">
+      <p className="mt-4 hidden text-sm text-muted md:block">
         Fuel-corrected lap time against tyre age; a bold line marks wear well above the field.
         Ranked worst wear first below — click a team to isolate its line, click again to bring it
         back. Teams that never ran the selected compound are greyed out.

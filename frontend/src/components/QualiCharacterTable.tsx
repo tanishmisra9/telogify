@@ -215,7 +215,7 @@ export function QualiCharacterTable({
           </div>
         </div>
       )}
-      <p className="mt-2 text-xs text-muted">
+      <p className="mt-2 text-sm text-muted">
         Every figure is from each team's fastest representative lap in this session; cells shade toward the accent as a
         car ranks higher on that metric. A driver who never set a representative lap is not shown.
       </p>
