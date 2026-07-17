@@ -76,17 +76,33 @@ def test_measure_group_absent_team_not_counted():
     assert m.teams == ["A"]
 
 
-def test_rank_groups_best_to_worst_orders_by_punch_then_hold():
+def test_rank_groups_best_to_worst_orders_by_average_of_punch_and_hold():
     scatter = {
-        "Mercedes": _scatter_for("Mercedes", 1.0, -1.0),
-        "Ferrari": _scatter_for("Ferrari", 2.0, -0.5),  # best punch
-        "Red Bull Racing": _scatter_for("Red Bull Racing", 1.0, -3.0),  # ties Mercedes on punch, worse hold
+        # Highest punch (2.0) but the weakest hold (-2.0): avg = 0.0.
+        "Mercedes": _scatter_for("Mercedes", 2.0, -2.0),
+        # Lowest punch (1.0) but by far the best hold (+1.0): avg = 1.0, wins outright.
+        # Proves the average decides it, not punch alone (a punch-only ranking would put
+        # this group last).
+        "Ferrari": _scatter_for("Ferrari", 1.0, 1.0),
+        # Middling on both: avg = 0.5.
+        "Red Bull Racing": _scatter_for("Red Bull Racing", 1.5, -0.5),
     }
     ranked = rank_groups_best_to_worst(scatter)
     names = [m.group.name for m in ranked]
-    assert names[0] == "Ferrari"  # highest punch wins outright
-    assert names[1] == "Mercedes"  # punch tie with Red Bull, but better hold
-    assert names[2] == "Red Bull"
+    assert names == ["Ferrari", "Red Bull", "Mercedes"]
+
+
+def test_rank_groups_falls_back_to_the_known_band_when_only_one_is_measured():
+    # Mercedes: only punch measurable this season (e.g. too few laps deep into the top-speed
+    # band yet); its score should fall back to that punch value, not drop to None.
+    only_punch = [[255.0, 3.0]] * MIN_BIN_N + [[265.0, 3.0]] * MIN_BIN_N
+    scatter = {
+        "Mercedes": only_punch,
+        "Ferrari": _scatter_for("Ferrari", 1.0, 1.0),  # avg = 1.0, below Mercedes' 3.0
+    }
+    ranked = rank_groups_best_to_worst(scatter)
+    assert [m.group.name for m in ranked] == ["Mercedes", "Ferrari"]
+    assert ranked[0].punch == 3.0 and ranked[0].hold is None
 
 
 def test_rank_groups_skips_groups_with_no_data_at_all():

@@ -84,16 +84,29 @@ def measure_group(group: PuGroup, scatter: dict[str, list[list[float]]]) -> Grou
     return GroupMetrics(group=group, teams=teams, punch=punch, hold=hold, fade=fade)
 
 
+def _package_score(m: GroupMetrics) -> float | None:
+    """Whole-band package strength: the mean of punch and hold when both bands were measured,
+    falling back to whichever one is known. None only when neither band could be measured.
+    Ranking on punch alone (the previous logic) rewarded whoever pulls hardest through the
+    250-290 km/h band and used hold only to break an exact tie, which in practice never
+    happens with real floats, i.e. it was a punch-only ranking. Averaging the two means a car
+    that pulls hard early but fades hard late no longer outranks one that holds its shove deep
+    into the range, so both "how hard" and "how long" count toward the overall package."""
+    vals = [v for v in (m.punch, m.hold) if v is not None]
+    return sum(vals) / len(vals) if vals else None
+
+
 def rank_groups_best_to_worst(scatter: dict[str, list[list[float]]]) -> list[GroupMetrics]:
-    """Every PU group with at least one team present in the scatter, ranked best-to-worst:
-    punch (median accel 250-290 km/h, the band every group covers) descending, hold (>= 290
-    km/h) as tiebreak. A group with no punch reading at all ranks last. Recomputed from
-    whatever rounds are ingested, so the order shifts across the season as engines evolve."""
+    """Every PU group with at least one team present in the scatter, ranked best-to-worst by
+    _package_score (mean of punch and hold). A group with no reading in either band ranks
+    last. Recomputed from whatever rounds are ingested, so the order shifts across the season
+    as engines evolve."""
     metrics = [
         measure_group(g, scatter) for g in PU_GROUPS if any(scatter.get(t) for t in g.teams)
     ]
 
     def sort_key(m: GroupMetrics) -> tuple:
-        return (m.punch is None, -(m.punch or 0.0), m.hold is None, -(m.hold or 0.0))
+        score = _package_score(m)
+        return (score is None, -(score or 0.0))
 
     return sorted(metrics, key=sort_key)
