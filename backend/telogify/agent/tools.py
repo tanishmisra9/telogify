@@ -14,6 +14,7 @@ from statistics import mean
 from sqlmodel import Session, select
 
 from telogify.analysis.candidates import _ERS_HARVEST_BAND_KMH, _ERS_MIN_BAND_POINTS, linear_regression
+from telogify.analysis.car_speed_profile import CornerReading, summarize_speed_profile
 from telogify.analysis.quali_character import (
     TOP_TEAMS_N,
     fastest_qualifier_per_constructor,
@@ -166,6 +167,81 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
             )
 
     @tool
+    def compare_car_speed_profile(constructor_a: str, constructor_b: str, session_type: str) -> str:
+        """Where a pace or lap-time gap between two constructors actually comes from in one
+        session: cornering speed grouped by speed class (low/mid/high) with the average
+        min-speed delta in km/h and the corner numbers behind it, the overall top-speed delta
+        in km/h, and per-sector time deltas in seconds. Positive deltas favor constructor_a;
+        a negative sector delta means constructor_a was quicker (lower time) in that sector.
+        Only confident, non-artifact readings are included; when a channel's list is empty or
+        "confident" is false, there is nothing reliable to cite there, do not guess. Call this
+        after establishing a pace or stint gap between two named cars to say where the time
+        actually came from."""
+        with sf() as db:
+            wid = _weekend_id(db, year, round_num)
+            sid = _session_id(db, wid, session_type)
+            if sid is None:
+                return json.dumps({"found": False})
+
+            dc_map = {
+                r.driver: r.constructor
+                for r in db.exec(
+                    select(SessionResult).where(SessionResult.session_id == sid)
+                ).all()
+                if r.constructor
+            }
+
+            attr_rows = db.exec(
+                select(Attribution).where(
+                    Attribution.session_id == sid,
+                    Attribution.constructor_a.in_([constructor_a, constructor_b]),
+                    Attribution.constructor_b.in_([constructor_a, constructor_b]),
+                )
+            ).all()
+            corners = [
+                CornerReading(
+                    corner_number=row.corner_number,
+                    speed_class=row.speed_class,
+                    delta_kmh=(row.delta_s or 0.0) * (1.0 if row.constructor_a == constructor_a else -1.0),
+                    confidence=row.confidence,
+                )
+                for row in attr_rows
+            ]
+
+            straight_rows = db.exec(
+                select(StraightSegment).where(StraightSegment.session_id == sid)
+            ).all()
+            top_speed_by_constructor: dict[str, float] = {}
+            for row in straight_rows:
+                constructor = dc_map.get(row.driver)
+                if constructor not in (constructor_a, constructor_b) or row.max_speed_kmh is None:
+                    continue
+                current = top_speed_by_constructor.get(constructor)
+                if current is None or row.max_speed_kmh > current:
+                    top_speed_by_constructor[constructor] = row.max_speed_kmh
+
+            sector_rows = db.exec(select(SectorBest).where(SectorBest.session_id == sid)).all()
+            sector_times: dict[str, dict[int, float]] = {constructor_a: {}, constructor_b: {}}
+            for row in sector_rows:
+                constructor = dc_map.get(row.driver)
+                if constructor not in (constructor_a, constructor_b):
+                    continue
+                current = sector_times[constructor].get(row.sector)
+                if current is None or row.best_time_s < current:
+                    sector_times[constructor][row.sector] = row.best_time_s
+
+            profile = summarize_speed_profile(
+                corners,
+                top_speed_by_constructor.get(constructor_a),
+                top_speed_by_constructor.get(constructor_b),
+                sector_times[constructor_a],
+                sector_times[constructor_b],
+            )
+            return json.dumps(
+                {"found": True, "constructor_a": constructor_a, "constructor_b": constructor_b, **profile}
+            )
+
+    @tool
     def get_lap_evolution(driver: str, stint_number: int, compound: str) -> str:
         """Lap times (seconds) and average pace for one driver stint, to read tyre
         degradation. Searches the race, then any session."""
@@ -298,8 +374,13 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
 
     @tool
     def get_constructor_ranking() -> str:
-        """Teams ranked by real race pace this weekend: overall_rank (1 = fastest) and
-        race_pace_gap_s, the seconds per lap each team was off the fastest team's pace."""
+        """Teams ranked by real race pace this weekend: overall_rank (1 = fastest),
+        race_pace_gap_s (seconds per lap off the fastest team, 0.0 for the fastest team
+        itself), and gap_to_team_ahead_s (seconds per lap off the team immediately ahead of
+        it in this ranking, 0.0 for the fastest team). Use race_pace_gap_s to frame a
+        front-running car against the outright pace leader, and gap_to_team_ahead_s for a
+        midfield or backmarker car, whose real rivals are the teams around it in the
+        ranking, not the team that set the fastest pace."""
         with sf() as db:
             wid = _weekend_id(db, year, round_num)
             rows = db.exec(
@@ -307,16 +388,27 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
                 .where(ConstructorIndex.weekend_id == wid)
                 .order_by(ConstructorIndex.overall_rank)
             ).all()
-            return json.dumps(
-                [
+            out = []
+            prev_gap: float | None = None
+            for r in rows:
+                gap = r.lap_deficit_s
+                if gap is None:
+                    gap_to_ahead = None
+                elif prev_gap is None:
+                    gap_to_ahead = 0.0
+                else:
+                    gap_to_ahead = round(gap - prev_gap, 3)
+                out.append(
                     {
                         "constructor": r.constructor,
                         "overall_rank": r.overall_rank,
-                        "race_pace_gap_s": r.lap_deficit_s,
+                        "race_pace_gap_s": gap,
+                        "gap_to_team_ahead_s": gap_to_ahead,
                     }
-                    for r in rows
-                ]
-            )
+                )
+                if gap is not None:
+                    prev_gap = gap
+            return json.dumps(out)
 
     @tool
     def get_race_control_events(driver: str = "", session_type: str = "R") -> str:
@@ -532,6 +624,7 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
         get_quali_character,
         get_straight_speed,
         get_corner_delta,
+        compare_car_speed_profile,
         get_lap_evolution,
         get_session_results,
         get_stint_summary,

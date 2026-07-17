@@ -242,6 +242,75 @@ def test_constructor_ranking_tool(seeded):
     assert out[0]["overall_rank"] == 2
 
 
+def test_constructor_ranking_reports_gap_to_team_ahead(db_session):
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    db_session.add(ConstructorIndex(weekend_id=wk.id, constructor="Mercedes", overall_rank=1, lap_deficit_s=0.0))
+    db_session.add(ConstructorIndex(weekend_id=wk.id, constructor="Ferrari", overall_rank=2, lap_deficit_s=0.2))
+    db_session.add(ConstructorIndex(weekend_id=wk.id, constructor="Haas", overall_rank=3, lap_deficit_s=1.5))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_constructor_ranking"].invoke({}))
+    by_constructor = {r["constructor"]: r for r in out}
+
+    # The fastest team has no team ahead of it: 0.0, not a self-comparison artifact.
+    assert by_constructor["Mercedes"]["gap_to_team_ahead_s"] == 0.0
+    assert by_constructor["Ferrari"]["gap_to_team_ahead_s"] == pytest.approx(0.2)
+    # Haas's real rival is Ferrari (1.3s away), not Mercedes (1.5s away).
+    assert by_constructor["Haas"]["gap_to_team_ahead_s"] == pytest.approx(1.3)
+    assert by_constructor["Haas"]["race_pace_gap_s"] == pytest.approx(1.5)
+
+
+def test_compare_car_speed_profile_reports_cornering_top_speed_and_sectors(db_session):
+    from telogify.models import Attribution, SessionResult
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+
+    db_session.add(SessionResult(session_id=race.id, driver="LEC", constructor="Ferrari"))
+    db_session.add(SessionResult(session_id=race.id, driver="RUS", constructor="Mercedes"))
+
+    # Two confident corners favoring Ferrari, one unreliable (low confidence) that must drop.
+    db_session.add(Attribution(session_id=race.id, corner_number=1, speed_class="low", constructor_a="Ferrari", constructor_b="Mercedes", delta_s=3.0, confidence=0.9))
+    db_session.add(Attribution(session_id=race.id, corner_number=3, speed_class="low", constructor_a="Mercedes", constructor_b="Ferrari", delta_s=-1.0, confidence=0.8))
+    db_session.add(Attribution(session_id=race.id, corner_number=9, speed_class="high", constructor_a="Ferrari", constructor_b="Mercedes", delta_s=5.0, confidence=0.1))
+
+    db_session.add(StraightSegment(session_id=race.id, driver="LEC", drs_zone_id=0, max_speed_kmh=340.0))
+    db_session.add(StraightSegment(session_id=race.id, driver="RUS", drs_zone_id=0, max_speed_kmh=345.0))
+
+    db_session.add(SectorBest(session_id=race.id, driver="LEC", sector=1, best_time_s=28.1))
+    db_session.add(SectorBest(session_id=race.id, driver="RUS", sector=1, best_time_s=28.4))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(
+        tools["compare_car_speed_profile"].invoke(
+            {"constructor_a": "Ferrari", "constructor_b": "Mercedes", "session_type": "R"}
+        )
+    )
+
+    assert out["found"] is True
+    low = next(c for c in out["cornering_by_speed_class"] if c["speed_class"] == "low")
+    assert low["n_corners"] == 2
+    assert low["avg_delta_kmh"] == pytest.approx(4.0 / 2)  # +3.0 and +1.0 (sign-flipped row)
+    assert low["corner_numbers"] == [1, 3]
+    assert all(c["speed_class"] != "high" for c in out["cornering_by_speed_class"])  # low-confidence corner dropped
+
+    assert out["top_speed_delta_kmh"] == pytest.approx(-5.0)  # Ferrari 340 - Mercedes 345
+    assert out["sector_deltas_s"] == [{"sector": 1, "delta_s": pytest.approx(-0.3)}]
+    assert out["confident"] is True
+
+
 def test_build_agent_fails_loud_without_api_key(monkeypatch):
     from telogify.agent import graph
     from telogify.config import settings
