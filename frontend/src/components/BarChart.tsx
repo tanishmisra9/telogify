@@ -18,9 +18,9 @@ export interface BarChartRow {
 // clips at its own viewBox edge by default, so a wide axis tick (e.g. "+1.293s"), the last bar's
 // hover label, or the tallest bar's hover label (it sits right above the top gridline) all get
 // visibly truncated without this margin. top must clear the hover tag's full height (26px) plus
-// its 8px gap above the bar -- the tallest bar in any dataset always touches y=0 exactly, so
-// anything less forces the tag's clamp to overlap into the bar itself.
-const MARGIN = { top: 40, right: 36, bottom: 34, left: 60 }
+// its gap above the bar (see GAP_ABOVE_BAR below) -- the tallest bar in any dataset always
+// touches y=0 exactly, so anything less forces the tag's clamp to overlap into the bar itself.
+const MARGIN = { top: 46, right: 36, bottom: 34, left: 60 }
 const HEIGHT = 260
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 // Structural, not fluid: every driver gets this many real pixels of column width no matter the
@@ -33,6 +33,8 @@ const MIN_SLOT = 40
 // ("+1.293s", "28.094s").
 const PANEL_W = 80
 const PANEL_H = 26
+// Real breathing room above the bar, not sitting right on its tip.
+const GAP_ABOVE_BAR = 14
 
 /** Shared vertical bar chart: one bar per row, team-colored, row label below, a light y-axis
  * for at-rest reading, and the exact value on hover (one at a time). Used for practice best
@@ -210,7 +212,7 @@ export function BarChart({
                 const MAGNET = 0.3
                 const magnetX = cx + (hoveredX - cx) * MAGNET
                 const panelX = Math.min(Math.max(magnetX - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
-                const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 8, -MARGIN.top + 4)
+                const panelY = Math.max(y(hoveredRow.value) - PANEL_H - GAP_ABOVE_BAR, -MARGIN.top + 4)
                 return (
                   // Blur fade for true open/close (safe here -- this is plain SVG, not a
                   // foreignObject, so it doesn't hit the WebKit filter-corruption bug). Each
