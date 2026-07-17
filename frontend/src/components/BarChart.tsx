@@ -17,8 +17,10 @@ export interface BarChartRow {
 // Real breathing room on every edge, not just enough for the average case: an <svg> element
 // clips at its own viewBox edge by default, so a wide axis tick (e.g. "+1.293s"), the last bar's
 // hover label, or the tallest bar's hover label (it sits right above the top gridline) all get
-// visibly truncated without this margin.
-const MARGIN = { top: 28, right: 36, bottom: 34, left: 60 }
+// visibly truncated without this margin. top must clear the hover tag's full height (26px) plus
+// its 8px gap above the bar -- the tallest bar in any dataset always touches y=0 exactly, so
+// anything less forces the tag's clamp to overlap into the bar itself.
+const MARGIN = { top: 40, right: 36, bottom: 34, left: 60 }
 const HEIGHT = 260
 const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 // Structural, not fluid: every driver gets this many real pixels of column width no matter the
@@ -45,6 +47,13 @@ export function BarChart({
   domainMin?: number
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  // The hover hit-rect spans a column's full width (see below), so the cursor can land
+  // anywhere across it, not just at the bar's own center; tracking it directly is what lets
+  // the tag actually sit under the pointer left-to-right instead of snapping to the bar's
+  // fixed center. Vertically the tag stays pinned to the bar's own peak (see panelY below) --
+  // that axis reads as "attached to this bar's value," not "chasing the cursor."
+  const [hoveredX, setHoveredX] = useState(0)
+  const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
   // Dragging a finger across bars to scroll the chart horizontally was also toggling whatever
@@ -99,10 +108,19 @@ export function BarChart({
   const yTicks = Array.from({ length: 4 }, (_, i) => lo + (span * i) / 3)
   const hoveredRow = rows.find((r) => r.id === hoveredId) ?? null
 
+  // Local X in the same coordinate space as the inner <g> (SVG units happen to equal CSS
+  // pixels here: explicit width/height attrs match the viewBox 1:1, no independent scaling).
+  // getBoundingClientRect() already reflects the container's horizontal scroll position, so
+  // this stays correct while the chart is scrolled.
+  const localX = (clientX: number) => {
+    const rect = svgRef.current?.getBoundingClientRect()
+    return rect ? clientX - rect.left - MARGIN.left : 0
+  }
+
   return (
     <div className="relative">
       <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
-      <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label="Bar chart">
+      <svg ref={svgRef} width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label="Bar chart">
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {yTicks.map((t) => (
             <g key={t}>
@@ -124,7 +142,11 @@ export function BarChart({
               <g
                 key={r.id}
                 className="cursor-pointer"
-                onMouseEnter={() => setHoveredId(r.id)}
+                onMouseEnter={(e) => {
+                  setHoveredId(r.id)
+                  setHoveredX(localX(e.clientX))
+                }}
+                onMouseMove={(e) => setHoveredX(localX(e.clientX))}
                 onMouseLeave={() => setHoveredId((h) => (h === r.id ? null : h))}
                 // Touch has no hover to toggle off, so a tap here should show/hide the label on
                 // its own -- but touch also fires a synthetic mouseenter (then a click) after
@@ -135,6 +157,7 @@ export function BarChart({
                 onTouchStart={(e) => {
                   const t = e.touches[0]
                   touchStartRef.current = { x: t.clientX, y: t.clientY }
+                  setHoveredX(localX(t.clientX))
                 }}
                 onTouchEnd={(e) => {
                   e.preventDefault()
@@ -174,13 +197,13 @@ export function BarChart({
           <AnimatePresence>
             {hoveredRow &&
               (() => {
-                const cx = center(rows.findIndex((r) => r.id === hoveredRow.id))
                 // A small enclosed tag, not bare text: reads as a callout instead of a stray
-                // number floating in the chart. Sits close to the bar's own peak (not a fixed
-                // spot near the chart's top, which read as disconnected from the bar), but
-                // clamped so it never runs off the top of the SVG for a very tall bar, or
-                // sits right on the axis for a very short one.
-                const panelX = Math.min(Math.max(cx - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
+                // number floating in the chart. X tracks the cursor (the hover hit-rect spans
+                // the bar's whole column, so the pointer is rarely at its exact center) so the
+                // tag sits under wherever you're actually pointing; Y stays pinned to the bar's
+                // own peak so it reads as "attached to this bar," not chasing the cursor
+                // vertically. Both clamp so the tag never runs off the SVG's edges.
+                const panelX = Math.min(Math.max(hoveredX - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
                 const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 8, -MARGIN.top + 4)
                 return (
                   // Blur fade for true open/close (safe here -- this is plain SVG, not a
