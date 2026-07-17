@@ -122,7 +122,13 @@ export function Insight({
             {String(item.slot).padStart(2, '0')}
           </span>
         )}
-        <div className={`${contentCol} row-start-1 flex min-w-0 items-start justify-between gap-6`}>
+        {/* gap-10 (not gap-6): with justify-between, `gap` is a hard minimum flexbox will
+            enforce by shrinking/wrapping the heading before it lets the two items get closer
+            than that. A short-but-not-short-enough header can fit on one line right at a 24px
+            minimum, reading as crowded against the buttons even though longer headers (forced
+            to wrap) end their last line well short of the boundary. The larger minimum guarantees
+            the same breathing room regardless of where a given header happens to wrap. */}
+        <div className={`${contentCol} row-start-1 flex min-w-0 items-start justify-between gap-10`}>
           {heading}
           {/* Copy is a real nested interactive element, so its click must not also bubble
               into the outer toggle; the chevron is purely decorative and deliberately left
