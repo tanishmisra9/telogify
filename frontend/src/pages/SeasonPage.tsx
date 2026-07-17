@@ -180,19 +180,17 @@ function SeasonView({ year }: { year: number }) {
             <section className="mt-20">
               <SectionTitle>Deployment</SectionTitle>
               {deploymentPanelItems.length > 0 && (
-                // Full section width (matching Ranking/Form guide below), not the narrower
+                // Full section width (matching the Ranking table above), not the narrower
                 // max-w-5xl WeekendPage uses for its 3-insight hero column: on this denser,
                 // multi-section page a narrower block just left-aligns with dead space beside
-                // it. showSlot is off too: the big rank digit is sized for a 3-panel hero, not
-                // a 5-row list next to this page's smaller type; the kicker still names each
-                // manufacturer and the panels are already in rank order.
+                // it. showSlot stays on: the rank digit is the panels' own ordering (1 = best
+                // package this season), which the kicker's manufacturer name doesn't convey.
                 <div className="mb-8">
                   <div className="grid gap-4">
                     {deploymentPanelItems.map((item, i) => (
                       <BlurFade key={item.pu} delay={0.06 * i}>
                         <Insight
                           item={item}
-                          showSlot={false}
                           collapsible
                           kicker={`${item.pu} power · ${item.teams.join(' · ')}`}
                           contextLabel={`${year} season deployment`}
