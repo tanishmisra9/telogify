@@ -64,6 +64,7 @@ export function Insight({
   contextLabel,
   kicker,
   tintColor,
+  accentColor,
 }: {
   item: InsightItem
   showSlot?: boolean
@@ -79,9 +80,13 @@ export function Insight({
   // Optional background wash (e.g. teamColorWithAlpha(team, 0.09)), overriding .glass's plain
   // surface color. Undefined preserves the default neutral panel used everywhere else.
   tintColor?: string
+  // Optional full-strength color for the big slot number, overriding the default site accent
+  // red (e.g. resolveTeamColor(team), so the number carries team identity too).
+  accentColor?: string
 }) {
   const [open, setOpen] = useState(true)
   const titleId = `insight-${item.slot}-title`
+  const toggle = () => setOpen((o) => !o)
   const heading = (
     <h3 id={titleId} className="font-display text-[1.5625rem] font-semibold leading-[1.05] tracking-tight sm:text-[1.875rem] lg:text-[2.5rem]">
       {bindMetricSpaces(item.header)}
@@ -89,34 +94,44 @@ export function Insight({
   )
   const copyText = `${contextLabel ? `${contextLabel} · ` : ''}${item.header}\n\n${item.explanation_web}`
 
-  return (
-    <article
-      className="glass lift rounded-[--radius-panel] p-7 sm:p-8"
-      style={tintColor ? { backgroundColor: tintColor } : undefined}
-      aria-labelledby={titleId}
-    >
+  // Kicker + number + heading-row + body, all inside one clickable region when collapsible: a
+  // reader clicking anywhere in the visually "clickable-looking" top of the card (not just the
+  // heading text) gets the same toggle. Kept as one flex tree (number | content-column, body a
+  // flex sibling of the heading row inside that column) exactly like the original layout, so
+  // the body's indentation under the heading stays real flex alignment, not a guessed padding.
+  const content = (
+    <>
       {kicker && <p className="kicker mb-4 text-sm! text-accent">{kicker}</p>}
-      <div className="flex items-start gap-4 sm:gap-5">
+      {/* items-center only while collapsed: with no body text under it, the number (much
+          taller than a single heading line) needs to center against that one line instead of
+          pinning to its top, or the extra height below the heading reads as a stray gap. */}
+      <div className={`flex gap-4 sm:gap-5 ${collapsible && !open ? 'items-center' : 'items-start'}`}>
         {showSlot && (
-          <span className="font-display text-[2.7rem] font-semibold leading-none text-accent sm:text-[4.05rem]" aria-hidden>
+          <span
+            className="font-display text-[2.7rem] font-semibold leading-none sm:text-[4.05rem]"
+            style={{ color: accentColor ?? 'var(--color-accent)' }}
+            aria-hidden
+          >
             {String(item.slot).padStart(2, '0')}
           </span>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-6">
-            {collapsible ? (
-              <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                aria-expanded={open}
-                className="flex flex-1 items-start justify-between gap-4 text-left"
-              >
-                {heading}
+            {heading}
+            {/* Copy is a real nested interactive element, so its click must not also bubble
+                into the outer toggle; the chevron is purely decorative and deliberately left
+                un-stopped, so clicking it (or anywhere else in the header) still toggles.
+                gap-6 (not tighter): both icons' -m-3 tap targets reach 12px past their own
+                visible glyph, so anything less than 24px between them lets the two invisible
+                hit-boxes overlap and steal each other's clicks. */}
+            <div className="flex shrink-0 items-start gap-6">
+              <span onClick={(e) => e.stopPropagation()}>
+                <CopyButton text={copyText} />
+              </span>
+              {collapsible && (
                 <Tooltip label={open ? 'Collapse' : 'Expand'}>
                   <span
-                    // -m-3 + p-3 matches CopyButton's 40px tap target: the hover-color trigger
-                    // area is scoped to just this icon, not the whole heading row (which is
-                    // also clickable to toggle), so it's close-but-comfortable, not room-wide.
+                    // -m-3 + p-3 matches CopyButton's 40px tap target.
                     className="-m-3 mt-[-0.375rem] flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
                   >
                     <m.svg
@@ -136,11 +151,8 @@ export function Insight({
                     </m.svg>
                   </span>
                 </Tooltip>
-              </button>
-            ) : (
-              <div className="flex-1">{heading}</div>
-            )}
-            <CopyButton text={copyText} />
+              )}
+            </div>
           </div>
           <AnimatePresence initial={false}>
             {(!collapsible || open) && (
@@ -159,6 +171,22 @@ export function Insight({
           </AnimatePresence>
         </div>
       </div>
+    </>
+  )
+
+  return (
+    <article
+      className="glass lift rounded-[--radius-panel] p-7 sm:p-8"
+      style={tintColor ? { backgroundColor: tintColor } : undefined}
+      aria-labelledby={titleId}
+    >
+      {collapsible ? (
+        <button type="button" onClick={toggle} aria-expanded={open} className="block w-full cursor-pointer text-left">
+          {content}
+        </button>
+      ) : (
+        content
+      )}
     </article>
   )
 }

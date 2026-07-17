@@ -9,7 +9,7 @@ import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
 import { heatBg, rankAsc } from '@/lib/heat'
-import { manufacturerAccentColor, teamColorWithAlpha } from '@/lib/teamColors'
+import { manufacturerAccentColor, resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { useScrollFade } from '@/lib/useScrollFade'
 import {
   useApi,
@@ -204,7 +204,13 @@ function SeasonView({ year }: { year: number }) {
                             </>
                           }
                           contextLabel={`${year} season deployment`}
-                          tintColor={teamColorWithAlpha(item.works_team, 0.09)}
+                          // Stronger than the 0.09 row-wash precedent (Ranking table, legends):
+                          // those are dense stacks of many small rows where a strong tint would
+                          // overwhelm; these are five spacious hero panels where the team color
+                          // is the whole point, so it can carry more of the surface. The big
+                          // rank number in full-strength team color is the second, bolder signal.
+                          tintColor={teamColorWithAlpha(item.works_team, 0.16)}
+                          accentColor={resolveTeamColor(item.works_team)}
                         />
                       </BlurFade>
                     ))}
