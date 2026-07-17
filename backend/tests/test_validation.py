@@ -5,6 +5,7 @@ from telogify.agent.validation import (
     flag_cross_insight_conflicts,
     flag_false_deployment_superlative,
     flag_false_retirement_causation,
+    flag_gap_or_accel_in_header,
     flag_qualifying_only_finding,
     flag_qualifying_practice_sector_mismatch,
     flag_results_only_insight,
@@ -432,3 +433,66 @@ def test_validate_insights_catches_results_only_finding():
     ]
     flagged = validate_insights(insights, trace)
     assert 1 in flagged and any("results-only" in issue for issue in flagged[1])
+
+
+# Headers pulled from the user's line-by-line audit of a real gpt-5.5 insight regen. Offenders
+# carry a raw pace gap, per-lap delta, or acceleration figure the audit flagged as data-in-header;
+# clean headers (including ones with a km/h speed or a bare ordinal/position) must still pass.
+_AUDIT_OFFENDER_HEADERS = [
+    "Bearman's Haas finished seventh despite a 1.772-second race-pace gap",
+    "Ferrari was only 0.135 seconds off Mercedes on race pace",
+    "Red Bull Racing fell from 9.733 to 4.088 m/s² as speed built",
+    "Antonelli's Mercedes opened the final-stint gap by 0.509 seconds a lap on Piastri's McLaren",
+    "Ferrari's race pace was second-best, 0.494 seconds a lap off Mercedes",
+    "Alpine's late soft run beat the cars around it by 0.24 seconds per lap",
+    "Hamilton's final hard stint was 0.599 seconds a lap quicker than Norris",
+    "Mercedes had second-ranked race pace at 0.234 seconds a lap off Ferrari",
+]
+
+_AUDIT_CLEAN_HEADERS = [
+    "Mercedes paired fastest race pace with 254.9 km/h through turn 2",
+    "Haas F1 Team's fifth place had real late-race pace behind it",
+    "Aston Martin was tenth on race pace and tenth in acceleration at 250 km/h",
+    "Racing Bulls kept the race's strongest acceleration at 250 km/h",
+    "Red Bull Racing had the fourth-fastest race pace, but its cars finished eighth and twelfth",
+    "Cadillac was eleventh of 11 for race acceleration at 250 km/h",
+    "Ferrari's race pace was better than Leclerc's eighth place suggested",
+    "Leclerc's Ferrari was much closer to McLaren pace in the sprint than Hamilton's",
+    "McLaren kept the strongest race acceleration at 250.0 km/h",
+    "Alpine had the quickest final stints among the cars finishing sixth to tenth",
+    "Alonso's Aston Martin ran soft tyres from lap 4 to lap 58",
+    "Cadillac had the strongest 250 km/h race acceleration, but not the race pace",
+    "Leclerc's Ferrari finished eighth with the second-quickest race pace",
+    "Antonelli's Mercedes had the fastest final stint among the top four",
+    "McLaren held its race acceleration best as speed built",
+    "Mercedes had the fastest race pace, but its first-place qualifier finished 15th",
+    "Williams held acceleration best at 250 km/h in the race, not overall pace",
+    "Antonelli's Mercedes sprint win was backed by the quickest one-stint pace",
+    "Audi kept the strongest acceleration at 250 km/h in the race",
+]
+
+
+def test_flag_gap_or_accel_in_header_catches_audited_offenders():
+    for header in _AUDIT_OFFENDER_HEADERS:
+        assert flag_gap_or_accel_in_header(header), f"expected a flag for: {header!r}"
+
+
+def test_flag_gap_or_accel_in_header_passes_audited_clean_headers():
+    for header in _AUDIT_CLEAN_HEADERS:
+        assert flag_gap_or_accel_in_header(header) == [], f"unexpected flag for: {header!r}"
+
+
+def test_flag_gap_or_accel_in_header_ignores_lap_numbers():
+    assert flag_gap_or_accel_in_header("Alonso's Aston Martin ran soft tyres from lap 4 to lap 58") == []
+
+
+def test_validate_insights_catches_gap_in_header():
+    insights = [
+        {
+            "header": "Ferrari was only 0.135 seconds off Mercedes on race pace",
+            "explanation_web": "Ferrari ranked second on race pace, 0.135 seconds per lap behind Mercedes.",
+            "explanation_email": "Ferrari was 0.135 seconds off Mercedes on race pace.",
+        }
+    ]
+    flagged = validate_insights(insights, trace=[])
+    assert 1 in flagged and any("header:" in issue for issue in flagged[1])

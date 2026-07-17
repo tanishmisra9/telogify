@@ -297,6 +297,12 @@ _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
         "number if you use it. A qualifying position or gap is fine as supporting context, but "
         "not as the insight's own subject and number.",
     ),
+    (
+        "contains a pace gap, per-lap time delta, or acceleration figure",
+        "Move the pace gap / per-lap delta / acceleration figure (seconds, seconds a lap, "
+        "m/s²) out of the header and into the body; the header should state only the plain-"
+        "English verdict those numbers prove.",
+    ),
 )
 
 

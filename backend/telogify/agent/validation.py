@@ -461,6 +461,29 @@ def flag_session_abbreviations(text: str) -> list[str]:
     return []
 
 
+# A decimal figure next to "second(s)" (gap/delta phrasing) or any m/s² figure. Deliberately
+# does not match bare integers, ordinals, km/h, or lap numbers, which are fine in a header.
+_HEADER_GAP_OR_ACCEL_RE = re.compile(
+    r"\d+\.\d+-?\s*seconds?\b"  # "1.772-second", "0.135 seconds"
+    r"|seconds?\s+(?:a|per)\s+lap"  # "seconds a lap", "seconds per lap"
+    r"|\d+(?:\.\d+)?\s*s\s+a\s+lap\b"  # "0.246s a lap"
+    r"|\d+(?:\.\d+)?\s*m/s(?:²|2)\b",  # "9.733 m/s²"
+    re.IGNORECASE,
+)
+
+
+def flag_gap_or_accel_in_header(header: str) -> list[str]:
+    """Retry when the header itself carries a pace gap, per-lap delta, or acceleration
+    figure. Finishing/grid positions and lap numbers are fine; the number belongs in the
+    body as the evidence for the header's verdict."""
+    if _HEADER_GAP_OR_ACCEL_RE.search(header):
+        return [
+            "header: contains a pace gap, per-lap time delta, or acceleration figure; "
+            "move the number into the body and keep only the verdict in the header"
+        ]
+    return []
+
+
 def flag_untraceable_numbers(text: str, trace: list[dict]) -> list[str]:
     """Return quantity strings cited in prose that do not appear in any tool return."""
     if not trace:
@@ -554,6 +577,8 @@ def validate_insights(
         for issue in flag_weak_deployment_cluster(text, trace):
             flagged.setdefault(i, []).append(issue)
         for issue in flag_session_abbreviations(text):
+            flagged.setdefault(i, []).append(issue)
+        for issue in flag_gap_or_accel_in_header(ins.get("header", "")):
             flagged.setdefault(i, []).append(issue)
         for issue in flag_results_only_insight(text, trace):
             flagged.setdefault(i, []).append(issue)
