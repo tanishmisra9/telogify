@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { teamCode, resolveTeamColor, teamColorWithAlpha, teamShortName, teammateShade } from './teamColors'
+import {
+  manufacturerAccentColor,
+  teamCode,
+  resolveTeamColor,
+  teamColorWithAlpha,
+  teamShortName,
+  teammateShade,
+} from './teamColors'
 
 describe('teamShortName', () => {
   it('shortens the officially-long names', () => {
@@ -48,6 +55,18 @@ describe('teammateShade', () => {
   })
   it('passes the fallback var through untouched', () => {
     expect(teammateShade(null)).toBe('var(--color-muted)')
+  })
+})
+
+describe('manufacturerAccentColor', () => {
+  it('mixes the resolved team hex toward the theme ink token', () => {
+    // The actual lightening/darkening happens in the browser (--color-ink flips per theme);
+    // this only pins that the mix targets the right hex and the right CSS variable.
+    expect(manufacturerAccentColor('Ferrari')).toBe('color-mix(in oklch, #E8002D 55%, var(--color-ink) 45%)')
+    expect(manufacturerAccentColor('Mercedes')).toBe('color-mix(in oklch, #27F4D2 55%, var(--color-ink) 45%)')
+  })
+  it('falls back for an unknown team', () => {
+    expect(manufacturerAccentColor(null)).toBe('color-mix(in oklch, var(--color-muted) 55%, var(--color-ink) 45%)')
   })
 })
 

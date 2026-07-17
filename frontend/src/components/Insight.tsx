@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import { Tooltip } from '@/components/Tooltip'
 import { emphasize, bindMetricSpaces } from '@/lib/emphasize'
@@ -72,8 +72,10 @@ export function Insight({
   // text so it still identifies itself once pasted somewhere without the page around it.
   contextLabel?: string
   // Optional label line rendered inside the card, above the heading ("Latest verdict · ..."),
-  // so a standalone card can carry its own context within the panel.
-  kicker?: string
+  // so a standalone card can carry its own context within the panel. A plain string renders
+  // the default accent-red kicker; pass markup (e.g. a manufacturer name in its own color
+  // plus a neutral customer-team list) when one uniform color doesn't fit the content.
+  kicker?: ReactNode
   // Optional background wash (e.g. teamColorWithAlpha(team, 0.09)), overriding .glass's plain
   // surface color. Undefined preserves the default neutral panel used everywhere else.
   tintColor?: string

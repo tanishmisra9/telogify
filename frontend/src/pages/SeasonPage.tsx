@@ -9,7 +9,7 @@ import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
 import { heatBg, rankAsc } from '@/lib/heat'
-import { teamColorWithAlpha } from '@/lib/teamColors'
+import { manufacturerAccentColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { useScrollFade } from '@/lib/useScrollFade'
 import {
   useApi,
@@ -192,7 +192,17 @@ function SeasonView({ year }: { year: number }) {
                         <Insight
                           item={item}
                           collapsible
-                          kicker={`${item.pu} power · ${item.teams.join(' · ')}`}
+                          // Two-tone: the manufacturer name carries its own color (can't be a
+                          // uniform accent-red once panels are team-tinted), the customer-team
+                          // list stays neutral rather than picking one of several team colors.
+                          kicker={
+                            <>
+                              <span style={{ color: manufacturerAccentColor(item.works_team) }}>
+                                {item.pu} power
+                              </span>
+                              <span className="text-muted"> · {item.teams.join(' · ')}</span>
+                            </>
+                          }
                           contextLabel={`${year} season deployment`}
                           tintColor={teamColorWithAlpha(item.works_team, 0.09)}
                         />

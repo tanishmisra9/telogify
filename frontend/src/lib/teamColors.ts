@@ -100,6 +100,18 @@ export function teammateShade(teamName: string | null): string {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`
 }
 
+/**
+ * A team/manufacturer color, mixed toward the theme's own ink so it stays legible as TEXT in
+ * both themes without a per-team lookup table. Raw team hexes fail as plain text somewhere:
+ * light ones (Mercedes cyan, Williams blue) are illegible on the cream light bg, dark ones
+ * (Ferrari red, Audi red) are illegible on the espresso dark bg. `--color-ink` is near-black in
+ * light mode and near-white in dark mode, so mixing toward it darkens light colors by day and
+ * lightens dark colors by night for free, via CSS rather than a JS luminance branch.
+ */
+export function manufacturerAccentColor(teamName: string | null): string {
+  return `color-mix(in oklch, ${resolveTeamColor(teamName)} 55%, var(--color-ink) 45%)`
+}
+
 /** Fill with reduced opacity for box surfaces. */
 export function teamColorWithAlpha(teamName: string | null, alpha: number): string {
   const hex = resolveTeamColor(teamName)
