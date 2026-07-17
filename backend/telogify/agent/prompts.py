@@ -21,17 +21,16 @@ observed measurements only, never infer hidden mechanisms or intent unless direc
 Never infer values from the absence of data or from indirect timing; if a metric is not \
 returned by a retrieval tool, treat it as unknown."""
 
-_ENERGY_RULES_PRIMER = """2026 ENERGY RULES (deployment and clipping vocabulary):
-The 2026 cars draw up to 350 kW from their electric motor, roughly half the car's total power, \
-so sustained acceleration through the 150-250 km/h band is a real competitive asset: a car that \
-keeps pulling hard there is still drawing on its battery deep into a straight, while a car that \
-fades early is back on the combustion engine alone, sooner and weaker, for the rest of that \
-straight. "Clipping" is the same story on a single lap: the point where a car's deployable \
-energy runs out mid-straight, so its speed stops climbing at full throttle before the braking \
-zone, leaving it easier to catch or pass at the end of that straight. Always use this deployment \
-/ clipping language, not raw physics phrasing, when writing about either tool's numbers, and \
-always pair the direction (ahead of or behind the field average; clipping early or late) with \
-what it costs or buys the car on track."""
+_ENERGY_RULES_PRIMER = """2026 ENERGY RULES (race-session acceleration vocabulary, for \
+get_race_deployment_character only, not get_deployment): the 2026 cars draw up to 350 kW from \
+their electric motor, roughly half the car's total power, so sustained acceleration through the \
+150-250 km/h band is a real competitive asset: a car that keeps pulling hard there is still \
+drawing on its battery deep into a straight, while a car that fades early is back on the \
+combustion engine alone, sooner and weaker, for the rest of that straight. Use this deployment \
+language, not raw physics phrasing, when writing about get_race_deployment_character's numbers, \
+pairing the direction (ahead of or behind the field average) with what it costs or buys the car \
+on track. This is unrelated to get_deployment's qualifying-lap clipping, which keeps its \
+existing, separate treatment below and is not a channel to reach for more often than before."""
 
 _CANDIDATE_TO_NARROWEST = """CANDIDATE INSIGHTS (hypotheses, not facts):
 Candidate findings only suggest where to look. They are not evidence until confirmed by tool \
@@ -50,15 +49,13 @@ acceleration through the 150-250 km/h race band diverges from the field average:
 get_race_deployment_character before writing. Using the 2026 ENERGY RULES framing above, state \
 plainly whether the car held its deployment above the field average at 250 km/h (a real \
 strength: it keeps pulling hard at the end of straights) or fell below it (a real weakness: it \
-clips early and finishes straights on the engine alone), citing accel_at_150_ms2 and \
+sheds acceleration and finishes straights on the engine alone), citing accel_at_150_ms2 and \
 accel_at_250_ms2 against field_average_accel_at_150_ms2 and field_average_accel_at_250_ms2 as the \
 supporting evidence for that verdict (never the raw harvesting_slope_ms2_per_kmh, which is for \
 your own verification only). Make sure the header and the body agree on that same direction: a \
-car ranked 1 by this tool held its acceleration best, never phrase that as a weakness. Anchor the \
-finding to the car's actual competitive position: call get_constructor_ranking and say whether \
-this deployment character matches, explains, or cuts against where the car ran on pace, not just \
-the raw numbers in isolation. Never infer harvesting strategy, energy-management philosophy, or \
-software behavior from it. sector_delta \
+car ranked 1 by this tool held its acceleration best, never phrase that as a weakness. Never \
+infer harvesting strategy, energy-management philosophy, or software behavior from it. \
+sector_delta \
 candidates are practice session bests only: never cite their deficit as a qualifying sector \
 weakness unless you retrieved qualifying sector data for that claim.
 
@@ -173,11 +170,9 @@ that clips more is passable at the end of the straights.
 as speed climbs through the 150-250 km/h band, from get_race_deployment_character. Never present \
 this as a bare physics reading: state the direction against the field average in deployment \
 terms ("held its deployment above the field average at 250 km/h, still pulling hard at the end \
-of straights" or "fell below the field average at 250 km/h, clipping early and finishing \
+of straights" or "fell below the field average at 250 km/h, shedding acceleration and finishing \
 straights on the engine alone") using its accel_at_150_ms2 and accel_at_250_ms2 figures (m/s²) \
-as the evidence for that verdict, never as a bare slope number with the unit "m/s² per km/h", \
-and say what it means for the car's competitive position (call get_constructor_ranking to check \
-whether the deployment character matches, explains, or cuts against where the car ran on pace). \
+as the evidence for that verdict, never as a bare slope number with the unit "m/s² per km/h". \
 Describe only this measured shape, never an inferred battery strategy or software behavior.
 - The team pace ranking (get_constructor_ranking), each row's gap to the outright fastest \
 constructor (race_pace_gap_s) and its gap to the constructor immediately ahead of it in that \
@@ -341,7 +336,9 @@ colons, parentheses, or restructure."""
 
 _INSIGHT_EXAMPLES = """EXAMPLES OF THE TARGET QUALITY BAR:
 These are from other race weekends, illustrating voice, structure and depth only: never reuse \
-their teams, drivers, or numbers for this weekend's insights.
+their teams, drivers, or numbers for this weekend's insights. None of these three happen to be \
+about deployment: that is deliberate, deployment is one channel among many, not the default \
+story, and most weekends none of your three should be about it.
 
 <example type="gold">
 <header>Mercedes paired fastest race pace with 254.9 km/h through turn 2</header>
@@ -368,29 +365,16 @@ exact numbers, and a header that states the verdict those numbers prove without 
 numbers themselves in the header.</why>
 </example>
 
-<example type="deployment-rewrite">
-<bad>
-<header>Audi kept the strongest acceleration at 250 km/h in the race</header>
-<explanation_web>In the race, Audi ranked first at the top of the 150 to 250 km/h full-throttle \
-band: its acceleration was 13.02 m/s² at 150 km/h and 4.76 m/s² at 250 km/h, against field \
-averages of 12.179 m/s² and 3.822 m/s². That did not translate into overall race pace, where \
-Audi was seventh at 2.006 seconds per lap off Mercedes.</explanation_web>
-</bad>
-<good>
-<header>Audi held its electrical deployment better than any car in the field</header>
-<explanation_web>Audi's deployment held above the field average all the way through the 150 to \
-250 km/h band, the range where the 2026 cars' hybrid boost does its real work: 13.02 m/s² at \
-150 km/h and 4.76 m/s² at 250 km/h, against field averages of 12.179 and 3.822. That's a real \
-strength, still pulling hard at the end of straights where most of the field had already faded \
-onto the engine alone. It is a car-side asset rather than the whole race picture: Audi finished \
-seventh on pace, in among the midfield cars it was actually racing rather than the \
-Mercedes-Ferrari pace at the front.</explanation_web>
-</good>
-<why>The bad version reads as a physics printout with no verdict and compares a midfield car to \
-the outright pace leader it was never racing. The good version keeps the exact same m/s² \
-numbers as evidence but leads with a plain strength/weakness verdict, states what that strength \
-buys the car on track, and reframes the pace comparison against the rivals it actually \
-raced.</why>
+<example type="gold">
+<header>Haas's fifth place had real late-race pace behind it</header>
+<explanation_web>Oliver Bearman qualified tenth and finished fifth, while Haas was fourth in \
+race pace at 1.591 seconds per lap off Mercedes. Among the cars that finished fifth to eighth, \
+the Haas had the quickest final stint, with the Alpine 0.093 seconds a lap slower, the Racing \
+Bulls 0.536 slower and the Red Bull Racing car 0.637 slower.</explanation_web>
+<why>The rival comparison is scoped to the cars Haas actually finished among (fifth to eighth), \
+not the outright pace leader it was never fighting for. Three named rivals, three exact \
+magnitudes, and "Haas" used once and referred back to as "the Haas", never repeated as "Haas F1 \
+Team".</why>
 </example>"""
 
 SYSTEM_PROMPT = "\n\n".join([

@@ -37,6 +37,18 @@ def test_fix_hints_for_grid_row_labels():
     assert "explanation_email" in feedback
 
 
+def test_fix_hints_for_weak_deployment_cluster():
+    # A gap found during Phase 4 regen: this validation issue had no matching fix hint, so
+    # the retry feedback gave the model no explicit "abandon this candidate" instruction.
+    from telogify.agent.guardrails import fix_hints_for_phrases
+
+    hints = fix_hints_for_phrases(
+        ["weak deployment: cited qualifiers clip within about 100 metres; choose a stronger finding"]
+    )
+    assert any("drop deployment/clipping entirely" in h for h in hints)
+    assert any("different category" in h for h in hints)
+
+
 def test_flags_the_audited_fabrications():
     # The exact failure phrases from the audit must be caught.
     assert flag_unsupported_claims("Antonelli's maiden Grand Prix win") == ["maiden"]

@@ -150,6 +150,7 @@ def _insights(
             with Session(engine) as db:
                 rows = persist_insights(state["weekend_id"], insights, trace, db, model=model, count=count)
             return {result_key: len(rows)}
+        print(f"[insights] {state['year']} round {state['round']} attempt {_attempt} rejected: {flagged}")
         feedback = format_insight_validation_feedback(flagged)
     if parse_failures == _MAX_INSIGHT_ATTEMPTS and not flagged:
         raise RuntimeError(

@@ -303,6 +303,14 @@ _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
         "m/s²) out of the header and into the body; the header should state only the plain-"
         "English verdict those numbers prove.",
     ),
+    (
+        "weak deployment: cited qualifiers clip within about 100 metres",
+        "This deployment-clipping finding is not real field separation, it is normal field "
+        "behaviour. Do not retry it with different wording, different cars, or adjusted "
+        "numbers: drop deployment/clipping entirely for this slot and pick a candidate from a "
+        "different category (race pace, stint pace, sector, corner attribution, or "
+        "race-session deployment character from get_race_deployment_character) instead.",
+    ),
 )
 
 
