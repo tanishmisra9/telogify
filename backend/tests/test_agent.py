@@ -116,6 +116,79 @@ def test_get_deployment_reports_field_min_and_sorts_ascending(db_session):
     assert filtered[0]["field_min_total_clip_m"] == 155.9
 
 
+def test_get_race_deployment_character_reports_at_speed_accel_and_rank(db_session):
+    from telogify.models import AccelSample
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+
+    speeds = [150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, 250.0]
+
+    def accels(slope: float, intercept: float) -> list[float]:
+        return [slope * s + intercept for s in speeds]
+
+    # A: steep drop-off (holds acceleration worst). B: flattest (holds best). C: in between.
+    db_session.add(AccelSample(session_id=race.id, driver="VER", constructor="A", speed_kmh_json=speeds, longitudinal_accel_ms2_json=accels(-0.05, 10.0)))
+    db_session.add(AccelSample(session_id=race.id, driver="NOR", constructor="B", speed_kmh_json=speeds, longitudinal_accel_ms2_json=accels(-0.01, 2.0)))
+    db_session.add(AccelSample(session_id=race.id, driver="LEC", constructor="C", speed_kmh_json=speeds, longitudinal_accel_ms2_json=accels(-0.03, 6.0)))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_race_deployment_character"].invoke({"constructor": ""}))
+    by_constructor = {r["constructor"]: r for r in out}
+
+    assert by_constructor["A"]["accel_at_150_ms2"] == pytest.approx(2.5)
+    assert by_constructor["A"]["accel_at_250_ms2"] == pytest.approx(-2.5)
+    assert by_constructor["B"]["accel_at_150_ms2"] == pytest.approx(0.5)
+    assert by_constructor["B"]["accel_at_250_ms2"] == pytest.approx(-0.5)
+    # Rank 1 = best accel_at_250 (holds acceleration best at the top of the band).
+    assert by_constructor["B"]["rank"] == 1
+    assert by_constructor["C"]["rank"] == 2
+    assert by_constructor["A"]["rank"] == 3
+    assert by_constructor["A"]["field_average_accel_at_250_ms2"] == pytest.approx(-1.5)
+
+    filtered = json.loads(tools["get_race_deployment_character"].invoke({"constructor": "B"}))
+    assert len(filtered) == 1 and filtered[0]["constructor"] == "B"
+
+
+def test_compare_stint_pace_reports_final_stint_delta(db_session):
+    from telogify.models import Stint
+
+    wk = RaceWeekend(year=2026, round=8, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+
+    # ANT: two stints, final stint (hard) averages 70.424s -- the quickest final stint.
+    db_session.add(Stint(session_id=race.id, driver="ANT", stint_number=1, compound="MEDIUM", lap_start=1, lap_end=20, avg_pace=71.0))
+    db_session.add(Stint(session_id=race.id, driver="ANT", stint_number=2, compound="HARD", lap_start=21, lap_end=50, avg_pace=70.424))
+    # VER: one stint, final stint (hard) averages 70.670s.
+    db_session.add(Stint(session_id=race.id, driver="VER", stint_number=1, compound="HARD", lap_start=1, lap_end=50, avg_pace=70.670))
+    # RUS: final stint 70.889s, no data at all for a code not requested (COL) to prove filtering.
+    db_session.add(Stint(session_id=race.id, driver="RUS", stint_number=1, compound="HARD", lap_start=1, lap_end=50, avg_pace=70.889))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 8, session_factory=lambda: db_session))
+    out = json.loads(tools["compare_stint_pace"].invoke({"drivers": "ANT,VER,RUS", "session_type": "R"}))
+    by_driver = {r["driver"]: r for r in out}
+
+    assert by_driver["ANT"]["final_stint_delta_vs_best_s_per_lap"] == 0.0
+    assert by_driver["VER"]["final_stint_delta_vs_best_s_per_lap"] == pytest.approx(0.246)
+    assert by_driver["RUS"]["final_stint_delta_vs_best_s_per_lap"] == pytest.approx(0.465)
+    assert len(by_driver["ANT"]["stints"]) == 2
+    assert by_driver["ANT"]["stints"][-1]["avg_pace_s"] == 70.424
+
+
 def test_bound_tool_reads_exact_db_value(seeded):
     tools = _by_name(build_tools(2025, 11, session_factory=seeded))
     out = json.loads(tools["get_straight_speed"].invoke({"driver": "LEC", "session_type": "R", "drs_zone": 2}))

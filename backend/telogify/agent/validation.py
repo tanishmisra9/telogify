@@ -228,6 +228,60 @@ def flag_qualifying_only_finding(text: str, trace: list[dict]) -> list[str]:
     return []
 
 
+def _results_only_numbers(trace: list[dict]) -> set[float]:
+    """Numbers sourced only from the results table or race control (grid, finish, gaps,
+    penalties): a reader already has these from the results table, so an insight built only
+    from them is a recap, not a finding."""
+    numbers: list[float] = []
+    for tool in ("get_session_results", "get_race_control_events"):
+        for row in _parse_tool_results(trace, tool):
+            numbers.extend(_numeric_leaves(row))
+    return {round(n, 3) for n in numbers}
+
+
+def _non_results_numbers(trace: list[dict]) -> set[float]:
+    """Numbers from every tool call other than the results table and race control."""
+    numbers: list[float] = []
+    for entry in trace:
+        if entry.get("tool") in ("get_session_results", "get_race_control_events"):
+            continue
+        result = entry.get("result")
+        if not result:
+            continue
+        try:
+            data = json.loads(result) if isinstance(result, str) else result
+        except (json.JSONDecodeError, TypeError):
+            continue
+        numbers.extend(_numeric_leaves(data))
+    return {round(n, 3) for n in numbers}
+
+
+def flag_results_only_insight(text: str, trace: list[dict]) -> list[str]:
+    """Block an insight whose every cited number traces only to the results table or race
+    control (grid, finish, gaps, penalties): the reader already has the results table, so
+    that is a recap, not an insight. It must anchor in pace, stint, or telemetry data."""
+    results_only = _results_only_numbers(trace)
+    if not results_only:
+        return []
+    quantities = extract_prose_quantities(text)
+    if not quantities:
+        return []
+    other = _non_results_numbers(trace)
+
+    def _in_pool(pool: set[float], qty: float) -> bool:
+        return any(math.isclose(qty, v, rel_tol=1e-4, abs_tol=0.01) for v in pool)
+
+    if all(_in_pool(results_only, q) for q in quantities) and not any(
+        _in_pool(other, q) for q in quantities
+    ):
+        return [
+            "results-only finding: every cited number traces only to the results table or "
+            "race control (grid, finish, gaps, penalties); anchor in pace, stint, or "
+            "telemetry data instead"
+        ]
+    return []
+
+
 def _practice_sector_deficits(trace: list[dict]) -> set[float]:
     deficits: set[float] = set()
     for cand in _parse_tool_results(trace, "get_candidate_insights"):
@@ -323,7 +377,8 @@ def flag_false_deployment_superlative(text: str, trace: list[dict]) -> list[str]
 
 
 _QUANTITY_RE = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%|metres?|meters?)"
+    r"([-+]?\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%|metres?|meters?|"
+    r"m/s²|m/s2)"
     r"|(?:\(\s*(\d+(?:\.\d+)?)\s*mph\s*\))",
     re.IGNORECASE,
 )
@@ -499,6 +554,8 @@ def validate_insights(
         for issue in flag_weak_deployment_cluster(text, trace):
             flagged.setdefault(i, []).append(issue)
         for issue in flag_session_abbreviations(text):
+            flagged.setdefault(i, []).append(issue)
+        for issue in flag_results_only_insight(text, trace):
             flagged.setdefault(i, []).append(issue)
         if not allow_qualifying_only:
             for issue in flag_qualifying_only_finding(text, trace):

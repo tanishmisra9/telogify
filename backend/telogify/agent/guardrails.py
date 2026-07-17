@@ -95,6 +95,17 @@ _BLOCKLIST = [
     "retired because",
     # causal retirement narratives tied to steward-noted incidents (see validation.py too)
     "retirement traces",
+    # stating the ABSENCE of a race-control event is a description of the agent's own
+    # verification process, not a fact for the reader (see HOW TO EXPLAIN A RESULT)
+    "no race-control",
+    "no race control",
+    "no collision or penalty",
+    "no penalty recorded",
+    "no penalty was recorded",
+    "no incident recorded",
+    "no incident was recorded",
+    "no collision recorded",
+    "no collision was recorded",
     # analysis-pipeline jargon leaking into prose: internal category/tool/field labels are
     # not broadcaster language ("qualifying car-character sample", "the sector readout has",
     # "led the shared fast-corner check", 'a drag label of "draggy, high-downforce"')
@@ -107,6 +118,12 @@ _BLOCKLIST = [
     "shared fast-corner",
     "drag label",
     "drag_label",
+    # raw acceleration-slope units are unreadable to a general audience; the tool also
+    # returns accel_at_150/250_ms2 vs field average, which must be used instead
+    "m/s² per km/h",
+    "m/s2 per km/h",
+    "harvesting_slope",
+    "harvesting slope",
     # data-retrieval process leaking into prose as scope hedges ("the five cars returned
     # here", "the only car returned as quickest", "in the returned data", "the compared
     # group", "was labelled efficient, low drag", "the Mercedes benchmark")
@@ -194,6 +211,51 @@ _FIX_HINTS: dict[str, str] = {
         "Do not link a retirement to a steward-noted incident. State retired/DNF and cite "
         "incidents separately without causation unless race control shows a collision or retirement."
     ),
+    "no race-control": (
+        'Do not tell the reader that no race-control event was recorded; that is your own '
+        'verification step, not a fact about the car. State the pace or telemetry finding '
+        'without mentioning race control at all.'
+    ),
+    "no race control": (
+        'Do not tell the reader that no race-control event was recorded; that is your own '
+        'verification step, not a fact about the car. State the pace or telemetry finding '
+        'without mentioning race control at all.'
+    ),
+    "no collision or penalty": (
+        'Do not tell the reader that no collision or penalty was recorded; that is your own '
+        'verification step, not a fact about the car. State the pace or telemetry finding '
+        'without mentioning race control at all.'
+    ),
+    "no penalty recorded": (
+        'Do not tell the reader that no penalty was recorded; that is your own verification '
+        'step, not a fact about the car. State the pace or telemetry finding without '
+        'mentioning race control at all.'
+    ),
+    "no incident recorded": (
+        'Do not tell the reader that no incident was recorded; that is your own verification '
+        'step, not a fact about the car. State the pace or telemetry finding without '
+        'mentioning race control at all.'
+    ),
+    "no penalty was recorded": (
+        'Do not tell the reader that no penalty was recorded; that is your own verification '
+        'step, not a fact about the car. State the pace or telemetry finding without '
+        'mentioning race control at all.'
+    ),
+    "no incident was recorded": (
+        'Do not tell the reader that no incident was recorded; that is your own verification '
+        'step, not a fact about the car. State the pace or telemetry finding without '
+        'mentioning race control at all.'
+    ),
+    "no collision recorded": (
+        'Do not tell the reader that no collision was recorded; that is your own verification '
+        'step, not a fact about the car. State the pace or telemetry finding without '
+        'mentioning race control at all.'
+    ),
+    "no collision was recorded": (
+        'Do not tell the reader that no collision was recorded; that is your own verification '
+        'step, not a fact about the car. State the pace or telemetry finding without '
+        'mentioning race control at all.'
+    ),
 }
 
 _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
@@ -218,6 +280,13 @@ _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
         'Replace every literal "Q", "SQ", "R", or "SPRINT" in the header, explanation_web, and '
         'explanation_email with the full session name ("qualifying", "sprint qualifying", '
         '"the race", or "the sprint").',
+    ),
+    (
+        "results-only finding",
+        "This finding only restates the results table or a penalty (a reader already has "
+        "that). Discard it and pick a different candidate anchored in pace, stint, or "
+        "telemetry data; the result or penalty can still appear as context, not as the "
+        "insight's only evidence.",
     ),
     (
         "qualifying-only finding",

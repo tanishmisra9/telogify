@@ -243,6 +243,60 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
             )
 
     @tool
+    def compare_stint_pace(drivers: str, session_type: str = "R") -> str:
+        """Per-lap pace comparison between two or more drivers' final stints in a session (R or
+        SPRINT): for each driver, every stint (stint number, compound, lap range, average pace
+        in seconds), plus final_stint_delta_vs_best_s_per_lap, the exact per-lap gap in seconds
+        from that driver's final stint to the quickest final stint among the requested drivers
+        (0.0 for whoever is quickest). Use this, not a manual subtraction of two averages,
+        whenever an insight compares how much quicker one car's tyre stint ran than another's:
+        the delta is returned exactly, so it is traceable. Pass a comma-separated list of
+        3-letter driver codes, e.g. "ANT,VER,RUS"."""
+        with sf() as db:
+            wid = _weekend_id(db, year, round_num)
+            session_id = _session_id(db, wid, session_type)
+            codes = [d.strip() for d in drivers.split(",") if d.strip()]
+            per_driver: dict[str, list] = {}
+            for code in codes:
+                per_driver[code] = db.exec(
+                    select(Stint)
+                    .where(Stint.session_id == session_id, Stint.driver == code)
+                    .order_by(Stint.stint_number)
+                ).all()
+
+            final_paces = {
+                code: rows[-1].avg_pace
+                for code, rows in per_driver.items()
+                if rows and rows[-1].avg_pace is not None
+            }
+            best_final_pace = min(final_paces.values()) if final_paces else None
+
+            out = []
+            for code in codes:
+                rows = per_driver.get(code, [])
+                stints = [
+                    {
+                        "stint_number": r.stint_number,
+                        "compound": r.compound,
+                        "lap_start": r.lap_start,
+                        "lap_end": r.lap_end,
+                        "avg_pace_s": r.avg_pace,
+                    }
+                    for r in rows
+                ]
+                final_delta = None
+                if code in final_paces and best_final_pace is not None:
+                    final_delta = round(final_paces[code] - best_final_pace, 3)
+                out.append(
+                    {
+                        "driver": code,
+                        "stints": stints,
+                        "final_stint_delta_vs_best_s_per_lap": final_delta,
+                    }
+                )
+            return json.dumps(out)
+
+    @tool
     def get_constructor_ranking() -> str:
         """Teams ranked by real race pace this weekend: overall_rank (1 = fastest) and
         race_pace_gap_s, the seconds per lap each team was off the fastest team's pace."""
@@ -331,14 +385,20 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
 
     @tool
     def get_race_deployment_character(constructor: str = "") -> str:
-        """Race-pace ERS deployment/harvesting character per constructor: how much full-throttle
-        acceleration rises with speed through the 150-250 km/h harvesting-dominant band, from
+        """Race-pace acceleration character per constructor: how hard full-throttle
+        acceleration holds up as speed climbs through the 150-250 km/h band, from
         full-throttle/no-brake/low-lateral-g samples on one representative race lap per driver.
-        harvesting_slope_ms2_per_kmh: a steep positive slope means harvesting ramps up hard with
-        speed; a flat slope near the field average means the car deploys/harvests near-constantly
-        across that range. This is a measured acceleration-vs-speed shape only: do not infer
-        battery state, harvesting strategy, or software behavior from it. Pass a constructor name
-        to filter, blank for all. Returns [] when there are too few cars with data this weekend."""
+        Returns, per constructor: accel_at_150_ms2 and accel_at_250_ms2 (the fitted
+        acceleration in m/s² at the low and high end of the band), field_average_accel_at_150_ms2
+        and field_average_accel_at_250_ms2 (the same two numbers averaged across the field), and
+        rank (1 = holds acceleration best at the top of the band, i.e. the highest
+        accel_at_250_ms2). A car whose accel_at_250_ms2 sits above the field average keeps
+        accelerating harder as speed builds than its rivals through that band; one below the
+        average sheds acceleration faster than the field as speed climbs. Describe only this
+        measured shape in prose using the at-150/at-250 numbers, never the raw
+        harvesting_slope_ms2_per_kmh (kept here only for verification), and never infer battery
+        state, harvesting strategy, or software behavior from it. Pass a constructor name to
+        filter, blank for all. Returns [] when there are too few cars with data this weekend."""
         with sf() as db:
             wid = _weekend_id(db, year, round_num)
             sid = _session_id(db, wid, "R") if wid is not None else None
@@ -352,29 +412,42 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
                         zip(s.speed_kmh_json or [], s.longitudinal_accel_ms2_json or [])
                     )
             lo, hi = _ERS_HARVEST_BAND_KMH
-            slopes: dict[str, tuple[float, int]] = {}
+            fits: dict[str, tuple[float, float, int]] = {}
             for c, points in by_constructor.items():
                 band = [(sp, ac) for sp, ac in points if lo <= sp <= hi]
                 if len(band) < _ERS_MIN_BAND_POINTS:
                     continue
                 fit = linear_regression([p[0] for p in band], [p[1] for p in band])
                 if fit is not None:
-                    slopes[c] = (fit[0], len(band))
-            if len(slopes) < 3:
+                    slope, intercept = fit
+                    fits[c] = (slope, intercept, len(band))
+            if len(fits) < 3:
                 return json.dumps([])
-            field_avg = mean(v[0] for v in slopes.values())
+            accel_at_150 = {c: slope * lo + intercept for c, (slope, intercept, _) in fits.items()}
+            accel_at_250 = {c: slope * hi + intercept for c, (slope, intercept, _) in fits.items()}
+            field_avg_slope = mean(v[0] for v in fits.values())
+            field_avg_150 = mean(accel_at_150.values())
+            field_avg_250 = mean(accel_at_250.values())
+            ranked = sorted(fits, key=lambda c: -accel_at_250[c])
+            ranks = {c: i + 1 for i, c in enumerate(ranked)}
             rows = [
                 {
                     "constructor": c,
+                    "accel_at_150_ms2": round(accel_at_150[c], 3),
+                    "accel_at_250_ms2": round(accel_at_250[c], 3),
+                    "field_average_accel_at_150_ms2": round(field_avg_150, 3),
+                    "field_average_accel_at_250_ms2": round(field_avg_250, 3),
+                    "rank": ranks[c],
+                    "n_constructors": len(fits),
                     "harvesting_slope_ms2_per_kmh": round(slope, 4),
-                    "field_average_slope": round(field_avg, 4),
+                    "field_average_slope": round(field_avg_slope, 4),
                     "n_points": n,
                     "band_kmh": list(_ERS_HARVEST_BAND_KMH),
                 }
-                for c, (slope, n) in slopes.items()
+                for c, (slope, intercept, n) in fits.items()
                 if not constructor or c == constructor
             ]
-            rows.sort(key=lambda r: r["harvesting_slope_ms2_per_kmh"])
+            rows.sort(key=lambda r: r["rank"])
             return json.dumps(rows)
 
     @tool
@@ -462,5 +535,6 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
         get_lap_evolution,
         get_session_results,
         get_stint_summary,
+        compare_stint_pace,
         get_constructor_ranking,
     ]

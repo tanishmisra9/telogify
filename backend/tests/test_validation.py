@@ -7,6 +7,7 @@ from telogify.agent.validation import (
     flag_false_retirement_causation,
     flag_qualifying_only_finding,
     flag_qualifying_practice_sector_mismatch,
+    flag_results_only_insight,
     flag_session_abbreviations,
     flag_untraceable_numbers,
     flag_weak_deployment_cluster,
@@ -357,3 +358,77 @@ def test_validate_insights_allow_qualifying_only_flag_scopes_the_check():
     # Qualifying-agent scope: the exact same insight is legitimate and must NOT be flagged.
     flagged_quali = validate_insights(insights, trace, allow_qualifying_only=True)
     assert not any("qualifying-only" in issue for issues in flagged_quali.values() for issue in issues)
+
+
+# --- flag_results_only_insight --------------------------------------------
+
+
+def _results_only_trace():
+    return [
+        {
+            "tool": "get_session_results",
+            "args": {"session_type": "R"},
+            "result": json.dumps(
+                [
+                    {"position": 3, "driver": "HAM", "constructor": "Ferrari", "gap_to_leader": 0.772, "status": "Finished"},
+                    {"position": 1, "driver": "LEC", "constructor": "Ferrari", "gap_to_leader": 0.0, "status": "Finished"},
+                ]
+            ),
+        },
+        {
+            "tool": "get_race_control_events",
+            "args": {"driver": "HAM"},
+            "result": json.dumps(
+                [{"lap": 7, "driver": "HAM", "kind": "penalty", "message": "5 second penalty, false start"}]
+            ),
+        },
+    ]
+
+
+def test_flag_results_only_insight_blocks_pure_recap():
+    trace = _results_only_trace()
+    text = (
+        "Hamilton's Ferrari finished third, 0.772 seconds behind Charles Leclerc, even after "
+        "race control issued a five-second penalty for a false start."
+    )
+    issues = flag_results_only_insight(text, trace)
+    assert len(issues) == 1
+    assert "results-only" in issues[0]
+
+
+def test_flag_results_only_insight_allows_when_paired_with_pace_data():
+    trace = _results_only_trace() + [
+        {
+            "tool": "get_constructor_ranking",
+            "args": {},
+            "result": json.dumps([{"constructor": "Ferrari", "overall_rank": 2, "race_pace_gap_s": 0.168}]),
+        }
+    ]
+    text = "Hamilton's Ferrari finished third, but the car ranked second on race pace, 0.168 seconds off the fastest."
+    assert flag_results_only_insight(text, trace) == []
+
+
+def test_flag_results_only_insight_skips_when_no_results_data_in_trace():
+    trace = [{"tool": "get_constructor_ranking", "args": {}, "result": "[]"}]
+    assert flag_results_only_insight("Some insight with 42 seconds cited.", trace) == []
+
+
+def test_flag_results_only_insight_skips_when_no_quantities_cited():
+    trace = _results_only_trace()
+    assert flag_results_only_insight("Hamilton finished third behind Leclerc.", trace) == []
+
+
+def test_validate_insights_catches_results_only_finding():
+    trace = _results_only_trace()
+    insights = [
+        {
+            "header": "Hamilton's Ferrari finished third after a penalty",
+            "explanation_web": (
+                "Hamilton's Ferrari finished third, 0.772 seconds behind Charles Leclerc, "
+                "even after a five-second penalty for a false start."
+            ),
+            "explanation_email": "Hamilton finished third despite a five-second penalty.",
+        }
+    ]
+    flagged = validate_insights(insights, trace)
+    assert 1 in flagged and any("results-only" in issue for issue in flagged[1])

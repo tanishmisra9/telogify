@@ -241,6 +241,35 @@ def test_allows_measured_ers_deployment_character_language():
     assert flag_unsupported_claims(text) == []
 
 
+def test_flags_raw_acceleration_slope_unit():
+    text = "The Red Bull's acceleration held at -0.115 m/s² per km/h through the band."
+    assert "m/s² per km/h" in flag_unsupported_claims(text)
+
+
+def test_flags_harvesting_slope_field_name():
+    text = "The Red Bull's harvesting_slope was steeper than the field average."
+    assert "harvesting_slope" in flag_unsupported_claims(text)
+
+
+def test_flags_no_race_control_event_recorded():
+    text = "Leclerc finished eighth, and there was no race-control collision or penalty recorded for him."
+    assert "no race-control" in flag_unsupported_claims(text)
+
+
+def test_flags_no_penalty_recorded_variants():
+    assert "no penalty recorded" in flag_unsupported_claims("There was no penalty recorded for the car.")
+    assert "no collision or penalty" in flag_unsupported_claims("No collision or penalty was issued to the Ferrari.")
+    assert "no incident recorded" in flag_unsupported_claims("No incident recorded on that lap.")
+
+
+def test_allows_plain_accel_at_speed_direction():
+    text = (
+        "The Red Bull kept accelerating harder than the field average as speed built, holding "
+        "-1.5 m/s² at 250 km/h against a field average of -2.1 m/s²."
+    )
+    assert flag_unsupported_claims(text) == []
+
+
 def test_allows_within_session_qualifying_progression():
     text = (
         "The Williams found 0.612 seconds from Q1 to Q3, more than any other constructor gained "
