@@ -63,6 +63,7 @@ export function Insight({
   collapsible = false,
   contextLabel,
   kicker,
+  tintColor,
 }: {
   item: InsightItem
   showSlot?: boolean
@@ -73,6 +74,9 @@ export function Insight({
   // Optional label line rendered inside the card, above the heading ("Latest verdict · ..."),
   // so a standalone card can carry its own context within the panel.
   kicker?: string
+  // Optional background wash (e.g. teamColorWithAlpha(team, 0.09)), overriding .glass's plain
+  // surface color. Undefined preserves the default neutral panel used everywhere else.
+  tintColor?: string
 }) {
   const [open, setOpen] = useState(true)
   const titleId = `insight-${item.slot}-title`
@@ -84,7 +88,11 @@ export function Insight({
   const copyText = `${contextLabel ? `${contextLabel} · ` : ''}${item.header}\n\n${item.explanation_web}`
 
   return (
-    <article className="glass lift rounded-[--radius-panel] p-7 sm:p-8" aria-labelledby={titleId}>
+    <article
+      className="glass lift rounded-[--radius-panel] p-7 sm:p-8"
+      style={tintColor ? { backgroundColor: tintColor } : undefined}
+      aria-labelledby={titleId}
+    >
       {kicker && <p className="kicker mb-4 text-sm! text-accent">{kicker}</p>}
       <div className="flex items-start gap-4 sm:gap-5">
         {showSlot && (

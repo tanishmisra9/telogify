@@ -194,6 +194,7 @@ function SeasonView({ year }: { year: number }) {
                           collapsible
                           kicker={`${item.pu} power · ${item.teams.join(' · ')}`}
                           contextLabel={`${year} season deployment`}
+                          tintColor={teamColorWithAlpha(item.works_team, 0.09)}
                         />
                       </BlurFade>
                     ))}
