@@ -1,4 +1,5 @@
 import { LogoWaveform } from '@/components/Logo'
+import { Tooltip } from '@/components/Tooltip'
 import { useApi, type WeekendSummary } from '@/lib/api'
 
 // Hand-rolled to match the codebase's icon convention (no lucide-react dependency installed).
@@ -45,17 +46,27 @@ export function Footer() {
           <div className="flex flex-col gap-1.5">
             <p className="text-sm text-muted">
               Methodology inputs by{' '}
-              <a
-                href="https://www.instagram.com/fdataanalysis/"
-                target="_blank"
-                rel="noopener noreferrer"
-                // -mx/-my offset the padding so the pill highlight appears without shifting the
-                // prose; same accent hover recipe as the copy/collapse icon buttons.
-                className="-mx-1.5 -my-1 inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-ink transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
-              >
-                Mirco Bartolozzi @fdataanalysis
-                <InstagramIcon />
-              </a>{' '}
+              <Tooltip label="Instagram account">
+                <a
+                  href="https://www.instagram.com/fdataanalysis/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  // -mx/-my offset the padding so the pill highlight appears without shifting the
+                  // prose; same accent hover recipe as the copy/collapse icon buttons. -mx-1 (not
+                  // -mx-1.5): the wider pill bled far enough left to overlap the "y" in the
+                  // preceding "by".
+                  className="-mx-1 -my-1 inline-flex items-center gap-1 rounded-full px-1 py-1 text-ink transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+                >
+                  Mirco Bartolozzi
+                  {/* The icon stands in for "@" entirely (no literal @ character) -- gap-0.5, not
+                      the outer gap-1, since it's replacing a character glued to the handle, not a
+                      word-space. */}
+                  <span className="inline-flex items-center gap-0.5">
+                    <InstagramIcon />
+                    fdataanalysis
+                  </span>
+                </a>
+              </Tooltip>{' '}
               : clean-air filtering, fuel correction model, ERS depletion signal.
             </p>
             <p className="text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>
