@@ -81,6 +81,7 @@ function LiveInsight() {
         showSlot={false}
         contextLabel={data.event_name}
         kicker={`Latest verdict · ${data.event_name}`}
+        href={`/weekends/${data.year}/${data.round}`}
       />
       <p className="mt-3 text-xs text-muted">Every figure traced to official timing data. Nothing estimated.</p>
     </section>

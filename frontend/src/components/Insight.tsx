@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import { Tooltip } from '@/components/Tooltip'
 import { emphasize, bindMetricSpaces } from '@/lib/emphasize'
 import { expandTransition } from '@/lib/motion'
@@ -65,6 +66,7 @@ export function Insight({
   kicker,
   tintColor,
   accentColor,
+  href,
 }: {
   item: InsightItem
   showSlot?: boolean
@@ -83,6 +85,11 @@ export function Insight({
   // Optional full-strength color for the big slot number, overriding the default site accent
   // red (e.g. resolveTeamColor(team), so the number carries team identity too).
   accentColor?: string
+  // Optional route (e.g. `/weekends/2026/12`) that makes the whole card clickable. Rendered as
+  // a stretched link (an absolutely-positioned <Link> under the content, inset-0) rather than
+  // wrapping the card in an <a>, since the CopyButton inside is a real nested <button> and an
+  // <a> containing interactive content is invalid HTML / confusing to screen readers.
+  href?: string
 }) {
   const [open, setOpen] = useState(true)
   const titleId = `insight-${item.slot}-title`
@@ -109,6 +116,42 @@ export function Insight({
   // so body still lines up under the heading with no per-font-metrics arithmetic.
   const gridCols = showSlot ? 'grid-cols-[auto_1fr] gap-x-4 sm:gap-x-5' : 'grid-cols-1'
   const contentCol = showSlot ? 'col-start-2' : 'col-start-1'
+  // Copy is a real nested interactive element, so its click must not also bubble into the
+  // outer toggle; the chevron is purely decorative and deliberately left un-stopped, so
+  // clicking it (or anywhere else in the header) still toggles. gap-6 (not tighter): both
+  // icons' -m-3 tap targets reach 12px past their own visible glyph, so anything less than
+  // 24px between them lets the two invisible hit-boxes overlap and steal each other's clicks.
+  const buttonGroup = (
+    <div className="flex shrink-0 items-start gap-6">
+      <span onClick={(e) => e.stopPropagation()}>
+        <CopyButton text={copyText} />
+      </span>
+      {collapsible && (
+        <Tooltip label={open ? 'Collapse' : 'Expand'}>
+          <span
+            // -m-3 + p-3 matches CopyButton's 40px tap target.
+            className="-m-3 mt-[-0.375rem] flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+          >
+            <m.svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              animate={{ rotate: open ? 180 : 0 }}
+              transition={expandTransition}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </m.svg>
+          </span>
+        </Tooltip>
+      )}
+    </div>
+  )
   const content = (
     <>
       {kicker && <p className="kicker mb-4 text-sm! text-accent">{kicker}</p>}
@@ -127,44 +170,13 @@ export function Insight({
             than that. A short-but-not-short-enough header can fit on one line right at a 24px
             minimum, reading as crowded against the buttons even though longer headers (forced
             to wrap) end their last line well short of the boundary. The larger minimum guarantees
-            the same breathing room regardless of where a given header happens to wrap. */}
-        <div className={`${contentCol} row-start-1 flex min-w-0 items-start justify-between gap-10`}>
+            the same breathing room regardless of where a given header happens to wrap.
+            Without a slot number, there's no rank digit to line the button row up against, so
+            the buttons move out of the heading's row entirely (see the absolutely-positioned
+            copy of buttonGroup below) and the heading gets the row to itself. */}
+        <div className={`${contentCol} row-start-1 flex min-w-0 items-start ${showSlot ? 'justify-between gap-10' : ''}`}>
           {heading}
-          {/* Copy is a real nested interactive element, so its click must not also bubble
-              into the outer toggle; the chevron is purely decorative and deliberately left
-              un-stopped, so clicking it (or anywhere else in the header) still toggles.
-              gap-6 (not tighter): both icons' -m-3 tap targets reach 12px past their own
-              visible glyph, so anything less than 24px between them lets the two invisible
-              hit-boxes overlap and steal each other's clicks. */}
-          <div className="flex shrink-0 items-start gap-6">
-            <span onClick={(e) => e.stopPropagation()}>
-              <CopyButton text={copyText} />
-            </span>
-            {collapsible && (
-              <Tooltip label={open ? 'Collapse' : 'Expand'}>
-                <span
-                  // -m-3 + p-3 matches CopyButton's 40px tap target.
-                  className="-m-3 mt-[-0.375rem] flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
-                >
-                  <m.svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                    animate={{ rotate: open ? 180 : 0 }}
-                    transition={expandTransition}
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </m.svg>
-                </span>
-              </Tooltip>
-            )}
-          </div>
+          {showSlot && buttonGroup}
         </div>
         <AnimatePresence initial={false}>
           {(!collapsible || open) && (
@@ -187,10 +199,27 @@ export function Insight({
 
   return (
     <article
-      className="glass lift rounded-[--radius-panel] p-7 sm:p-8"
+      className="glass lift relative rounded-[--radius-panel] p-7 sm:p-8"
       style={tintColor ? { backgroundColor: tintColor } : undefined}
       aria-labelledby={titleId}
     >
+      {href && (
+        <Link
+          to={href}
+          aria-label={item.header}
+          // Stretched link: fills the whole card so it's clickable anywhere, sitting below
+          // (z-0) the copy button's own z-10 so that button keeps intercepting its own clicks
+          // rather than the click falling through to this link underneath it.
+          className="absolute inset-0 z-0 rounded-[--radius-panel]"
+        />
+      )}
+      {/* Pinned to the card's own top-right corner (not the heading's row): without a slot
+          number there's no rank digit for the button row to line up against, so it reads
+          better as a corner affordance on the card itself than floating beside wherever the
+          heading happens to sit. */}
+      {!showSlot && (
+        <div className="absolute right-7 top-7 z-10 sm:right-8 sm:top-8">{buttonGroup}</div>
+      )}
       {collapsible ? (
         <button type="button" onClick={toggle} aria-expanded={open} className="block w-full cursor-pointer text-left">
           {content}
