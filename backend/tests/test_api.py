@@ -9,6 +9,7 @@ from telogify.models import (
     QualiCharacter,
     QualiInsight,
     RaceWeekend,
+    SeasonDeploymentInsight,
     SectorBest,
     Session as SessionRow,
     SessionResult,
@@ -270,6 +271,34 @@ def test_sprint_session_endpoints(client, test_engine):
     assert summary["sectors"]["drivers"][0]["best_time_s"] == 29.0
 
     assert client.get("/weekends/2025/11/pace?session=SPRINT").json()["drivers"][0]["id"] == "VER"
+
+
+def test_season_deployment_shape_without_insights(client):
+    out = client.get("/season/2025/deployment").json()
+    assert "scatter" in out and "pu_groups" in out and "insights" in out
+    assert out["insights"] == []
+    pu_names = {g["name"] for g in out["pu_groups"]}
+    assert "Mercedes" in pu_names and "Ferrari" in pu_names
+
+
+def test_season_deployment_serves_persisted_insights(client, test_engine):
+    with Session(test_engine) as db:
+        db.add(
+            SeasonDeploymentInsight(
+                year=2025, rank=1, pu_name="Ferrari", works_team="Ferrari",
+                teams_json=["Ferrari", "Haas F1 Team"],
+                header="Ferrari power holds acceleration best",
+                explanation_web="Ferrari-powered cars kept accelerating hardest through the band.",
+                source_metrics_json={"rank": 1, "pu": "Ferrari"},
+            )
+        )
+        db.commit()
+    out = client.get("/season/2025/deployment").json()
+    assert len(out["insights"]) == 1
+    row = out["insights"][0]
+    assert row["slot"] == 1 and row["pu"] == "Ferrari" and row["works_team"] == "Ferrari"
+    assert row["teams"] == ["Ferrari", "Haas F1 Team"]
+    assert row["header"] == "Ferrari power holds acceleration best"
 
 
 def test_subscribe_and_dedupe(client, test_engine):

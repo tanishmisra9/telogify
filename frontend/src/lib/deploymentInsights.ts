@@ -1,9 +1,11 @@
 import { binBySpeed } from '@/lib/seasonAccel'
-import type { SeasonDeploymentScatter } from '@/lib/api'
+import type { PuGroup, SeasonDeploymentScatter } from '@/lib/api'
 
-// Bite-sized per-PU-manufacturer verdicts for the season Deployment chart, computed from the
-// exact scatter payload the chart renders. Templated, not generated: the model has no role here,
-// same register as seasonSummary.ts. Every number in a verdict is a median the reader could
+// Bite-sized per-PU-manufacturer verdicts for the season Deployment section: the deterministic
+// FALLBACK rendered only until `telogify run-season-deployment` has written the LLM verdicts
+// (SeasonPage.tsx prefers the served `insights`, and falls back to this templated read of
+// `scatter` when that list is empty, so the section is never blank). Templated, not generated:
+// the model has no role here. Every number in a verdict is a median the reader could
 // recompute from the dots on screen.
 //
 // Metric design is grounded in the real data shape (2026 R1-9): full-throttle no-brake samples
@@ -15,26 +17,12 @@ import type { SeasonDeploymentScatter } from '@/lib/api'
 // to hold ("fade"). The fade templates always cite both numbers so a flat-but-weak profile
 // reads as weak, never as "most constant" praise.
 
-export interface PuGroup {
-  name: string // 'Mercedes' (the PU manufacturer)
-  worksTeam: string // team whose color marks the row
-  teams: string[] // constructors running this PU, 2026
-}
-
-// 2026 power unit supply map. Season-specific by nature (like the hardcoded team colors).
-export const PU_GROUPS: PuGroup[] = [
-  { name: 'Mercedes', worksTeam: 'Mercedes', teams: ['Mercedes', 'Alpine', 'McLaren', 'Williams'] },
-  { name: 'Ferrari', worksTeam: 'Ferrari', teams: ['Ferrari', 'Haas F1 Team', 'Cadillac'] },
-  { name: 'Red Bull', worksTeam: 'Red Bull Racing', teams: ['Red Bull Racing', 'Racing Bulls'] },
-  { name: 'Honda', worksTeam: 'Aston Martin', teams: ['Aston Martin'] },
-  { name: 'Audi', worksTeam: 'Audi', teams: ['Audi'] },
-]
-
 export interface PuVerdict {
-  name: string
-  worksTeam: string
+  pu: string
+  works_team: string
   teams: string[] // members actually present in the data
-  text: string // 1-2 clause verdict, real numbers inline
+  header: string
+  explanation_web: string
 }
 
 const MIN_BIN_N = 5 // a bin's median is meaningless on fewer samples
@@ -87,11 +75,12 @@ function rankGroups(ms: GroupMetrics[], get: (m: GroupMetrics) => number | null,
 interface Candidate {
   order: number // metric priority: punch, hold, fade
   extremity: number // 1 = outright first/last, 0.5 = a rank-2 silver
-  clause: string
+  headline: string // short, number-free phrase for the panel header
+  clause: string // full clause with the number, for the body
 }
 
-export function deploymentInsights(scatter: SeasonDeploymentScatter): PuVerdict[] {
-  const ms = PU_GROUPS.map((g) => measureGroup(g, scatter)).filter((m) => m.teams.length > 0)
+export function deploymentInsights(scatter: SeasonDeploymentScatter, groups: PuGroup[]): PuVerdict[] {
+  const ms = groups.map((g) => measureGroup(g, scatter)).filter((m) => m.teams.length > 0)
 
   const punchRanks = rankGroups(ms, (m) => m.punch, 'high')
   const holdRanks = rankGroups(ms, (m) => m.hold, 'high')
@@ -99,7 +88,15 @@ export function deploymentInsights(scatter: SeasonDeploymentScatter): PuVerdict[
   // Nothing rankable at all (fewer than 3 groups with data): silence beats unanchored claims.
   if (!punchRanks && !holdRanks && !fadeRanks) return []
 
-  return ms
+  // Best to worst, matching the backend's rank_groups_best_to_worst: punch (250-290 km/h,
+  // the band every group covers) descending, hold as tiebreak, no-punch groups last.
+  const ranked = [...ms].sort((a, b) => {
+    if ((a.punch == null) !== (b.punch == null)) return a.punch == null ? 1 : -1
+    if (a.punch != null && b.punch != null && a.punch !== b.punch) return b.punch - a.punch
+    return (b.hold ?? -Infinity) - (a.hold ?? -Infinity)
+  })
+
+  return ranked
     .filter((m) => m.punch != null || m.hold != null)
     .map((m) => {
       const cands: Candidate[] = []
@@ -107,28 +104,29 @@ export function deploymentInsights(scatter: SeasonDeploymentScatter): PuVerdict[
       const p = punchRanks?.[m.group.name]
       if (p && m.punch != null) {
         if (p.rank === 1)
-          cands.push({ order: 0, extremity: 1, clause: `strongest mid-range deployment (${fmt(m.punch)} m/s² through ${MID_LO}-${MID_HI} km/h)` })
+          cands.push({ order: 0, extremity: 1, headline: 'holds its acceleration best through the mid-range', clause: `strongest mid-range deployment (${fmt(m.punch)} m/s² through ${MID_LO}-${MID_HI} km/h)` })
         else if (p.rank === p.total)
-          cands.push({ order: 0, extremity: 1, clause: `leanest mid-range deployment (${fmt(m.punch)} m/s² through ${MID_LO}-${MID_HI} km/h), consistent with heavier harvesting there` })
+          cands.push({ order: 0, extremity: 1, headline: 'sheds acceleration earliest through the mid-range', clause: `leanest mid-range deployment (${fmt(m.punch)} m/s² through ${MID_LO}-${MID_HI} km/h), consistent with heavier harvesting there` })
         else if (p.rank === 2)
-          cands.push({ order: 0, extremity: 0.5, clause: `2nd-strongest mid-range deployment (${fmt(m.punch)} m/s²)` })
+          cands.push({ order: 0, extremity: 0.5, headline: 'is the second-strongest through the mid-range', clause: `2nd-strongest mid-range deployment (${fmt(m.punch)} m/s²)` })
       }
 
       const h = holdRanks?.[m.group.name]
       if (h && m.hold != null) {
         if (h.rank === 1)
-          cands.push({ order: 1, extremity: 1, clause: `holds its deployment best at top speed (${fmt(m.hold)} m/s² past ${MID_HI} km/h)` })
+          cands.push({ order: 1, extremity: 1, headline: 'keeps pulling hardest at top speed', clause: `holds its deployment best at top speed (${fmt(m.hold)} m/s² past ${MID_HI} km/h)` })
         else if (h.rank === h.total)
           cands.push({
             order: 1,
             extremity: 1,
+            headline: m.hold <= 0 ? 'runs out of shove first at top speed' : 'has the weakest top-speed hold',
             clause:
               m.hold <= 0
                 ? `first to run dry up top (${fmt(m.hold)} m/s² past ${MID_HI} km/h)`
                 : `weakest top-speed hold (${fmt(m.hold)} m/s² past ${MID_HI} km/h)`,
           })
         else if (h.rank === 2)
-          cands.push({ order: 1, extremity: 0.5, clause: `2nd-best top-speed hold (${fmt(m.hold)} m/s²)` })
+          cands.push({ order: 1, extremity: 0.5, headline: 'has the second-best top-speed hold', clause: `2nd-best top-speed hold (${fmt(m.hold)} m/s²)` })
       }
 
       const f = fadeRanks?.[m.group.name]
@@ -136,14 +134,18 @@ export function deploymentInsights(scatter: SeasonDeploymentScatter): PuVerdict[
         // Both fade templates cite punch AND hold, so "most constant" can never dress up a
         // profile that is simply weak everywhere; the low numbers are right there.
         if (f.rank === f.total)
-          cands.push({ order: 2, extremity: 1, clause: `sheds the most once deployment runs out (${fmt(m.punch)} mid-range down to ${fmt(m.hold)} m/s² past ${MID_HI} km/h)` })
+          cands.push({ order: 2, extremity: 1, headline: 'sheds the most once deployment runs out', clause: `sheds the most once deployment runs out (${fmt(m.punch)} mid-range down to ${fmt(m.hold)} m/s² past ${MID_HI} km/h)` })
         else if (f.rank === 1)
-          cands.push({ order: 2, extremity: 1, clause: `most constant deployment across the range (${fmt(m.punch)} mid-range vs ${fmt(m.hold)} up top)` })
+          cands.push({ order: 2, extremity: 1, headline: 'stays the most constant across the range', clause: `most constant deployment across the range (${fmt(m.punch)} mid-range vs ${fmt(m.hold)} up top)` })
       }
 
       cands.sort((a, b) => b.extremity - a.extremity || a.order - b.order)
       const picked = cands.slice(0, 2)
-      const text =
+      const header =
+        picked.length === 0
+          ? `${m.group.name} power sits mid-pack on deployment`
+          : `${m.group.name} power ${picked[0].headline}`
+      const explanation_web =
         picked.length === 0
           ? 'Sits between the extremes on every deployment measure here.'
           : `${picked
@@ -151,6 +153,6 @@ export function deploymentInsights(scatter: SeasonDeploymentScatter): PuVerdict[
               .join('; ')
               .replace(/^./, (c) => c.toUpperCase())}.`
 
-      return { name: m.group.name, worksTeam: m.group.worksTeam, teams: m.teams, text }
+      return { pu: m.group.name, works_team: m.group.works_team, teams: m.teams, header, explanation_web }
     })
 }

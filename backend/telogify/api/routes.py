@@ -26,6 +26,7 @@ from telogify.analysis.race_pace import (
 )
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
 from telogify.analysis.season import build_season_accel_scatter, build_season_snapshot
+from telogify.analysis.season_deployment import PU_GROUPS
 from telogify.analysis.season_stats import build_season_stats
 from telogify.ingest.results import (
     format_gap_label,
@@ -40,6 +41,7 @@ from telogify.models import (
     QualiInsight,
     QualiTrace,
     RaceWeekend,
+    SeasonDeploymentInsight,
     SectorBest,
     Session as SessionRow,
     SessionResult,
@@ -681,9 +683,35 @@ def season_stats(year: int, db: Session = Depends(get_session)):
 
 @router.get("/season/{year}/deployment")
 def season_deployment_scatter(year: int, db: Session = Depends(get_session)):
-    """Season-wide ERS deployment/harvesting scatter: pooled (speed, longitudinal accel) points
-    per constructor, full-throttle/no-brake/low-lateral-g only. {constructor: [[speed, accel], ...]}."""
-    return build_season_accel_scatter(year, db)
+    """Season-wide deployment section: `scatter` is the pooled (speed, longitudinal accel)
+    points per constructor, full-throttle/no-brake/low-lateral-g only
+    ({constructor: [[speed, accel], ...]}). `pu_groups` is the season's team -> power-unit
+    manufacturer supply map ([{name, works_team, teams}]). `insights` is the LLM-written
+    verdict per power-unit manufacturer, ranked best to worst (`telogify run-season-deployment`
+    generates it; empty until then, in which case the frontend falls back to a deterministic
+    read of `scatter`)."""
+    rows = db.exec(
+        select(SeasonDeploymentInsight)
+        .where(SeasonDeploymentInsight.year == year)
+        .order_by(SeasonDeploymentInsight.rank)
+    ).all()
+    return {
+        "scatter": build_season_accel_scatter(year, db),
+        "pu_groups": [
+            {"name": g.name, "works_team": g.works_team, "teams": list(g.teams)} for g in PU_GROUPS
+        ],
+        "insights": [
+            {
+                "slot": r.rank,
+                "header": r.header,
+                "explanation_web": r.explanation_web,
+                "pu": r.pu_name,
+                "works_team": r.works_team,
+                "teams": r.teams_json,
+            }
+            for r in rows
+        ],
+    }
 
 
 @router.post("/subscribe")

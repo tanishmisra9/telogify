@@ -218,6 +218,34 @@ def run_insights_cmd(
     _echo_season_final_summary(summary)
 
 
+@app.command("run-season-deployment")
+def run_season_deployment_cmd(year: int) -> None:
+    """Regenerate the season deployment section's LLM verdicts (one per power-unit
+    manufacturer, ranked best to worst) from already-ingested accel samples. LLM only, no
+    FastF1 ingest; needs at least 3 power-unit manufacturers with race data this year."""
+    from sqlmodel import Session
+
+    from telogify.agent.season_deployment import (
+        generate_season_deployment_verdicts,
+        persist_season_deployment,
+    )
+    from telogify.analysis.season import build_season_accel_scatter
+    from telogify.db import engine
+
+    _echo_llm_model()
+    started = time.monotonic()
+    with Session(engine) as db:
+        scatter = build_season_accel_scatter(year, db)
+        with console.status(f"[bold cyan]Writing season {year} deployment verdicts...[/bold cyan]"):
+            verdicts, metrics = generate_season_deployment_verdicts(scatter)
+        if not verdicts:
+            console.print(f"[yellow]Not enough power-unit data for {year} yet; nothing persisted.[/yellow]")
+            return
+        persist_season_deployment(year, verdicts, metrics, db)
+    elapsed = _format_elapsed(time.monotonic() - started)
+    console.print(f"[green]Done:[/green] persisted [bold]{len(verdicts)}[/bold] verdict(s) [dim]({elapsed})[/dim].")
+
+
 @app.command("ingest")
 def ingest_cmd(
     year: int,

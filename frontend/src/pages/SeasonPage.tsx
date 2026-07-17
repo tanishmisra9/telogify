@@ -1,22 +1,21 @@
-import { useRef, useState } from 'react'
-import { AnimatePresence, m } from 'framer-motion'
+import { useRef } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
+import { Insight } from '@/components/Insight'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
-import { Tooltip } from '@/components/Tooltip'
+import { deploymentInsights } from '@/lib/deploymentInsights'
 import { heatBg, rankAsc } from '@/lib/heat'
-import { expandTransition } from '@/lib/motion'
-import { seasonSummary, type Trait } from '@/lib/seasonSummary'
 import { teamColorWithAlpha } from '@/lib/teamColors'
 import { useScrollFade } from '@/lib/useScrollFade'
 import {
   useApi,
   type SeasonConstructorRow,
-  type SeasonDeploymentScatter,
+  type SeasonDeployment,
+  type SeasonDeploymentInsightItem,
   type SeasonSnapshot,
   type WeekendSummary,
 } from '@/lib/api'
@@ -110,140 +109,27 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   )
 }
 
-// A team's car is the subject; strengths and weaknesses are its supporting detail, not table
-// columns of equal weight. Each team gets a real heading (name at display size, own row) with
-// its two trait lists indented underneath, so the list reads as a sequence of short editorial
-// entries instead of a spreadsheet.
-function TraitList({ traits, kind }: { traits: Trait[]; kind: 'up' | 'down' }) {
-  if (traits.length === 0) {
-    // A genuinely poor car legitimately has zero real strengths (seasonSummary.ts won't dress
-    // one up); say so instead of leaving the cell blank, which reads as broken rather than honest.
-    return <p className="text-sm text-muted">{kind === 'up' ? 'No standout strength yet' : '–'}</p>
-  }
-  const mark = kind === 'up' ? '▲' : '▼'
-  const markColor = kind === 'up' ? 'text-accent' : 'text-muted'
-  return (
-    <ul className="flex flex-col gap-2">
-      {traits.map((trait, i) => (
-        <li key={i} className="flex items-center gap-3 text-sm">
-          <span className={`shrink-0 text-[0.7em] ${markColor}`} aria-hidden>
-            {mark}
-          </span>
-          <span className="min-w-0 flex-1 text-ink">
-            {trait.text}
-            {trait.detail && <span className="num ml-1.5 text-muted">{trait.detail}</span>}
-          </span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-// Closed by default: strengths/weaknesses for every team at once is a wall of text before a
-// reader has picked who they care about. The team row itself (pill, name, confidence chip)
-// stays visible either way so the list still reads as a ranking at a glance.
-function FormGuideRow({
-  row: r,
-  strengths,
-  weaknesses,
-  bordered,
-}: {
-  row: SeasonConstructorRow
-  strengths: Trait[]
-  weaknesses: Trait[]
-  bordered: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <li className={`py-7 ${bordered ? 'border-t border-border' : ''}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-4 text-left"
-      >
-        <div
-          className="inline-flex items-center gap-2.5 rounded-[--radius-panel] px-3 py-1.5"
-          style={{ backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }}
-        >
-          <TeamRule team={r.constructor} className="h-[1.1em]" />
-          <h3 className="font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
-            {r.constructor}
-          </h3>
-          <ConfidenceChip confidence={r.confidence} />
-        </div>
-        <Tooltip label={open ? 'Collapse' : 'Expand'}>
-          <span className="-m-3 flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20">
-            <m.svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-              animate={{ rotate: open ? 180 : 0 }}
-              transition={expandTransition}
-            >
-              <path d="m6 9 6 6 6-6" />
-            </m.svg>
-          </span>
-        </Tooltip>
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <m.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={expandTransition}
-            className="overflow-hidden"
-          >
-            <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 sm:pl-[22px]">
-              <div>
-                <p className="kicker mb-2.5 text-accent">Strengths</p>
-                <TraitList traits={strengths} kind="up" />
-              </div>
-              <div>
-                <p className="kicker mb-2.5 text-muted">Weaknesses</p>
-                <TraitList traits={weaknesses} kind="down" />
-              </div>
-            </div>
-          </m.div>
-        )}
-      </AnimatePresence>
-    </li>
-  )
-}
-
-function FormGuide({ rows }: { rows: SeasonConstructorRow[] }) {
-  const summary = seasonSummary(rows)
-  return (
-    <div className="glass rounded-[--radius-panel] p-6 sm:p-8">
-      <ul>
-        {rows.map((r, i) => {
-          const s = summary[r.constructor]
-          return (
-            <FormGuideRow
-              key={r.constructor}
-              row={r}
-              strengths={s.strengths}
-              weaknesses={s.weaknesses}
-              bordered={i > 0}
-            />
-          )
-        })}
-      </ul>
-    </div>
-  )
+// The LLM-written verdicts (telogify run-season-deployment) are the primary read, already in
+// rank order. Until that's been run for this year, fall back to a deterministic read of the
+// same scatter (lib/deploymentInsights.ts) so the section is never blank.
+function deploymentPanels(deployment: SeasonDeployment): SeasonDeploymentInsightItem[] {
+  if (deployment.insights.length > 0) return deployment.insights
+  return deploymentInsights(deployment.scatter, deployment.pu_groups).map((v, i) => ({
+    slot: i + 1,
+    header: v.header,
+    explanation_web: v.explanation_web,
+    pu: v.pu,
+    works_team: v.works_team,
+    teams: v.teams,
+  }))
 }
 
 function SeasonView({ year }: { year: number }) {
   const season = useApi<SeasonSnapshot>(`/season/${year}`)
-  const deployment = useApi<SeasonDeploymentScatter>(`/season/${year}/deployment`)
+  const deployment = useApi<SeasonDeployment>(`/season/${year}/deployment`)
   const rows = season.data?.constructors ?? []
+  const hasDeployment = !!deployment.data && Object.keys(deployment.data.scatter).length > 0
+  const deploymentPanelItems = deployment.data ? deploymentPanels(deployment.data) : []
 
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
@@ -290,22 +176,34 @@ function SeasonView({ year }: { year: number }) {
             </BlurFade>
           </section>
 
-          <section className="mt-20">
-            <SectionTitle>Where each car wins and loses</SectionTitle>
-            <BlurFade>
-              <FormGuide rows={rows} />
-            </BlurFade>
-            <p className="mt-4 text-xs text-muted">
-              Up to three real strengths and three weaknesses per car, each ranked against every other team
-              with the real season-average figure. Even a front-runner shows where it gives a little away.
-            </p>
-          </section>
-
-          {deployment.data && Object.keys(deployment.data).length > 0 && (
+          {hasDeployment && (
             <section className="mt-20">
               <SectionTitle>Deployment</SectionTitle>
-              <BlurFade>
-                <SeasonDeploymentChart scatter={deployment.data} />
+              {deploymentPanelItems.length > 0 && (
+                // Full section width (matching Ranking/Form guide below), not the narrower
+                // max-w-5xl WeekendPage uses for its 3-insight hero column: on this denser,
+                // multi-section page a narrower block just left-aligns with dead space beside
+                // it. showSlot is off too: the big rank digit is sized for a 3-panel hero, not
+                // a 5-row list next to this page's smaller type; the kicker still names each
+                // manufacturer and the panels are already in rank order.
+                <div className="mb-8">
+                  <div className="grid gap-4">
+                    {deploymentPanelItems.map((item, i) => (
+                      <BlurFade key={item.pu} delay={0.06 * i}>
+                        <Insight
+                          item={item}
+                          showSlot={false}
+                          collapsible
+                          kicker={`${item.pu} power · ${item.teams.join(' · ')}`}
+                          contextLabel={`${year} season deployment`}
+                        />
+                      </BlurFade>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <BlurFade delay={0.06 * deploymentPanelItems.length}>
+                <SeasonDeploymentChart scatter={deployment.data!.scatter} puGroups={deployment.data!.pu_groups} />
               </BlurFade>
             </section>
           )}

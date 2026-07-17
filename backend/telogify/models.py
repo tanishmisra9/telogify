@@ -281,6 +281,24 @@ class QualiInsight(SQLModel, table=True):
     source_tool_calls_json: list = Field(default_factory=list, sa_column=Column(JSON))
 
 
+class SeasonDeploymentInsight(SQLModel, table=True):
+    """One LLM-written verdict per power-unit manufacturer for the season deployment section,
+    ranked best-to-worst (rank 1 = best) by analysis/season_deployment.rank_groups_best_to_worst.
+    Recomputed idempotently per year: delete + reinsert."""
+
+    __tablename__ = "season_deployment_insight"
+
+    id: int | None = Field(default=None, primary_key=True)
+    year: int = Field(index=True)
+    rank: int  # 1 = best PU this season
+    pu_name: str  # power-unit manufacturer, e.g. "Mercedes"
+    works_team: str  # team whose color marks the row
+    teams_json: list = Field(default_factory=list, sa_column=Column(JSON))
+    header: str
+    explanation_web: str
+    source_metrics_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
+
 class Subscriber(SQLModel, table=True):
     __tablename__ = "subscriber"
 

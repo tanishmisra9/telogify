@@ -234,6 +234,28 @@ export interface SeasonSnapshot {
 /** {constructor: [[speed_kmh, longitudinal_accel_ms2], ...]}, pooled across the season. */
 export type SeasonDeploymentScatter = Record<string, [number, number][]>
 
+// The season's team -> power-unit-manufacturer supply map, served so it can change year to
+// year without a frontend deploy (backend/telogify/analysis/season_deployment.py PU_GROUPS).
+export interface PuGroup {
+  name: string // power-unit manufacturer, e.g. "Mercedes"
+  works_team: string // team whose color marks the row
+  teams: string[] // constructors running this PU
+}
+
+export interface SeasonDeploymentInsightItem extends InsightItem {
+  pu: string
+  works_team: string
+  teams: string[]
+}
+
+export interface SeasonDeployment {
+  scatter: SeasonDeploymentScatter
+  pu_groups: PuGroup[]
+  // LLM-written verdict per power-unit manufacturer, ranked best to worst (slot = rank);
+  // empty until `telogify run-season-deployment` has generated one for this year.
+  insights: SeasonDeploymentInsightItem[]
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
   if (!res.ok) throw new Error(`${res.status}`)
