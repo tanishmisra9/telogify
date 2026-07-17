@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { BackHomeButton } from '@/components/BackHomeButton'
 import { BlurFade } from '@/components/BlurFade'
 import { useApi, type WeekendSummary } from '@/lib/api'
 
@@ -9,6 +10,9 @@ export function Weekends() {
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
       <BlurFade>
+        <div className="mb-6">
+          <BackHomeButton />
+        </div>
         <div className="flex flex-col gap-3 border-b-2 border-ink pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <h1 className="font-display text-6xl leading-[0.95] tracking-tight sm:text-7xl">
             Race weekends

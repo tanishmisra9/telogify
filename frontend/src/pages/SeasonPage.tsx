@@ -1,10 +1,13 @@
 import { useRef } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
+import { BackHomeButton } from '@/components/BackHomeButton'
+import { BackToTopButton } from '@/components/BackToTopButton'
 import { BlurFade } from '@/components/BlurFade'
 import { Insight } from '@/components/Insight'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
+import { SectionNav, type NavSection } from '@/components/SectionNav'
 import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
@@ -131,9 +134,19 @@ function SeasonView({ year }: { year: number }) {
   const hasDeployment = !!deployment.data && Object.keys(deployment.data.scatter).length > 0
   const deploymentPanelItems = deployment.data ? deploymentPanels(deployment.data) : []
 
+  const navSections: NavSection[] = [
+    rows.length > 0 ? { id: 'ranking', label: 'Ranking' } : null,
+    rows.length > 0 ? { id: 'gap-by-round', label: 'Gap by round' } : null,
+    rows.length > 0 && hasDeployment ? { id: 'deployment', label: 'Deployment' } : null,
+  ].filter((s): s is NavSection => s !== null)
+
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
+      <SectionNav sections={navSections} />
       <BlurFade>
+        <div className="mb-6">
+          <BackHomeButton />
+        </div>
         {/* Same heading-row shape as Weekends.tsx (h1 + kicker badge, one border-b-2 divider)
             so the two pages' titles land at the same position and size when switching between
             the WEEKENDS/SEASON nav links, instead of the season year stacking above as its own
@@ -147,7 +160,7 @@ function SeasonView({ year }: { year: number }) {
         </p>
       </BlurFade>
 
-      <section className="mt-16">
+      <section id="ranking" className="mt-16 scroll-mt-24">
         <SectionTitle>Ranking</SectionTitle>
         {season.loading && <p className="text-sm text-muted">Loading...</p>}
         {season.error && <p className="text-sm text-muted">No season data for {year}.</p>}
@@ -169,7 +182,7 @@ function SeasonView({ year }: { year: number }) {
 
       {rows.length > 0 && (
         <>
-          <section className="mt-20">
+          <section id="gap-by-round" className="mt-20 scroll-mt-24">
             <SectionTitle>Gap by round</SectionTitle>
             <BlurFade>
               <SeasonTrendChart rows={rows} rounds={season.data!.rounds} />
@@ -177,7 +190,7 @@ function SeasonView({ year }: { year: number }) {
           </section>
 
           {hasDeployment && (
-            <section className="mt-20">
+            <section id="deployment" className="mt-20 scroll-mt-24">
               <SectionTitle>Deployment</SectionTitle>
               {deploymentPanelItems.length > 0 && (
                 // Full section width (matching the Ranking table above), not the narrower
@@ -232,6 +245,8 @@ function SeasonView({ year }: { year: number }) {
           )}
         </>
       )}
+
+      <BackToTopButton />
     </main>
   )
 }

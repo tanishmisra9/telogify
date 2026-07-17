@@ -1,3 +1,4 @@
+import { BackHomeButton } from '@/components/BackHomeButton'
 import { BlurFade } from '@/components/BlurFade'
 
 export function SubscribePage() {
@@ -7,6 +8,9 @@ export function SubscribePage() {
     <main className="mx-auto max-w-[1312px] px-6 py-24">
       <div className="max-w-lg">
       <BlurFade>
+        <div className="mb-6">
+          <BackHomeButton />
+        </div>
         <p className="kicker text-accent">The digest</p>
         <h1 className="mt-4 font-display text-6xl leading-[0.95] tracking-tight">
           telo<span className="text-accent">gify</span> your weekend
