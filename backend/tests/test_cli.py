@@ -95,7 +95,7 @@ def test_ingest_single_round_done(monkeypatch):
 
 
 def _fake_run_season(rounds, results):
-    def fake(year, agent_runner=None, quali_agent_runner=None, on_round_start=None, on_round_complete=None):
+    def fake(year, agent_runner=None, quali_agent_runner=None, max_workers=4, on_round_start=None, on_round_complete=None):
         from telogify.pipeline import RoundResult, SeasonRunResult
 
         for i, (rnd, result) in enumerate(zip(rounds, results), start=1):

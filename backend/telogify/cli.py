@@ -25,7 +25,9 @@ def _format_elapsed(seconds: float) -> str:
     return f"{seconds:.1f}s"
 
 
-# Keyed by round number: single-threaded, sequential season loop, so this is safe.
+# Keyed by round number, so concurrent per-round writes (run-insights' thread pool) never
+# collide. Spinners (_round_statuses) are only used by the sequential run-weekend path; rich's
+# Live can't render several at once, so run-insights uses _on_round_start_line instead.
 _round_start_times: dict[int, float] = {}
 _round_elapsed: dict[int, str] = {}
 _round_statuses: dict[int, Status] = {}
@@ -36,6 +38,12 @@ def _on_round_start(round: int, index: int, total: int) -> None:
     status = console.status(f"[bold cyan]round {round} ({index}/{total}): running...[/bold cyan]")
     status.start()
     _round_statuses[round] = status
+
+
+def _on_round_start_line(round: int, index: int, total: int) -> None:
+    """Spinner-free start for the parallel run-insights pool (concurrent spinners can't coexist)."""
+    _round_start_times[round] = time.monotonic()
+    console.print(f"  [cyan]→[/cyan] round [bold]{round}[/bold] running...")
 
 
 def _on_round_complete(result: RoundResult, index: int, total: int) -> None:
@@ -186,12 +194,15 @@ def run_insights_cmd(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="List completed rounds only; do not call the agent."
     ),
+    workers: int = typer.Option(
+        4, "--workers", help="Rounds to regenerate in parallel. Lower if you hit LLM rate limits."
+    ),
 ) -> None:
     """Regenerate only the 3 insights from already-ingested data (LLM only, no FastF1 ingest).
 
     Recomputes candidates and re-runs the agent. Omitting ROUND runs every completed round on
-    the schedule (one agent call per weekend). Use --dry-run to preview without API spend.
-    Requires prior ingest via run-weekend."""
+    the schedule (rounds run in parallel across --workers threads). Use --dry-run to preview
+    without API spend. Requires prior ingest via run-weekend."""
     if round is not None:
         _run_insights_one(year, round)
         return
@@ -209,10 +220,14 @@ def run_insights_cmd(
         return
 
     _echo_llm_model()
-    console.print(f"[bold]Regenerating insights for season {year}[/bold]: {len(rounds)} completed round(s)...")
+    console.print(
+        f"[bold]Regenerating insights for season {year}[/bold]: {len(rounds)} completed round(s), "
+        f"{min(workers, len(rounds))} in parallel..."
+    )
     summary = run_insights_season(
         year,
-        on_round_start=_on_round_start,
+        max_workers=workers,
+        on_round_start=_on_round_start_line,
         on_round_complete=_on_round_complete,
     )
     _echo_season_final_summary(summary)

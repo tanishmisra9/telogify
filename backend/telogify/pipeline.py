@@ -6,6 +6,7 @@ and FastF1 caches raw data on disk, so re-running a weekend is safe and skips re
 """
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypedDict
@@ -299,31 +300,52 @@ def run_insights_season(
     quali_agent_runner=None,
     now: datetime | None = None,
     continue_on_error: bool = True,
+    max_workers: int = 4,
     on_round_start: Callable[[int, int, int], None] | None = None,
     on_round_complete: Callable[[RoundResult, int, int], None] | None = None,
 ) -> SeasonRunResult:
-    """Regenerate insights for every completed round in a season (LLM only, no FastF1 ingest)."""
+    """Regenerate insights for every completed round in a season (LLM only, no FastF1 ingest).
+
+    Rounds are independent (own DB rows, own Session), so they run on a thread pool of
+    `max_workers` to overlap the LLM latency that dominates each round. `on_round_complete`
+    fires in completion order (its index is a done-counter, not the round position); results
+    are sorted back to round order before returning.
+    """
     rounds = season_rounds(year, now=now)
     outcome = SeasonRunResult(year=year, rounds=rounds)
     total = len(rounds)
-    for i, rnd in enumerate(rounds, start=1):
+    if not rounds:
+        return outcome
+
+    def _work(rnd: int, index: int) -> RoundResult:
         if on_round_start:
-            on_round_start(rnd, i, total)
+            on_round_start(rnd, index, total)
         try:
             state = regen_insights(year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner)
-            result = RoundResult(
+            return RoundResult(
                 round=rnd,
                 ok=True,
                 insight_count=state.get("insight_count", 0),
                 quali_insight_count=state.get("quali_insight_count", 0),
             )
         except Exception as exc:
-            result = RoundResult(round=rnd, ok=False, error=str(exc))
-        outcome.results.append(result)
-        if on_round_complete:
-            on_round_complete(result, i, total)
-        if not result.ok and not continue_on_error:
-            break
+            return RoundResult(round=rnd, ok=False, error=str(exc))
+
+    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, total))) as pool:
+        futures = {pool.submit(_work, rnd, i): rnd for i, rnd in enumerate(rounds, start=1)}
+        done = 0
+        for fut in as_completed(futures):
+            result = fut.result()
+            done += 1
+            outcome.results.append(result)
+            if on_round_complete:
+                on_round_complete(result, done, total)
+            if not result.ok and not continue_on_error:
+                for pending in futures:
+                    pending.cancel()
+                break
+
+    outcome.results.sort(key=lambda r: r.round)
     return outcome
 
 

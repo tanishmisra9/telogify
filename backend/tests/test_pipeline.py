@@ -367,11 +367,10 @@ def test_run_insights_season_progress_callbacks_on_failure(monkeypatch):
         on_round_complete=on_complete,
     )
     assert len(summary.results) == 3
-    assert events == [
-        ("start", 1, 1, 3),
-        ("complete", 1, True, 1, 3),
-        ("start", 2, 2, 3),
-        ("complete", 2, False, 2, 3),
-        ("start", 3, 3, 3),
-        ("complete", 3, True, 3, 3),
-    ]
+    # Rounds run on a thread pool, so start/complete events can interleave in any order; assert
+    # per-round facts rather than a fixed sequence. Results are always sorted back to round order.
+    assert [r.round for r in summary.results] == [1, 2, 3]
+    starts = {rnd for kind, rnd, *_ in events if kind == "start"}
+    completes = {(rnd, ok) for kind, rnd, ok, *_ in events if kind == "complete"}
+    assert starts == {1, 2, 3}
+    assert completes == {(1, True), (2, False), (3, True)}
