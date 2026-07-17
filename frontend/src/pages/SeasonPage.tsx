@@ -9,7 +9,7 @@ import { SectionTitle } from '@/components/SectionTitle'
 import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
 import { heatBg, rankAsc } from '@/lib/heat'
-import { manufacturerAccentColor, resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
+import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { useScrollFade } from '@/lib/useScrollFade'
 import {
   useApi,
@@ -187,19 +187,26 @@ function SeasonView({ year }: { year: number }) {
                 // package this season), which the kicker's manufacturer name doesn't convey.
                 <div className="mb-8">
                   <div className="grid gap-4">
-                    {deploymentPanelItems.map((item, i) => (
+                    {deploymentPanelItems.map((item, i) => {
+                      // ponytail: Mercedes' cyan (#27F4D2) reads as too bright/light for text
+                      // at full strength here; every other team's color was confirmed fine as
+                      // is, so this is a one-off calibration knob, not a general formula.
+                      const teamColor =
+                        item.works_team === 'Mercedes'
+                          ? `color-mix(in oklch, ${resolveTeamColor(item.works_team)} 92%, var(--color-ink) 8%)`
+                          : resolveTeamColor(item.works_team)
+                      return (
                       <BlurFade key={item.pu} delay={0.06 * i}>
                         <Insight
                           item={item}
                           collapsible
-                          // Two-tone: the manufacturer name carries its own color (can't be a
-                          // uniform accent-red once panels are team-tinted), the customer-team
-                          // list stays neutral rather than picking one of several team colors.
+                          // Two-tone: the manufacturer name carries the full team color, same
+                          // as the rank number (can't be a uniform accent-red once panels are
+                          // team-tinted); the customer-team list stays neutral rather than
+                          // picking one of several team colors.
                           kicker={
                             <>
-                              <span style={{ color: manufacturerAccentColor(item.works_team) }}>
-                                {item.pu} power
-                              </span>
+                              <span style={{ color: teamColor }}>{item.pu} power</span>
                               <span className="text-muted"> · {item.teams.join(' · ')}</span>
                             </>
                           }
@@ -210,10 +217,11 @@ function SeasonView({ year }: { year: number }) {
                           // is the whole point, so it can carry more of the surface. The big
                           // rank number in full-strength team color is the second, bolder signal.
                           tintColor={teamColorWithAlpha(item.works_team, 0.16)}
-                          accentColor={resolveTeamColor(item.works_team)}
+                          accentColor={teamColor}
                         />
                       </BlurFade>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               )}
