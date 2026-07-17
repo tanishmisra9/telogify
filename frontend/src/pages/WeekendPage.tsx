@@ -337,7 +337,10 @@ export function WeekendPage() {
             {!insights.data || insights.data.length === 0 ? (
               <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
             ) : (
-              <div className="max-w-5xl">
+              // Full section width, matching the heading above (same call as the Season page's
+              // Deployment panels): the narrower max-w-5xl just left-aligned with dead space
+              // beside it on wider screens.
+              <div>
                 <div className="grid gap-4">
                   {insights.data.map((item, i) => (
                     <BlurFade key={item.slot} delay={0.06 * i}>

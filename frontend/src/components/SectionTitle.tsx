@@ -4,7 +4,7 @@
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-8 border-b-2 border-ink pb-3">
-      <h2 className="font-display text-[2.7rem] leading-[0.95] tracking-tight sm:text-[4.05rem]">{children}</h2>
+      <h2 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5rem]">{children}</h2>
     </div>
   )
 }

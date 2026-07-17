@@ -181,7 +181,7 @@ export function BarChart({
                 // clamped so it never runs off the top of the SVG for a very tall bar, or
                 // sits right on the axis for a very short one.
                 const panelX = Math.min(Math.max(cx - PANEL_W / 2, 0), Math.max(0, innerW - PANEL_W))
-                const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 18, -MARGIN.top + 4)
+                const panelY = Math.max(y(hoveredRow.value) - PANEL_H - 8, -MARGIN.top + 4)
                 return (
                   // Blur fade for true open/close (safe here -- this is plain SVG, not a
                   // foreignObject, so it doesn't hit the WebKit filter-corruption bug). Each
