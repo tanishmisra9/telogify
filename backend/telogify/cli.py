@@ -1,5 +1,6 @@
 """Telogify CLI. Manual triggers only (no scheduler)."""
 
+import logging
 import time
 
 import typer
@@ -10,6 +11,11 @@ from rich.status import Status
 from rich.table import Table
 
 from telogify.pipeline import RoundResult
+
+# Plain "%(message)s" so pipeline.logger's insight-retry diagnostics print exactly as they
+# did as bare print()s; the entry point is telogify.cli:app (see pyproject.toml), not
+# __main__, so this must run at import time to take effect for the installed command.
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 app = typer.Typer(
     add_completion=False,
