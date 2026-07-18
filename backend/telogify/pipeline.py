@@ -150,6 +150,16 @@ def _insights(
             with Session(engine) as db:
                 rows = persist_insights(state["weekend_id"], insights, trace, db, model=model, count=count)
             return {result_key: len(rows)}
+        for slot in flagged:
+            ins = insights[slot - 1]
+            print(f"[insights]   slot {slot} header: {ins.get('header')!r}")
+            print(f"[insights]   slot {slot} body: {ins.get('explanation_web')!r}")
+        deployment_calls = [e for e in trace if e.get("tool") == "get_deployment"]
+        if deployment_calls:
+            print(
+                "[insights]   get_deployment calls: "
+                f"{[(c.get('args'), str(c.get('result'))[:300]) for c in deployment_calls]}"
+            )
         print(f"[insights] {state['year']} round {state['round']} attempt {_attempt} rejected: {flagged}")
         feedback = format_insight_validation_feedback(flagged)
     if parse_failures == _MAX_INSIGHT_ATTEMPTS and not flagged:

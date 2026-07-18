@@ -67,7 +67,9 @@ _CLIP_SUPERLATIVE = re.compile(
     re.IGNORECASE,
 )
 
-_CLIP_METRES = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b", re.IGNORECASE)
+# (?!/s) after the unit: "13.02 m/s²" is an acceleration figure, not a clip distance in
+# metres, and must not be mistaken for one just because "m/s²" starts with "m".
+_CLIP_METRES = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b(?!/s)", re.IGNORECASE)
 
 # (?-i:SPRINT) keeps the SPRINT alternative case-SENSITIVE inside the otherwise
 # case-insensitive pattern: it must catch the session CODE, not the plain English word
@@ -377,7 +379,9 @@ def flag_false_deployment_superlative(text: str, trace: list[dict]) -> list[str]
 
 
 _QUANTITY_RE = re.compile(
-    r"([-+]?\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%|metres?|meters?|"
+    # (?<!\d) before the optional sign: a hyphen directly after a digit is a range separator
+    # ("150-250 km/h band"), not a negative sign, and must not be consumed as one.
+    r"(?<!\d)([-+]?\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%|metres?|meters?|"
     r"m/s²|m/s2)"
     r"|(?:\(\s*(\d+(?:\.\d+)?)\s*mph\s*\))",
     re.IGNORECASE,

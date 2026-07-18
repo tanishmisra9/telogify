@@ -305,11 +305,15 @@ _VALIDATION_FIX_HINTS: tuple[tuple[str, str], ...] = (
     ),
     (
         "weak deployment: cited qualifiers clip within about 100 metres",
-        "This deployment-clipping finding is not real field separation, it is normal field "
-        "behaviour. Do not retry it with different wording, different cars, or adjusted "
-        "numbers: drop deployment/clipping entirely for this slot and pick a candidate from a "
-        "different category (race pace, stint pace, sector, corner attribution, or "
-        "race-session deployment character from get_race_deployment_character) instead.",
+        "The cars you cited for this deployment-clipping finding cluster within about 100 "
+        "metres, which is not real field separation. Before dropping it, re-call get_deployment "
+        "with a BLANK driver argument (the whole field, not just the cars you already picked) "
+        "and check field_min_total_clip_m / field_min_max_clip_m: you may have compared two "
+        "cars that happen to be similar instead of the field's true most-separated pair. If the "
+        "field-wide check also shows no real separation, drop deployment/clipping entirely for "
+        "this slot and pick a candidate from a different category (race pace, stint pace, "
+        "sector, corner attribution, or race-session deployment character from "
+        "get_race_deployment_character) instead.",
     ),
 )
 

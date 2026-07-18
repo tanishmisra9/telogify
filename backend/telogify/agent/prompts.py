@@ -439,12 +439,18 @@ information from inference. Before finalizing, run this checklist against your o
 fix or replace anything that fails it, rather than resubmitting the same finding reworded: \
 (a) scan every header, explanation_web, and explanation_email for the literal characters Q, \
 SQ, R, or SPRINT used as a session reference, and rewrite with the full session name instead; \
-(b) if any insight cites ERS deployment or clipping from get_deployment, confirm from that \
-tool that the compared cars' total_clip_m (or max_clip_m) differ by more than about 100 \
-metres; if they don't, that finding is invalid field behaviour, not a story, so drop it \
-entirely and choose a genuinely different candidate rather than retrying deployment with \
-adjusted numbers or framing; and confirm the insight is also anchored by a real race-, \
-sprint-, or tyre-side number, not the qualifying-lap clip distance alone; \
+(b) if any insight cites ERS deployment or clipping from get_deployment, first re-call \
+get_deployment with a BLANK driver argument (so you see the whole field, not just the cars you \
+already picked) and confirm from its field_min_total_clip_m and field_min_max_clip_m fields \
+that the cars you are citing are genuinely near the field's most-separated pair, not two cars \
+that happen to be similar to each other while the true field spread is different; comparing two \
+cars you already picked without this field-wide check is exactly how a false "invalid field \
+behaviour" claim slips through. If the compared cars' total_clip_m (or max_clip_m), checked \
+this way, still don't differ by more than about 100 metres, that finding is invalid field \
+behaviour, not a story, so drop it entirely and choose a genuinely different candidate rather \
+than retrying deployment with adjusted numbers or framing; and confirm the insight is also \
+anchored by a real race-, sprint-, or tyre-side number, not the qualifying-lap clip distance \
+alone; \
 (c) confirm none of the three is a qualifying-only finding, per the rule above; (d) confirm \
 every number in the draft text appears in a tool return you actually retrieved this run; \
 (e) confirm none of the three is a results-only finding: every number in each insight traces \

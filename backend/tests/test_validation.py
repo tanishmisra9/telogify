@@ -27,6 +27,20 @@ def test_extract_prose_quantities_skips_bare_ordinals():
     assert extract_prose_quantities("finished 21st after starting third") == []
 
 
+def test_extract_prose_quantities_does_not_misread_range_hyphen_as_negative():
+    # A real regen bug (2026 round 2): "150-250 km/h band" is a range, and the "-" is a
+    # separator, not a negative sign; the old regex extracted a phantom -250.0 that never
+    # appeared in the trace, permanently failing untraceable-number validation.
+    text = "Its race deployment through the 150-250 km/h band was much stronger than that suggests."
+    assert -250.0 not in extract_prose_quantities(text)
+    assert 250.0 in extract_prose_quantities(text)
+
+
+def test_extract_prose_quantities_still_finds_genuine_negatives():
+    assert -15.0 in extract_prose_quantities("recorded -15.0 m/s² of deceleration")
+    assert -5.2 in extract_prose_quantities("a -5.2 second gap")
+
+
 def test_flag_untraceable_numbers_passes_when_in_trace():
     text = "McLaren topped 330.5 km/h on the straight."
     trace = [{"tool": "get_deployment", "args": {}, "result": '{"top_speed_kmh": 330.5}'}]
@@ -213,6 +227,20 @@ def test_flag_weak_deployment_cluster():
     )
     issues = flag_weak_deployment_cluster(text, [])
     assert len(issues) == 1
+
+
+def test_flag_weak_deployment_cluster_ignores_ms2_figures():
+    # A real regen bug (2026 round 2): a genuine get_race_deployment_character insight says
+    # "deployment" and cites two m/s² figures (accel_at_150/250), which the old regex
+    # misread as two clip distances in metres ("13.02 m" out of "13.02 m/s²"), always
+    # clustered close together and always false-flagging every race-acceleration insight.
+    text = (
+        "Its race deployment through the 150-250 km/h band was much stronger than that "
+        "result suggests: the Audi was at 13.02 m/s² at 150 km/h versus a field average "
+        "of 12.179, and it was still above the field at 250 km/h, 4.76 m/s² versus 3.822, "
+        "so it kept pulling hard at the end of straights."
+    )
+    assert flag_weak_deployment_cluster(text, []) == []
 
 
 def test_flag_session_abbreviations():
