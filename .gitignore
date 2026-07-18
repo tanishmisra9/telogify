@@ -34,3 +34,6 @@ CLAUDE.md
 
 # Brag / launch-video output
 brag-output/
+
+# Impeccable skill output (frontend critiques, local-only)
+.impeccable/
