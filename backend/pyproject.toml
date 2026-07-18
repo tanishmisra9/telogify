@@ -24,3 +24,6 @@ omit = ["telogify/agent/prompts.py"]
 
 [tool.coverage.report]
 show_missing = true
+# Target, not current reality -- pytest exits non-zero below this until the suite closes
+# the gap. Raise/lower deliberately, don't silence by dropping the number.
+fail_under = 90

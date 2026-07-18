@@ -90,7 +90,7 @@ alembic upgrade head
 
 ```bash
 pytest                                          # requires telogify_test to exist; tests create/drop their own tables
-pytest --cov=telogify --cov-report=term-missing # same, with a coverage report
+pytest --cov=telogify --cov-report=term-missing # same, with a coverage report (90% gate)
 ```
 
 ### API (local)
