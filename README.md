@@ -44,7 +44,7 @@ alembic upgrade head            # apply migrations to telogify_dev
 | `DATABASE_URL` | Postgres URL. Local default `postgresql://localhost:5432/telogify_dev`. `postgres://` is auto-normalized. |
 | `LLM_PROVIDER` | Insight agent backend: `openai` (default) or `anthropic`. Set in `.env`; no code change to switch. |
 | `OPENAI_API_KEY` | Required when `LLM_PROVIDER=openai`. |
-| `OPENAI_MODEL` | Defaults to `gpt-4.1`. |
+| `OPENAI_MODEL` | Defaults to `gpt-5.5`. |
 | `ANTHROPIC_API_KEY` | Required when `LLM_PROVIDER=anthropic`. |
 | `ANTHROPIC_MODEL` | Defaults to `claude-sonnet-5`. |
 | `RESEND_API_KEY` | Required by `send-digest`. Pre-domain, uses Resend's shared sender. |
