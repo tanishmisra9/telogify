@@ -105,7 +105,11 @@ export function SeasonDeploymentChart({
   const xTicks = Array.from({ length: 6 }, (_, i) => Math.round(xMin + ((xMax - xMin) * i) / 5))
 
   return (
-    <div className="glass w-full rounded-[--radius-panel] p-5">
+    <>
+    {/* Mobile only gets the plain desktop-only note below (no tab selector, no outer panel
+        chrome around an interactive chart that isn't there) -- this whole panel, tabs
+        included, is desktop-only. */}
+    <div className="glass hidden w-full rounded-[--radius-panel] p-5 md:block">
       {/* Right-aligned, no title beside it: same shape as SeasonTrendChart's tab row (the
           other title-less chart on this page), not the title+tabs justify-between pairing
           DegradationChart/FightToPoleChart/PaceSpreadChart use. */}
@@ -121,7 +125,7 @@ export function SeasonDeploymentChart({
         />
       </div>
 
-      <div className="hidden md:block">
+      <div>
         <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Season deployment: longitudinal acceleration vs speed">
           <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
             {yTicks.map((t) => (
@@ -203,11 +207,12 @@ export function SeasonDeploymentChart({
           click again to bring it back.
         </p>
       </div>
-
-      <DesktopOnlyNote>
-        The chart and the verdicts above only make sense read together, so both wait for a
-        larger screen.
-      </DesktopOnlyNote>
     </div>
+
+    <DesktopOnlyNote>
+      The chart and the verdicts above only make sense read together, so both wait for a
+      larger screen.
+    </DesktopOnlyNote>
+    </>
   )
 }

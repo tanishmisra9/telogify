@@ -13,6 +13,7 @@ import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
 import { heatBg, rankAsc } from '@/lib/heat'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { useScrollFade } from '@/lib/useScrollFade'
 import {
   useApi,
@@ -128,6 +129,7 @@ function deploymentPanels(deployment: SeasonDeployment): SeasonDeploymentInsight
 }
 
 function SeasonView({ year }: { year: number }) {
+  const isMobile = useIsMobile()
   const season = useApi<SeasonSnapshot>(`/season/${year}`)
   const deployment = useApi<SeasonDeployment>(`/season/${year}/deployment`)
   const rows = season.data?.constructors ?? []
@@ -213,14 +215,17 @@ function SeasonView({ year }: { year: number }) {
                         <Insight
                           item={item}
                           collapsible
+                          defaultOpen={!isMobile}
                           // Two-tone: the manufacturer name carries the full team color, same
                           // as the rank number (can't be a uniform accent-red once panels are
                           // team-tinted); the customer-team list stays neutral rather than
-                          // picking one of several team colors.
+                          // picking one of several team colors. block sm:inline on the customer
+                          // span: forces its own line on mobile (crammed onto one line with a
+                          // longer manufacturer name otherwise), stays inline at sm+ as before.
                           kicker={
                             <>
                               <span style={{ color: teamColor }}>{item.pu} power</span>
-                              <span className="text-muted"> · {item.teams.join(' · ')}</span>
+                              <span className="block text-muted sm:inline"> · {item.teams.join(' · ')}</span>
                             </>
                           }
                           contextLabel={`${year} season deployment`}
