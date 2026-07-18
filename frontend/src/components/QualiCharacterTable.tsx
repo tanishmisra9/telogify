@@ -11,14 +11,14 @@ import { teamColorWithAlpha } from '@/lib/teamColors'
 import { useScrollFade } from '@/lib/useScrollFade'
 import type { QualiCharacterData, QualiInsightItem } from '@/lib/api'
 
-// Collapsible to just its heading on mobile, open by default; desktop always shows the full
+// Collapsible to just its heading on mobile, closed by default; desktop always shows the full
 // card outright (the chevron only renders on mobile, and the CSS override on the text keeps it
 // visible on desktop even in the state's closed default, so there's no toggle to reach for there).
 // No team-name kicker: the LLM header IS the card's top line (it names the team itself), with
 // the TeamRule + background wash carrying team identity — a kicker repeating the header's first
 // word read as noise.
 function InsightCard({ item }: { item: QualiInsightItem }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   return (
     <div
       className="rounded-[--radius-panel] border border-border p-5"
@@ -103,7 +103,7 @@ function Cell({ children, bg }: { children: React.ReactNode; bg: string }) {
   )
 }
 
-function HeadCell({ label, hint, align = 'right' }: { label: React.ReactNode; hint: string; align?: 'left' | 'right' }) {
+function HeadCell({ label, hint, align = 'left' }: { label: React.ReactNode; hint: string; align?: 'left' | 'right' }) {
   return (
     <th className={`px-4 py-2.5 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
       <Tooltip label={hint}>
