@@ -98,11 +98,15 @@ def persist_insights(
     *,
     model: type = Insight,
     count: int = 3,
+    model_used: str | None = None,
+    prompt_version: str | None = None,
 ) -> list:
     """Write the `count` insights (slots 1..count), em-dash-stripped, each carrying the full
     trace. `model` is any SQLModel table shaped like Insight (weekend_id, slot, header,
     explanation_web, explanation_email, source_tool_calls_json); a `team` key in an insight
-    dict is only set on the row if the model has a `team` column (QualiInsight does)."""
+    dict is only set on the row if the model has a `team` column (QualiInsight does).
+    `model_used`/`prompt_version` stamp which LLM and which prompt revision produced this
+    batch, for audit (see agent/prompts.PROMPT_VERSION)."""
     db.exec(delete(model).where(model.weekend_id == weekend_id))
     rows = []
     for slot, ins in enumerate(insights[:count], start=1):
@@ -123,6 +127,8 @@ def persist_insights(
             explanation_web=web,
             explanation_email=email,
             source_tool_calls_json=trace,
+            model_used=model_used,
+            prompt_version=prompt_version,
             **extra,
         )
         db.add(row)

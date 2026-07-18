@@ -352,11 +352,24 @@ def diagnose(year: int, round: int) -> None:
         console.print(escape(run_diagnose(year, round, db)))
 
 
-def _render_insight_block(slot: int, header: str, body: str, *, team: str | None = None) -> str:
+def _render_insight_block(
+    slot: int,
+    header: str,
+    body: str,
+    *,
+    team: str | None = None,
+    model_used: str | None = None,
+    prompt_version: str | None = None,
+) -> str:
     label = f"[bold]{escape(team)}[/bold]: " if team else ""
+    provenance = (
+        f"\n[dim italic]{escape(model_used or '?')} · prompt v{escape(prompt_version or '?')}[/dim italic]"
+        if model_used or prompt_version
+        else ""
+    )
     return (
         f"[cyan]({slot})[/cyan] {label}[bold]{escape(header)}[/bold]\n"
-        f"[dim]{escape(body)}[/dim]"
+        f"[dim]{escape(body)}[/dim]{provenance}"
     )
 
 
@@ -400,13 +413,20 @@ def list_insights(
                 blocks.append("[dim](no insights persisted)[/dim]")
             else:
                 blocks.extend(
-                    _render_insight_block(i.slot, i.header, i.explanation_web) for i in insights
+                    _render_insight_block(
+                        i.slot, i.header, i.explanation_web,
+                        model_used=i.model_used, prompt_version=i.prompt_version,
+                    )
+                    for i in insights
                 )
 
             if quali_insights:
                 blocks.append("[bold]Qualifying:[/bold]")
                 blocks.extend(
-                    _render_insight_block(i.slot, i.header, i.explanation_web, team=i.team)
+                    _render_insight_block(
+                        i.slot, i.header, i.explanation_web, team=i.team,
+                        model_used=i.model_used, prompt_version=i.prompt_version,
+                    )
                     for i in quali_insights
                 )
             else:

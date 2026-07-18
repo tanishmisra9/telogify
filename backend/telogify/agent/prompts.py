@@ -11,6 +11,15 @@ constants, so a rule change here applies to both agents at once. Only the preamb
 PICK FOR SURPRISE diversity rule, and Output format differ by scope.
 """
 
+# MAJOR.MINOR, read off `git log --oneline --follow -- telogify/agent/prompts.py`: MAJOR bumps
+# at each structural rewrite (1.0 = bb69d17, original SYSTEM_PROMPT; 2.0 = 7a07f34, added
+# QUALI_SYSTEM_PROMPT; 3.0 = 965528a, "Insight prompt overhaul"), MINOR counts substantive
+# prompt-changing commits since that MAJOR's pivot commit. Bump MINOR on any further change to
+# SYSTEM_PROMPT/QUALI_SYSTEM_PROMPT or the shared constants above; bump MAJOR (reset MINOR to 0)
+# only on another rewrite of that scale. Stamped onto every persisted insight so a published
+# insight can be traced back to the exact prompt revision that generated it.
+PROMPT_VERSION = "3.2"
+
 _OBSERVED_BEHAVIOR_ONLY = """OBSERVED BEHAVIOR ONLY:
 Never infer the underlying engineering mechanism behind a telemetry observation (harvesting, \
 overheating, floor instability, aero stall) unless the mechanism itself is directly measured. \

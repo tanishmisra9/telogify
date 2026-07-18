@@ -266,6 +266,8 @@ class Insight(SQLModel, table=True):
     explanation_web: str
     explanation_email: str
     source_tool_calls_json: list = Field(default_factory=list, sa_column=Column(JSON))
+    model_used: str | None = None  # e.g. "anthropic / claude-sonnet-5", from configured_llm_label()
+    prompt_version: str | None = None  # agent.prompts.PROMPT_VERSION at generation time
 
 
 class QualiInsight(SQLModel, table=True):
@@ -279,6 +281,8 @@ class QualiInsight(SQLModel, table=True):
     explanation_web: str
     explanation_email: str
     source_tool_calls_json: list = Field(default_factory=list, sa_column=Column(JSON))
+    model_used: str | None = None
+    prompt_version: str | None = None
 
 
 class SeasonDeploymentInsight(SQLModel, table=True):
@@ -297,6 +301,8 @@ class SeasonDeploymentInsight(SQLModel, table=True):
     header: str
     explanation_web: str
     source_metrics_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    model_used: str | None = None
+    prompt_version: str | None = None
 
 
 class Subscriber(SQLModel, table=True):

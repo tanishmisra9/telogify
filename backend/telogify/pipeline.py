@@ -27,7 +27,8 @@ from telogify.agent.insights import (
     parse_insights,
     persist_insights,
 )
-from telogify.agent.prompts import QUALI_SYSTEM_PROMPT
+from telogify.agent.prompts import PROMPT_VERSION, QUALI_SYSTEM_PROMPT
+from telogify.config import configured_llm_label
 from telogify.agent.validation import validate_insights
 from telogify.analysis.attribution import store_attributions
 from telogify.analysis.candidates import compute_candidates
@@ -167,7 +168,16 @@ def _insights(
         if not flagged:
             trace = extract_trace(messages)
             with Session(engine) as db:
-                rows = persist_insights(state["weekend_id"], insights, trace, db, model=model, count=count)
+                rows = persist_insights(
+                    state["weekend_id"],
+                    insights,
+                    trace,
+                    db,
+                    model=model,
+                    count=count,
+                    model_used=configured_llm_label(),
+                    prompt_version=PROMPT_VERSION,
+                )
             return {result_key: len(rows)}
         for slot in flagged:
             ins = insights[slot - 1]

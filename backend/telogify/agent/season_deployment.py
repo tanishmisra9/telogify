@@ -16,6 +16,7 @@ from sqlmodel import delete
 from telogify.agent.guardrails import flag_unsupported_claims
 from telogify.agent.insights import _first_json_array
 from telogify.agent.llm import resolve_provider
+from telogify.config import configured_llm_label
 from telogify.agent.validation import _number_traced, _trace_floats, extract_prose_quantities
 from telogify.analysis.season_deployment import GroupMetrics, rank_groups_best_to_worst
 from telogify.models import SeasonDeploymentInsight
@@ -23,6 +24,10 @@ from telogify.serialize import round_prose_numbers, strip_em_dashes
 
 _REQUIRED_KEYS = ("pu", "header", "explanation_web")
 _MAX_ATTEMPTS = 3
+
+# Bump on any change to SYSTEM_PROMPT below (a `git log -p -- telogify/agent/season_deployment.py`
+# on this line finds the commit that changed it). Stamped onto every persisted verdict.
+PROMPT_VERSION = "1.0"
 
 SYSTEM_PROMPT = """You are Telogify's F1 analyst. You write one short verdict per power-unit \
 manufacturer for the season's deployment section, for a general audience: smart fans who love \
@@ -187,6 +192,8 @@ def persist_season_deployment(
             header=round_prose_numbers(strip_em_dashes(v["header"])),
             explanation_web=round_prose_numbers(strip_em_dashes(v["explanation_web"])),
             source_metrics_json=m,
+            model_used=configured_llm_label(),
+            prompt_version=PROMPT_VERSION,
         )
         db.add(row)
         rows.append(row)
