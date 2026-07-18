@@ -95,8 +95,11 @@ export function BarChart({
   if (rows.length === 0) return null
 
   const innerWNeeded = rows.length * MIN_SLOT
-  const innerW = Math.max(containerWidth - MARGIN.left - MARGIN.right, innerWNeeded)
-  const width = innerW + MARGIN.left + MARGIN.right
+  // containerWidth is the scrolling area alone (the y-axis panel is a separate flex sibling
+  // with its own width, see the frozen axis <svg> below), so only MARGIN.right -- the scrolling
+  // SVG's own breathing room -- comes off it.
+  const innerW = Math.max(containerWidth - MARGIN.right, innerWNeeded)
+  const width = innerW + MARGIN.right
 
   const lo = Math.min(domainMin, ...rows.map((r) => r.value))
   const hi = Math.max(...rows.map((r) => r.value)) || 1
@@ -116,23 +119,31 @@ export function BarChart({
   // this stays correct while the chart is scrolled.
   const localX = (clientX: number) => {
     const rect = svgRef.current?.getBoundingClientRect()
-    return rect ? clientX - rect.left - MARGIN.left : 0
+    return rect ? clientX - rect.left : 0
   }
 
   return (
-    <div className="relative">
-      <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
-      <svg ref={svgRef} width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label="Bar chart">
+    <div className="flex">
+      {/* Frozen y-axis: its own small SVG outside the scrolling container, not part of it, so
+          the value scale stays put and readable no matter how far into the field you've
+          scrolled. Only the gridlines, bars, and labels scroll. */}
+      <svg width={MARGIN.left} height={HEIGHT} className="shrink-0" aria-hidden>
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {yTicks.map((t) => (
-            <g key={t}>
-              <line x1={0} x2={innerW} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
+            <text key={t} x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={12} className="num">
               {/* A tick isn't any one row, so format it as a plain axis value (no row-specific
                  displayValue override, e.g. practice sectors' leader-shows-absolute special case). */}
-              <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={12} className="num">
-                {formatValue(t, { id: '', label: '', value: t })}
-              </text>
-            </g>
+              {formatValue(t, { id: '', label: '', value: t })}
+            </text>
+          ))}
+        </g>
+      </svg>
+      <div className="relative min-w-0 flex-1">
+      <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
+      <svg ref={svgRef} width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label="Bar chart">
+        <g transform={`translate(0,${MARGIN.top})`}>
+          {yTicks.map((t) => (
+            <line key={t} x1={0} x2={innerW} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
           ))}
           <g className={isScrolling ? 'pointer-events-none' : ''}>
           {rows.map((r, i) => {
@@ -269,6 +280,7 @@ export function BarChart({
       </svg>
       </div>
       <ScrollFadeEdge visible={canScrollRight} />
+      </div>
     </div>
   )
 }
