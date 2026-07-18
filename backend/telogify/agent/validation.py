@@ -67,9 +67,21 @@ _CLIP_SUPERLATIVE = re.compile(
     re.IGNORECASE,
 )
 
-# (?!/s) after the unit: "13.02 m/s²" is an acceleration figure, not a clip distance in
-# metres, and must not be mistaken for one just because "m/s²" starts with "m".
-_CLIP_METRES = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b(?!/s)", re.IGNORECASE)
+# Two correctness-critical sub-patterns, factored out so every number-extraction regex in
+# this file inherits both fixes instead of each one needing to remember them independently
+# (both bugs shipped to production this week; see the regression tests for each).
+_NOT_RANGE_HYPHEN = r"(?<!\d)"  # a hyphen directly after a digit is a range separator
+# ("150-250 km/h band"), not a negative sign; a signed-number pattern must not consume it.
+_NOT_ACCEL_UNIT = r"(?!/s)"  # "13.02 m/s²" is an acceleration figure, not a clip distance in
+# metres, and a bare metres-unit match must not fire on the "m" inside "m/s²".
+#
+# _QUANTITY_RE and _CLIP_METRES intentionally stay two separate regexes rather than one
+# shared pattern: _CLIP_METRES matches a bare "m" (a clip distance) which _QUANTITY_RE
+# deliberately excludes (it only recognizes spelled-out "metres"/"meters", so a stray "3 m"
+# in prose is invisible to flag_untraceable_numbers). Merging them would mean either regex
+# inheriting a unit the other must not match -- exactly the cross-purpose collision that
+# caused both bugs above.
+_CLIP_METRES = re.compile(rf"\b(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b{_NOT_ACCEL_UNIT}", re.IGNORECASE)
 
 # (?-i:SPRINT) keeps the SPRINT alternative case-SENSITIVE inside the otherwise
 # case-insensitive pattern: it must catch the session CODE, not the plain English word
@@ -379,9 +391,7 @@ def flag_false_deployment_superlative(text: str, trace: list[dict]) -> list[str]
 
 
 _QUANTITY_RE = re.compile(
-    # (?<!\d) before the optional sign: a hyphen directly after a digit is a range separator
-    # ("150-250 km/h band"), not a negative sign, and must not be consumed as one.
-    r"(?<!\d)([-+]?\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%|metres?|meters?|"
+    rf"{_NOT_RANGE_HYPHEN}([-+]?\d+(?:\.\d+)?)\s*(?:km/h|kph|seconds|second|\bsec\b|\bs\b|%|metres?|meters?|"
     r"m/s²|m/s2)"
     r"|(?:\(\s*(\d+(?:\.\d+)?)\s*mph\s*\))",
     re.IGNORECASE,
