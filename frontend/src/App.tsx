@@ -1,14 +1,17 @@
 import { LazyMotion, domAnimation } from 'framer-motion'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { Footer } from '@/components/Footer'
 import { Nav } from '@/components/Nav'
 import { Landing } from '@/pages/Landing'
-import { NotFoundPage } from '@/pages/NotFoundPage'
-import { Weekends } from '@/pages/Weekends'
-import { WeekendPage } from '@/pages/WeekendPage'
-import { SeasonPage } from '@/pages/SeasonPage'
-import { SubscribePage } from '@/pages/SubscribePage'
+
+// Landing stays eager (the primary route needs instant first paint); every other page,
+// including their SVG chart components, only loads once actually navigated to.
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
+const Weekends = lazy(() => import('@/pages/Weekends').then((m) => ({ default: m.Weekends })))
+const WeekendPage = lazy(() => import('@/pages/WeekendPage').then((m) => ({ default: m.WeekendPage })))
+const SeasonPage = lazy(() => import('@/pages/SeasonPage').then((m) => ({ default: m.SeasonPage })))
+const SubscribePage = lazy(() => import('@/pages/SubscribePage').then((m) => ({ default: m.SubscribePage })))
 
 // Route changes keep the previous scroll offset by default; reset to the top so a weekend
 // clicked from partway down the list opens at its heading, not mid-page.
@@ -31,15 +34,18 @@ export default function App() {
         <div className="flex min-h-dvh flex-col">
           <Nav />
           <div className="flex-1">
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/weekends" element={<Weekends />} />
-              <Route path="/weekends/:year/:round" element={<WeekendPage />} />
-              <Route path="/season" element={<SeasonPage />} />
-              <Route path="/season/:year" element={<SeasonPage />} />
-              <Route path="/subscribe" element={<SubscribePage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
+            {/* Chunks are tiny and same-origin; a fallback would only flash, so null. */}
+            <Suspense fallback={null}>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/weekends" element={<Weekends />} />
+                <Route path="/weekends/:year/:round" element={<WeekendPage />} />
+                <Route path="/season" element={<SeasonPage />} />
+                <Route path="/season/:year" element={<SeasonPage />} />
+                <Route path="/subscribe" element={<SubscribePage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </Suspense>
           </div>
           <Footer />
         </div>
