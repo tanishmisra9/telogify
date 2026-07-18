@@ -8,6 +8,7 @@ from telogify.analysis.race_pace import (
     _exclude_first_race_lap,
     box_stats,
     clean_air_laps,
+    constructor_clean_air,
     constructor_distributions,
     constructor_median_gaps,
     driver_distributions,
@@ -176,6 +177,22 @@ def test_exclude_first_race_lap_skips_non_opening_stint():
     assert filtered[0]["lap_times"] == [90.0, 90.0]
 
 
+def test_exclude_first_race_lap_keeps_gaps_index_aligned():
+    # Regression: dropping the opening lap from lap_times without dropping the matching
+    # element of gaps_to_car_ahead desynced the two lists by one, which silently zeroed
+    # clean_air_median on every real race (every driver's opening stint starts at lap 1).
+    stints = [
+        {
+            "driver": "VER", "stint_number": 1, "lap_start": 1,
+            "lap_times": [100.0, 90.0, 90.0], "gaps_to_car_ahead": [None, 0.3, 0.6],
+        },
+    ]
+    filtered = _exclude_first_race_lap(stints)
+    assert filtered[0]["lap_times"] == [90.0, 90.0]
+    assert filtered[0]["gaps_to_car_ahead"] == [0.3, 0.6]
+    assert len(filtered[0]["lap_times"]) == len(filtered[0]["gaps_to_car_ahead"])
+
+
 def test_driver_distributions_excludes_lap_one_from_pool():
     stints = [
         {"driver": "VER", "constructor": "RB", "compound": "M", "stint_number": 1, "lap_start": 1, "lap_times": [100.0, 90.0, 90.0]},
@@ -284,3 +301,60 @@ def test_driver_distributions_populates_clean_air_median():
     rows = driver_distributions(stints)
     assert rows[0].stats.clean_air_median == 90.0
     assert rows[0].stats.clean_air_n_laps == 1
+
+
+# --- constructor_clean_air -------------------------------------------------
+
+
+def test_constructor_clean_air_populated_and_ranked():
+    stints = [
+        {
+            "driver": "VER",
+            "constructor": "Red Bull",
+            "compound": "SOFT",
+            "lap_times": [90.0, 95.0],
+            "gaps_to_car_ahead": [None, 0.4],  # 95.0 is dirty, excluded
+        },
+        {
+            "driver": "LEC",
+            "constructor": "Ferrari",
+            "compound": "SOFT",
+            "lap_times": [91.0, 92.0],
+            "gaps_to_car_ahead": [1.0, 1.0],  # both clean
+        },
+    ]
+    result = constructor_clean_air(stints)
+    assert result["Red Bull"]["clean_air_median"] == 90.0
+    assert result["Red Bull"]["clean_air_n_laps"] == 1
+    assert result["Red Bull"]["clean_air_gap_to_fastest_s"] == 0.0
+    assert result["Ferrari"]["clean_air_median"] == pytest.approx(91.5)
+    assert result["Ferrari"]["clean_air_gap_to_fastest_s"] == pytest.approx(1.5)
+
+
+def test_constructor_clean_air_excludes_all_dirty_constructor():
+    stints = [
+        {
+            "driver": "VER",
+            "constructor": "Red Bull",
+            "compound": "SOFT",
+            "lap_times": [90.0, 90.5],
+            "gaps_to_car_ahead": [0.1, 0.2],  # both dirty
+        },
+        {
+            "driver": "LEC",
+            "constructor": "Ferrari",
+            "compound": "SOFT",
+            "lap_times": [91.0],
+            "gaps_to_car_ahead": [None],
+        },
+    ]
+    result = constructor_clean_air(stints)
+    assert "Red Bull" not in result
+    assert "Ferrari" in result
+
+
+def test_constructor_clean_air_empty_without_gap_data():
+    stints = [
+        {"driver": "VER", "constructor": "Red Bull", "compound": "SOFT", "lap_times": [90.0]},
+    ]
+    assert constructor_clean_air(stints) == {}

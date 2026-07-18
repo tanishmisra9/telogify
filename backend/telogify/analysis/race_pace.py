@@ -184,13 +184,23 @@ def _build_rows(groups: dict[str, _Group]) -> list[PaceRow]:
 
 
 def _exclude_first_race_lap(stints: list[dict]) -> list[dict]:
-    """Drop the first representative lap from opening stint 1 (lap_start == 1)."""
+    """Drop the first representative lap from opening stint 1 (lap_start == 1).
+
+    Also drops the matching first element of gaps_to_car_ahead, if present and index-aligned
+    with lap_times, so the two lists stay the same length after truncation. Before this, every
+    driver's opening stint (nearly every constructor, every race) silently desynced the two
+    lists by one element, which made _build_rows discard gaps entirely (it requires equal
+    length) and permanently zeroed clean_air_median on real data.
+    """
     out: list[dict] = []
     for st in stints:
         times = list(st.get("lap_times") or [])
+        gaps = list(st.get("gaps_to_car_ahead") or [])
         if st.get("stint_number") == 1 and st.get("lap_start") == 1 and times:
+            if len(gaps) == len(times):
+                gaps = gaps[1:]
             times = times[1:]
-        out.append({**st, "lap_times": times})
+        out.append({**st, "lap_times": times, "gaps_to_car_ahead": gaps})
     return out
 
 
@@ -232,6 +242,28 @@ def constructor_median_gaps(stints: list[dict]) -> dict[str, float]:
     """
     rows = constructor_distributions(stints)
     return {r.id: r.gap_to_fastest_s for r in rows}
+
+
+def constructor_clean_air(stints: list[dict]) -> dict[str, dict]:
+    """{constructor: {clean_air_median, clean_air_n_laps, clean_air_gap_to_fastest_s, median}}
+    for constructors with a populated clean_air_median (i.e. at least one lap run clear of
+    traffic). The single canonical clean-air computation, shared by the agent tool and the
+    clean-air candidate miner so they can never disagree. Purely additive context: does not
+    touch `median`/`gap_to_fastest_s`, the ranking-relevant fields from constructor_distributions.
+    """
+    rows = [r for r in constructor_distributions(stints) if r.stats.clean_air_median is not None]
+    if not rows:
+        return {}
+    fastest = min(r.stats.clean_air_median for r in rows)
+    return {
+        r.id: {
+            "clean_air_median": r.stats.clean_air_median,
+            "clean_air_n_laps": r.stats.clean_air_n_laps,
+            "clean_air_gap_to_fastest_s": r.stats.clean_air_median - fastest,
+            "median": r.stats.median,
+        }
+        for r in rows
+    }
 
 
 def driver_stop_counts(stints: list[dict]) -> dict[str, int]:
