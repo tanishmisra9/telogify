@@ -171,3 +171,37 @@ def test_mine_deployment_excludes_deficits_at_or_below_the_weak_cluster_bar(db_s
     signals = _mine_deployment(db_session, [quali])
     subjects = {s.subject for s in signals}
     assert subjects == {"McLaren"}
+
+
+def test_expected_ranks_caches_season_snapshot_per_year(db_session, monkeypatch):
+    # run_insights_season's parallel workers each call _expected_ranks once per round, and
+    # build_season_snapshot scans every ingested round of the year; without the memo, every
+    # round redundantly rebuilds the identical whole-season rollup.
+    from telogify.analysis import candidates as candidates_module
+    from telogify.models import RaceWeekend
+
+    year = 2099  # distinctive test-only year, won't collide with other fixtures' years
+    candidates_module._SEASON_SNAPSHOT_CACHE.pop(year, None)
+
+    wk = RaceWeekend(year=year, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    calls: list[int] = []
+
+    def fake_snapshot(y, db):
+        calls.append(y)
+        return {"constructors": [{"constructor": "Ferrari", "overall_rank": 1}]}
+
+    monkeypatch.setattr(candidates_module, "build_season_snapshot", fake_snapshot)
+
+    try:
+        first = candidates_module._expected_ranks(wk.id, db_session)
+        second = candidates_module._expected_ranks(wk.id, db_session)
+
+        assert first == {"Ferrari": 1}
+        assert second == {"Ferrari": 1}
+        assert len(calls) == 1  # second lookup reused the cached snapshot, no rebuild
+    finally:
+        candidates_module._SEASON_SNAPSHOT_CACHE.pop(year, None)

@@ -11,6 +11,7 @@ ponytail: signal types cover the brief's required set. Add more types here, the
 scoring/correlation/ranking stays unchanged.
 """
 
+import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 from statistics import StatisticsError, mean
@@ -797,6 +798,22 @@ def _mine_sprint_vs_race_pace(db, sessions, dc_map) -> list[Signal]:
     return out
 
 
+# Per-process memo: run_insights_season's parallel workers each call _expected_ranks once
+# per round, and build_season_snapshot scans every ingested round of the year, so without
+# this every round in a season regen was redundantly rebuilding the identical whole-season
+# rollup. A CLI invocation's ingested data is immutable for the life of the process, so
+# caching by year is safe; the lock serializes only the (rare) first build per year.
+_SEASON_SNAPSHOT_CACHE: dict[int, dict | None] = {}
+_SEASON_SNAPSHOT_LOCK = threading.Lock()
+
+
+def _cached_season_snapshot(year: int, db: DBSession) -> dict | None:
+    with _SEASON_SNAPSHOT_LOCK:
+        if year not in _SEASON_SNAPSHOT_CACHE:
+            _SEASON_SNAPSHOT_CACHE[year] = build_season_snapshot(year, db)
+        return _SEASON_SNAPSHOT_CACHE[year]
+
+
 def _expected_ranks(weekend_id: int, db: DBSession) -> dict[str, int]:
     """Constructor -> season pace+quali rank (1 = best car), from the season snapshot."""
     weekend = db.get(RaceWeekend, weekend_id)
@@ -804,7 +821,7 @@ def _expected_ranks(weekend_id: int, db: DBSession) -> dict[str, int]:
         return {}
     # ponytail: snapshot spans every ingested round of the year, so re-running an early round
     # with later rounds present leaks their pace into "expected"; add a max_round arg if backfilling.
-    snapshot = build_season_snapshot(weekend.year, db)
+    snapshot = _cached_season_snapshot(weekend.year, db)
     if snapshot is None:
         return {}
     return {
