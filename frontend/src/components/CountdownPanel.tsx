@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -28,7 +28,10 @@ export function CountdownPanel({
   // Optional: omit when a heading above the panel already states the same thing (e.g. the
   // weekend page's own "Race" SectionTitle), so the panel doesn't repeat it.
   title?: string
-  subtitle?: string
+  // ReactNode (not just string) so a caller with two distinct pieces (e.g. a date and a
+  // location) can render them as two explicit lines instead of one string that soft-wraps
+  // wherever it happens to overflow.
+  subtitle?: ReactNode
   targetIso: string
   compact?: boolean
 }) {
@@ -66,12 +69,16 @@ export function CountdownPanel({
         </h2>
       )}
 
-      {/* Flex, not an equal-width grid: a grid column stretches each unit to the same width
-          regardless of content, so the units end up scattered at inconsistent distances from
-          each other and from the panel's own left edge. Flex sizes each "02 Days" chunk to its
-          own content and keeps a uniform gap between them. */}
+      {/* Auto-sized grid columns (repeat(N,auto)), not equal-width (1fr) columns and not flex:
+          an equal-width grid would stretch every unit to the same width regardless of content,
+          wasting space around "Days"/"Hours". Flex avoided that but doesn't align wrapped rows
+          into columns at all -- each unit sizes to its own content, so row 2 starts at a
+          different x-offset than row 1 the moment 4 units don't fit one line. Auto-sized grid
+          columns get both: each column is only as wide as its own widest cell (still no forced
+          uniform width across all 4), but every row shares the same column boundaries, so
+          wrapped rows land aligned. 2 columns (2x2) below `sm`, all 4 in one row at `sm` and up. */}
       <div
-        className={`${title ? (compact ? 'mt-6' : 'mt-10') : 'mt-8'} ${compact ? 'gap-x-6' : 'gap-x-10'} flex flex-wrap gap-y-4`}
+        className={`grid grid-cols-[repeat(2,auto)] sm:grid-cols-[repeat(4,auto)] ${title ? (compact ? 'mt-6' : 'mt-10') : 'mt-8'} ${compact ? 'gap-x-6' : 'gap-x-10'} gap-y-4`}
         aria-live="polite"
         aria-atomic="true"
       >

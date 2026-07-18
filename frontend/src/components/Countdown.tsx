@@ -19,7 +19,12 @@ export function Countdown() {
     <section className="mt-24 sm:mt-32">
       <CountdownPanel
         kicker={`Next race · Round ${data.round}`}
-        subtitle={`${raceDate}${place ? ` · ${place}` : ''}`}
+        subtitle={
+          <>
+            <span className="block">{raceDate}</span>
+            {place && <span className="block">{place}</span>}
+          </>
+        }
         title={data.event_name}
         targetIso={data.date_utc}
       />
