@@ -1,4 +1,6 @@
-<img src=".github/readme-logo.svg" width="180" alt="Telogify" />
+<p align="center">
+  <img src=".github/readme-logo.svg" width="320" alt="Telogify: Every weekend, cut the noise." />
+</p>
 
 F1 telemetry intelligence. Ingests a full FastF1 race weekend (all sessions) and produces
 **3 quantified, telemetry-grounded insights** per race, plus qualifying car-character
