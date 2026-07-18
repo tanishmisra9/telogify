@@ -17,3 +17,10 @@ include = ["telogify*"]
 
 [project.scripts]
 telogify = "telogify.cli:app"
+
+[tool.coverage.run]
+source = ["telogify"]
+omit = ["telogify/agent/prompts.py"]
+
+[tool.coverage.report]
+show_missing = true

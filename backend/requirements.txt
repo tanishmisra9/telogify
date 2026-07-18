@@ -26,4 +26,5 @@ resend
 
 # Tests
 pytest
+pytest-cov
 httpx

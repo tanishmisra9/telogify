@@ -89,7 +89,8 @@ alembic upgrade head
 ### Tests
 
 ```bash
-pytest        # requires telogify_test to exist; tests create/drop their own tables
+pytest                                          # requires telogify_test to exist; tests create/drop their own tables
+pytest --cov=telogify --cov-report=term-missing # same, with a coverage report
 ```
 
 ### API (local)
