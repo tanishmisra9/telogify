@@ -60,14 +60,21 @@ export function Footer() {
                   Mirco Bartolozzi
                   {/* The icon stands in for "@" entirely (no literal @ character) -- gap-0.5, not
                       the outer gap-1, since it's replacing a character glued to the handle, not a
-                      word-space. */}
+                      word-space. The colon lives inside this same inline-flex span, right after
+                      the handle, rather than as a separate text node after </Tooltip>: Tooltip's
+                      wrapper is itself `inline-flex` (an atomic inline box), and at least one
+                      WebKit build allows a line break at that box's edge even with zero
+                      whitespace after it -- confirmed fine in Chromium, still splitting the
+                      colon onto its own line on an iPhone. Putting the colon inside the box
+                      removes the boundary entirely instead of relying on adjacent-whitespace
+                      behavior differing across engines. */}
                   <span className="inline-flex items-center gap-0.5">
                     <InstagramIcon />
-                    fdataanalysis
+                    fdataanalysis:
                   </span>
                 </a>
-              </Tooltip>
-              : clean-air filtering, fuel correction model, ERS depletion signal.
+              </Tooltip>{' '}
+              clean-air filtering, fuel correction model, ERS depletion signal.
             </p>
             <p className="text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>
             <p className="text-sm text-muted">Let&apos;s telogify this weekend.</p>

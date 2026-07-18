@@ -97,9 +97,24 @@ export function Insight({
   const [open, setOpen] = useState(defaultOpen)
   const titleId = `insight-${item.slot}-title`
   const toggle = () => setOpen((o) => !o)
+  // href + collapsible together (only LiveInsight, so far) can't both use a full-card
+  // absolutely-positioned stretched link UNDER a full-card toggle <button>: which one wins a
+  // given tap is a z-index/stacking-context question, and at least one WebKit build resolves it
+  // opposite to Chromium for part of the card (confirmed: Chromium sends every tap to the link,
+  // an iPhone sent taps on the upper portion to the toggle instead). Side-step the ambiguity
+  // instead of fighting it across engines: when both are set, the heading itself becomes the
+  // real (non-absolute, in-flow) link -- unambiguous in any browser -- and the rest of the card
+  // stays toggle-only, no stretched link at all.
+  const headingText = bindMetricSpaces(item.header)
   const heading = (
     <h3 id={titleId} className="font-display text-[1.5625rem] font-semibold leading-[1.05] tracking-tight sm:text-[1.875rem] lg:text-[2.5rem]">
-      {bindMetricSpaces(item.header)}
+      {href && collapsible ? (
+        <Link to={href} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+          {headingText}
+        </Link>
+      ) : (
+        headingText
+      )}
     </h3>
   )
   const copyText = `${contextLabel ? `${contextLabel} · ` : ''}${item.header}\n\n${item.explanation_web}`
@@ -215,13 +230,15 @@ export function Insight({
       style={tintColor ? { backgroundColor: tintColor } : undefined}
       aria-labelledby={titleId}
     >
-      {href && (
+      {href && !collapsible && (
         <Link
           to={href}
           aria-label={item.header}
           // Stretched link: fills the whole card so it's clickable anywhere, sitting below
           // (z-0) the copy button's own z-10 so that button keeps intercepting its own clicks
-          // rather than the click falling through to this link underneath it.
+          // rather than the click falling through to this link underneath it. Not rendered when
+          // collapsible is also set -- see `heading`'s own comment for why that combination
+          // uses a real in-flow link on the heading text instead of this stretched overlay.
           className="absolute inset-0 z-0 rounded-[--radius-panel]"
         />
       )}
