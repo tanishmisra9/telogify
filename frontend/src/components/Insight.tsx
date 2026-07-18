@@ -62,6 +62,7 @@ export function Insight({
   item,
   showSlot = true,
   collapsible = false,
+  defaultOpen = true,
   contextLabel,
   kicker,
   tintColor,
@@ -71,6 +72,8 @@ export function Insight({
   item: InsightItem
   showSlot?: boolean
   collapsible?: boolean
+  // Initial open/closed state when collapsible; only matters if collapsible is true.
+  defaultOpen?: boolean
   // Race weekend the insight belongs to (e.g. "British Grand Prix"), prefixed onto the copied
   // text so it still identifies itself once pasted somewhere without the page around it.
   contextLabel?: string
@@ -91,7 +94,7 @@ export function Insight({
   // <a> containing interactive content is invalid HTML / confusing to screen readers.
   href?: string
 }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(defaultOpen)
   const titleId = `insight-${item.slot}-title`
   const toggle = () => setOpen((o) => !o)
   const heading = (
@@ -118,9 +121,14 @@ export function Insight({
   const contentCol = showSlot ? 'col-start-2' : 'col-start-1'
   // Copy is a real nested interactive element, so its click must not also bubble into the
   // outer toggle; the chevron is purely decorative and deliberately left un-stopped, so
-  // clicking it (or anywhere else in the header) still toggles. gap-6 (not tighter): both
-  // icons' -m-3 tap targets reach 12px past their own visible glyph, so anything less than
-  // 24px between them lets the two invisible hit-boxes overlap and steal each other's clicks.
+  // clicking it (or anywhere else in the header) still toggles when nested inside the
+  // collapsible <button> (showSlot=true). When !showSlot, this whole group instead renders as
+  // an absolutely-positioned corner overlay OUTSIDE that button (see below), so the chevron
+  // needs its own onClick + stopPropagation to still toggle there -- harmless when it IS nested
+  // (stops the bubble, then fires the identical toggle directly, so it's still exactly one
+  // toggle per click either way). gap-6 (not tighter): both icons' -m-3 tap targets reach 12px
+  // past their own visible glyph, so anything less than 24px between them lets the two
+  // invisible hit-boxes overlap and steal each other's clicks.
   const buttonGroup = (
     <div className="flex shrink-0 items-start gap-6">
       <span onClick={(e) => e.stopPropagation()}>
@@ -129,8 +137,12 @@ export function Insight({
       {collapsible && (
         <Tooltip label={open ? 'Collapse' : 'Expand'}>
           <span
+            onClick={(e) => {
+              e.stopPropagation()
+              toggle()
+            }}
             // -m-3 + p-3 matches CopyButton's 40px tap target.
-            className="-m-3 mt-[-0.375rem] flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+            className="-m-3 mt-[-0.375rem] flex shrink-0 cursor-pointer items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
           >
             <m.svg
               width="20"
