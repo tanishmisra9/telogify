@@ -1,29 +1,25 @@
-# Telogify
+<img src=".github/readme-logo.svg" width="180" alt="Telogify" />
 
 F1 telemetry intelligence. Ingests a full FastF1 race weekend (all sessions) and produces
-**3 quantified, telemetry-grounded insights**, delivered as a web page and a post-race
-email digest. The insights are the product.
+**3 quantified, telemetry-grounded insights** per race, plus qualifying car-character
+insights and a season-long constructor/power-unit deployment view, delivered as a web page
+and a post-race email digest. The insights are the product.
 
 ## Core principle: zero quantitative hallucination
 
 A deterministic backend computes every number (corner deltas, straight speeds, stint pace,
-finishing gaps) and stores it in Postgres. The insight engine is a LangGraph ReAct agent
-(Claude Opus) with bound tools that query Postgres. The model never invents a number; it
-retrieves exact values via tool calls and writes prose around them. Every number in a
-published insight is traceable to a logged tool return in `source_tool_calls_json`.
-
-```
-PreCompute (deterministic, all sessions)
-  ingest -> corners -> straights -> stints -> results
-  -> fingerprints -> attributions -> constructor index -> candidate insights (ranked)
-        -> InsightAgent (LangGraph ReAct, Opus + bound DB tools) -> 3 insights
-        -> web page + Resend email digest
-```
+finishing gaps, ERS deployment) and stores it in Postgres. The insight engine is a LangGraph
+ReAct agent with bound tools that query Postgres (OpenAI by default, switchable to Anthropic
+via `LLM_PROVIDER`). The model never invents a number; it retrieves exact values via tool
+calls and writes prose around them. Every number in a published insight is traceable to a
+logged tool return in `source_tool_calls_json`, and a guardrail + validation gate blocks
+anything that isn't (see `backend/telogify/agent/guardrails.py` and `validation.py`).
 
 ## Stack
 
-- **Backend:** Python 3.12, FastAPI, LangGraph, SQLModel + Alembic, Postgres, LangChain chat models
-  (OpenAI default, Anthropic switchable via `LLM_PROVIDER`), FastF1, Resend, pytest. Manual CLI trigger only (no scheduler).
+- **Backend:** Python 3.12, FastAPI, LangGraph, SQLModel + Alembic, Postgres, LangChain chat
+  models (OpenAI default, Anthropic switchable via `LLM_PROVIDER`), FastF1, Resend, pytest.
+  Manual CLI trigger only (no scheduler).
 - **Frontend:** Vite + React + TypeScript + Tailwind v4 + Framer Motion. Custom SVG charts (no
   chart library). Vitest for unit tests.
 - **Infra:** Railway (backend + Postgres), Vercel (frontend).
@@ -59,20 +55,26 @@ alembic upgrade head            # apply migrations to telogify_dev
 ### CLI
 
 ```bash
-telogify run-weekend 2025 11    # ingest + compute + generate and persist 3 insights
-telogify run-weekend 2026       # all completed rounds for the season (one agent call per weekend)
-telogify run-weekend 2026 --dry-run  # preview which rounds would run, no API spend
-telogify run-insights 2026      # LLM-only: regenerate insights for all ingested completed rounds
-telogify run-insights 2026 8    # LLM-only: regenerate insights for one round (no FastF1 re-ingest)
+telogify run-weekend 2025 11          # ingest + compute + generate and persist 3 insights
+telogify run-weekend 2026             # all completed rounds for the season (one agent call per weekend)
+telogify run-weekend 2026 --dry-run   # preview which rounds would run, no API spend
+
+telogify run-insights 2026            # LLM-only: regenerate insights for all ingested completed rounds
+telogify run-insights 2026 8          # LLM-only: regenerate insights for one round (no FastF1 re-ingest)
 telogify run-insights 2026 --dry-run  # preview insight regen rounds, no API spend
-telogify ingest 2026            # FastF1 ingest only, no analysis/candidates/LLM call, zero API spend --
-                                 # the cheap path to re-run every extractor after one of them changes
-telogify ingest 2026 8          # same, for a single round
-telogify ingest 2026 --dry-run  # preview which rounds would be ingested
-telogify diagnose 2025 11       # ranking sanity: clean-lap counts + attribution confidence
-telogify list-insights          # print all persisted insights, grouped by weekend
-telogify list-insights 2026     # same, filtered to one season
-telogify send-digest 2025 11    # email the 3 insights to subscribers via Resend
+
+telogify run-season-deployment 2026   # LLM verdicts for the season deployment section, one per power-unit manufacturer
+
+telogify ingest 2026                  # FastF1 ingest only, no analysis/candidates/LLM call, zero API spend --
+                                       # the cheap path to re-run every extractor after one of them changes
+telogify ingest 2026 8                # same, for a single round
+telogify ingest 2026 --dry-run        # preview which rounds would be ingested
+
+telogify diagnose 2025 11             # ranking sanity: clean-lap counts + attribution confidence
+telogify list-insights                # print all persisted insights, grouped by weekend
+telogify list-insights 2026           # same, filtered to one season
+telogify send-digest 2025 11          # email the 3 insights to subscribers via Resend
+telogify preview-digest 2025 11       # render the email digest to a local HTML file, no send, no API key
 ```
 
 ### Migrations
@@ -105,11 +107,12 @@ npm run build            # production build to dist/
 npm test                 # vitest unit tests (pure lib functions)
 ```
 
-Five routes: landing (`/`), weekends index (`/weekends`), race weekend page
+Routes: landing (`/`), weekends index (`/weekends`), race weekend page
 (`/weekends/:year/:round`: 3 insights, pace/degradation/qualifying charts including "The fight
 to pole" P1-vs-P2 telemetry scrub, and finishing order), season snapshot (`/season[/:year]`:
 constructor ranking, form guide, season-wide trend and ERS deployment charts), and subscribe
-(`/subscribe`).
+(`/subscribe`, currently a placeholder — the email signup form is removed until the digest
+ships publicly).
 
 ## Deploy
 
@@ -124,6 +127,16 @@ auto-detected, output `dist`). `frontend/vercel.json` rewrites all routes to `in
 for client-side routing. Set `VITE_API_URL` to the Railway backend URL.
 
 No CI yet.
+
+## Contributing
+
+`.githooks/pre-commit` runs `gitleaks protect --staged` to block committing secrets. It's
+tracked in the repo but not auto-activated on clone:
+
+```bash
+git config core.hooksPath .githooks   # once per clone
+brew install gitleaks                 # if the binary isn't already present
+```
 
 ## Validation
 
