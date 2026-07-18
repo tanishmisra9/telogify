@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from telogify.analysis.schedule import Event, fetch_season_schedule, pick_next_event
+from telogify.ingest.loader import session_schedule
 
 from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import REFERENCE_AGE_LAPS, fit_all_groups
@@ -204,12 +205,26 @@ def weekend_detail(year: int, round: int, db: Session = Depends(get_session)):
 
 @router.get("/weekends/{year}/{round}/sessions")
 def weekend_sessions(year: int, round: int, db: Session = Depends(get_session)):
-    """Which sessions of this weekend have been ingested, in chronological order. The
-    frontend renders a section per session present here; a session simply not in this
-    list (not yet run, or a standard weekend with no SQ/SPRINT) renders as 'upcoming'."""
+    """Every session on this weekend's calendar, ingested or not, in chronological order.
+    `status` is "loaded" once a session has been ingested, null while it's still upcoming;
+    `date_utc` is the session's scheduled start (null if FastF1's schedule doesn't have one),
+    used by the frontend to count down to a session that hasn't happened yet. Falls back to
+    ingested-only sessions with no date if the live FastF1 schedule fetch fails."""
     w = _weekend(db, year, round)
-    sessions = _weekend_sessions(db, w.id)
-    return [{"session_type": s.session_type, "status": s.status} for s in sessions]
+    ingested = {s.session_type: s.status for s in _weekend_sessions(db, w.id)}
+    schedule = session_schedule(year, round)
+    if not schedule:
+        return [
+            {"session_type": t, "status": s, "date_utc": None} for t, s in ingested.items()
+        ]
+    return [
+        {
+            "session_type": code,
+            "status": ingested.get(code),
+            "date_utc": date.isoformat() + "Z" if date else None,
+        }
+        for code, _name, date in schedule
+    ]
 
 
 @router.get("/weekends/{year}/{round}/insights")

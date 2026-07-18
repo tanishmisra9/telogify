@@ -14,7 +14,7 @@ from typing import TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from telogify.agent.graph import build_agent
 from telogify.agent.tools import _weekend_id
@@ -46,6 +46,7 @@ from telogify.ingest.sectors import store_sector_bests
 from telogify.ingest.stints import store_stints
 from telogify.ingest.straights import store_straights
 from telogify.models import Insight, QualiInsight
+from telogify.models import Session as SessionModel
 
 logger = logging.getLogger("telogify.insights")
 
@@ -54,6 +55,7 @@ class PipelineState(TypedDict, total=False):
     year: int
     round: int
     weekend_id: int
+    session_types: list[str]
     insight_count: int
     quali_insight_count: int
 
@@ -71,10 +73,17 @@ def _ingest(state: PipelineState) -> dict:
         store_race_control(data, db)
         store_deployment(data, db)
         store_accel_samples(data, db)
-        return {"weekend_id": data.weekend.id}
+        return {"weekend_id": data.weekend.id, "session_types": sorted(data.sessions)}
+
+
+def _has_quali_or_race(state: PipelineState) -> bool:
+    session_types = state.get("session_types", ())
+    return "Q" in session_types or "R" in session_types
 
 
 def _analyze(state: PipelineState) -> dict:
+    if not _has_quali_or_race(state):
+        return {}
     with Session(engine) as db:
         store_attributions(state["weekend_id"], db)
         build_constructor_index(state["weekend_id"], db)
@@ -82,9 +91,16 @@ def _analyze(state: PipelineState) -> dict:
 
 
 def _candidates(state: PipelineState) -> dict:
+    if not _has_quali_or_race(state):
+        return {}
     with Session(engine) as db:
         compute_candidates(state["weekend_id"], db)
     return {}
+
+
+def _ingested_session_types(db: Session, weekend_id: int) -> set[str]:
+    rows = db.exec(select(SessionModel).where(SessionModel.weekend_id == weekend_id)).all()
+    return {r.session_type for r in rows}
 
 
 _MAX_INSIGHT_ATTEMPTS = 3
@@ -221,8 +237,14 @@ def build_pipeline(agent_runner, quali_agent_runner):
     g.add_node("ingest", _ingest)
     g.add_node("analyze", _analyze)
     g.add_node("candidates", _candidates)
-    g.add_node("insights", lambda s: _insights(s, agent_runner))
-    g.add_node("quali_insights", lambda s: _quali_insights(s, quali_agent_runner))
+    g.add_node(
+        "insights",
+        lambda s: _insights(s, agent_runner) if "R" in s.get("session_types", ()) else {},
+    )
+    g.add_node(
+        "quali_insights",
+        lambda s: _quali_insights(s, quali_agent_runner) if "Q" in s.get("session_types", ()) else {},
+    )
     g.add_edge(START, "ingest")
     g.add_edge("ingest", "analyze")
     g.add_edge("analyze", "candidates")
@@ -366,12 +388,17 @@ def run_insights_season(
 
 
 def regen_insights(year: int, round: int, agent_runner=None, quali_agent_runner=None) -> dict:
-    """Regenerate the 3 race insights and the 2 qualifying insights from already-ingested data:
-    recompute candidates (so a scoring change shows) and re-run both agents. Skips FastF1
-    ingest and analysis, whose inputs haven't changed, so there is no re-download and no cost
-    beyond the agents themselves. If the qualifying insights fail their guardrail/validation
-    gate, the RuntimeError propagates even though the 3 race insights already persisted this
-    run: each insight batch is its own hard gate, same "never ship a fabricated claim" rule."""
+    """Regenerate whichever of the 3 race insights / 2 qualifying insights the ingested data
+    supports, from already-ingested data: recompute candidates (so a scoring change shows) and
+    re-run the relevant agent(s). Skips FastF1 ingest and analysis, whose inputs haven't
+    changed, so there is no re-download and no cost beyond the agents themselves.
+
+    Race insights only run once the race session is ingested; qualifying insights only run once
+    the qualifying session is ingested (mid-weekend, that may be all there is yet). If neither
+    is ingested, there is nothing to regenerate and this raises loud rather than silently doing
+    nothing. If the qualifying insights fail their guardrail/validation gate, the RuntimeError
+    propagates even though the race insights already persisted this run: each insight batch is
+    its own hard gate, same "never ship a fabricated claim" rule."""
     runner = agent_runner or _default_agent_runner
     quali_runner = quali_agent_runner or _default_quali_agent_runner
     with Session(engine) as db:
@@ -380,8 +407,18 @@ def regen_insights(year: int, round: int, agent_runner=None, quali_agent_runner=
             raise RuntimeError(
                 f"No ingested weekend for {year} round {round}. Run run-weekend first."
             )
+        session_types = _ingested_session_types(db, weekend_id)
+        if "Q" not in session_types and "R" not in session_types:
+            raise RuntimeError(
+                f"{year} round {round} has no qualifying or race data ingested yet; "
+                "nothing to regenerate insights from. Run run-weekend once a session has "
+                "completed."
+            )
         compute_candidates(weekend_id, db)
     state: PipelineState = {"year": year, "round": round, "weekend_id": weekend_id}
-    race_result = _insights(state, runner)
-    quali_result = _quali_insights(state, quali_runner)
-    return {**race_result, **quali_result}
+    result: dict = {"session_types": sorted(session_types)}
+    if "R" in session_types:
+        result.update(_insights(state, runner))
+    if "Q" in session_types:
+        result.update(_quali_insights(state, quali_runner))
+    return result

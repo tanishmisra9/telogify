@@ -176,9 +176,54 @@ def test_pace(client):
     assert data["stop_count_spread"] == 0
 
 
-def test_sessions(client):
+def test_sessions(client, monkeypatch):
+    # session_schedule hits live FastF1; monkeypatch it for a deterministic full-calendar
+    # response, same pattern as test_next_race_picks_soonest_future's _schedule_events.
+    from telogify.api import routes
+
+    monkeypatch.setattr(
+        routes,
+        "session_schedule",
+        lambda year, round: [
+            ("FP1", "Practice 1", None),
+            ("FP2", "Practice 2", None),
+            ("FP3", "Practice 3", None),
+            ("Q", "Qualifying", None),
+            ("R", "Race", None),
+        ],
+    )
+    rows = client.get("/weekends/2025/11/sessions").json()
+    by_type = {r["session_type"]: r for r in rows}
+    assert [r["session_type"] for r in rows] == ["FP1", "FP2", "FP3", "Q", "R"]
+    # FP1/Q/R were ingested by the fixture; FP2/FP3 are on the calendar but not yet ingested.
+    assert by_type["FP1"]["status"] == "loaded"
+    assert by_type["Q"]["status"] == "loaded"
+    assert by_type["R"]["status"] == "loaded"
+    assert by_type["FP2"]["status"] is None
+    assert by_type["FP3"]["status"] is None
+
+
+def test_sessions_includes_date_utc(client, monkeypatch):
+    from datetime import datetime
+
+    from telogify.api import routes
+
+    monkeypatch.setattr(
+        routes,
+        "session_schedule",
+        lambda year, round: [("FP1", "Practice 1", datetime(2025, 6, 27, 11, 30))],
+    )
+    rows = client.get("/weekends/2025/11/sessions").json()
+    assert rows == [{"session_type": "FP1", "status": "loaded", "date_utc": "2025-06-27T11:30:00Z"}]
+
+
+def test_sessions_falls_back_to_ingested_when_schedule_unavailable(client, monkeypatch):
+    from telogify.api import routes
+
+    monkeypatch.setattr(routes, "session_schedule", lambda year, round: [])
     rows = client.get("/weekends/2025/11/sessions").json()
     assert [r["session_type"] for r in rows] == ["FP1", "Q", "R"]
+    assert all(r["date_utc"] is None for r in rows)
 
 
 def test_sectors(client):

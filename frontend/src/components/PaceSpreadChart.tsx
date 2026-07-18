@@ -286,16 +286,20 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
         </div>
       )}
 
-      <p className="mt-4 text-sm text-muted">
-        Sorted by mean pace; gaps are mean delta to the fastest. Lap 1 excluded, fuel-corrected.
-        Solid line median, dashed line mean, dotted line pace ceiling (fastest tenth of laps), box
-        is the middle 50 percent of laps, whiskers cover 99.3 percent, dots are outliers.
-      </p>
-      {pace.stop_count_spread >= 2 && (
-        <p className="mt-2 text-sm text-muted">
-          Pit-equated: stop counts vary by up to {pace.stop_count_spread} across the field, so treat
-          these gaps as an estimate.
-        </p>
+      {rows.length > 0 && (
+        <>
+          <p className="mt-4 text-sm text-muted">
+            Sorted by mean pace; gaps are mean delta to the fastest. Lap 1 excluded, fuel-corrected.
+            Solid line median, dashed line mean, dotted line pace ceiling (fastest tenth of laps), box
+            is the middle 50 percent of laps, whiskers cover 99.3 percent, dots are outliers.
+          </p>
+          {pace.stop_count_spread >= 2 && (
+            <p className="mt-2 text-sm text-muted">
+              Pit-equated: stop counts vary by up to {pace.stop_count_spread} across the field, so treat
+              these gaps as an estimate.
+            </p>
+          )}
+        </>
       )}
     </m.div>
   )

@@ -5,6 +5,7 @@ from telogify.analysis.candidates import (
     OBVIOUSNESS_DISCOUNT,
     Signal,
     _mine_clean_air_pace,
+    compute_candidates,
     correlate,
     expectation_factors,
     linear_regression,
@@ -310,3 +311,21 @@ def test_clean_air_pace_stacks_with_race_pace_on_correlate():
     assert combined.subject == "Ferrari"
     assert combined.robustness > pace.robustness
     assert combined.robustness > clean_air.robustness
+
+
+def test_compute_candidates_runs_with_only_a_quali_session(db_session):
+    # Mid-weekend, quali-only ingest (no race session at all): compute_candidates is now called
+    # in this exact shape by the pipeline once qualifying is in but the race hasn't happened.
+    # Every miner resolves its sessions via pick_session, which returns None for the missing
+    # "R"/"SPRINT" types, so this must not raise even with zero race data anywhere.
+    from telogify.models import RaceWeekend, Session as SessionRow
+
+    wk = RaceWeekend(year=2099, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(SessionRow(weekend_id=wk.id, session_type="Q", status="loaded"))
+    db_session.commit()
+
+    signals = compute_candidates(wk.id, db_session)
+    assert signals == []

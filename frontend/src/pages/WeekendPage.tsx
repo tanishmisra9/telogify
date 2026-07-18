@@ -5,6 +5,7 @@ import { BackToTopButton } from '@/components/BackToTopButton'
 import { BarChart } from '@/components/BarChart'
 import { BlurFade } from '@/components/BlurFade'
 import { ChartTabs } from '@/components/ChartTabs'
+import { CountdownPanel } from '@/components/CountdownPanel'
 import { DegradationChart } from '@/components/DegradationChart'
 import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
 import { FightToPoleChart } from '@/components/FightToPoleChart'
@@ -36,6 +37,10 @@ import {
 } from '@/lib/api'
 
 const PRACTICE_CODES = ['FP1', 'FP2', 'FP3']
+
+function formatSessionDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
+}
 
 function PracticeSectorChart({ sector, rows }: { sector: number; rows: SectorBestRow[] }) {
   const sorted = rows.filter((r) => r.sector === sector).sort((a, b) => a.best_time_s - b.best_time_s)
@@ -216,6 +221,46 @@ function Upcoming({ children }: { children: React.ReactNode }) {
   )
 }
 
+// One gate shared by Practice/Sprint/Qualifying/Race: a single countdown panel while the next
+// relevant session hasn't started, a single "No data yet." panel once it has but nothing's been
+// computed, and otherwise the section's real charts (unchanged, each keeping its own loading
+// fallback for the ordinary in-flight case). Replaces what used to be a skeleton card PER chart
+// (each with its own disclaimer footer) whenever there was really just one thing to say.
+function SessionGate({
+  sessionsLoaded,
+  loading,
+  target,
+  label,
+  happened,
+  noData,
+  children,
+}: {
+  sessionsLoaded: boolean
+  loading: React.ReactNode
+  target: SessionInfo | null
+  label: string
+  happened: boolean
+  noData: boolean
+  children: React.ReactNode
+}) {
+  if (!sessionsLoaded) return <>{loading}</>
+  if (!happened) {
+    if (target?.date_utc) {
+      return (
+        <CountdownPanel
+          kicker="Coming up"
+          subtitle={formatSessionDate(target.date_utc)}
+          targetIso={target.date_utc}
+          compact
+        />
+      )
+    }
+    return <Upcoming>{label} hasn&apos;t happened yet.</Upcoming>
+  }
+  if (noData) return <Upcoming>No data yet.</Upcoming>
+  return <>{children}</>
+}
+
 function FightToPoleDesktopNote() {
   return (
     <DesktopOnlyNote>
@@ -255,19 +300,52 @@ export function WeekendPage() {
   // both are ready instead of each popping in independently as its own fetch happens to resolve.
   const topReady = weekend.data !== null && !insights.loading
 
-  const present = new Set(sessions.data?.map((s) => s.session_type) ?? [])
-  const practiceHappened = PRACTICE_CODES.some((c) => present.has(c)) || present.has('SQ')
-  const sprintHappened = present.has('SPRINT')
-  const qualiHappened = present.has('Q')
-  const raceHappened = present.has('R')
+  // Every session on the weekend's calendar, ingested or not (see /sessions), so "upcoming"
+  // sections can count down before they've ever been ingested, not just show a blank skeleton.
+  const sessionByType = new Map((sessions.data ?? []).map((s) => [s.session_type, s]))
+  const isIngested = (code: string) => sessionByType.get(code)?.status === 'loaded'
+  const isSprintWeekend = sessionByType.has('SQ') || sessionByType.has('SPRINT')
+  const practiceHappened = [...PRACTICE_CODES, 'SQ'].some(isIngested)
+  const sprintHappened = isIngested('SPRINT')
+  const qualiHappened = isIngested('Q')
+  const raceHappened = isIngested('R')
   const sessionsLoaded = !sessions.loading
+
+  // The earliest not-yet-ingested session among `types`, for a section's countdown target; null
+  // once all of them are in (nothing left to count down to).
+  const nextSessionTarget = (types: string[]): SessionInfo | null => {
+    for (const t of types) {
+      const s = sessionByType.get(t)
+      if (s && s.status !== 'loaded') return s
+    }
+    return null
+  }
+
+  const practiceNoData =
+    !sectors.loading &&
+    !topspeeds.loading &&
+    (!sectors.data || sectors.data.drivers.length === 0) &&
+    (!topspeeds.data || topspeeds.data.drivers.length === 0)
+  const sprintNoData = !sprintPace.loading && (!sprintPace.data || sprintPace.data.drivers.length === 0)
+  const qualiNoData =
+    !qualiCharacter.loading &&
+    !qualiTrace.loading &&
+    (!qualiCharacter.data || qualiCharacter.data.rows.length === 0) &&
+    (!qualiTrace.data || qualiTrace.data.drivers.length === 0)
+  const raceNoData =
+    !pace.loading &&
+    !degradation.loading &&
+    !results.loading &&
+    (!pace.data || pace.data.drivers.length === 0) &&
+    (!degradation.data || degradation.data.points.length === 0) &&
+    (!results.data || results.data.length === 0)
 
   const navSections: NavSection[] = [
     topReady && insights.data && insights.data.length > 0 ? { id: 'insights', label: 'Insights' } : null,
-    sessionsLoaded && practiceHappened ? { id: 'practice', label: 'Practice' } : null,
-    sessionsLoaded && sprintHappened ? { id: 'sprint', label: 'Sprint' } : null,
-    sessionsLoaded && qualiHappened ? { id: 'qualifying', label: 'Qualifying' } : null,
-    sessionsLoaded && raceHappened ? { id: 'race', label: 'Race' } : null,
+    sessionsLoaded ? { id: 'practice', label: 'Practice' } : null,
+    sessionsLoaded && isSprintWeekend ? { id: 'sprint', label: 'Sprint' } : null,
+    sessionsLoaded ? { id: 'qualifying', label: 'Qualifying' } : null,
+    sessionsLoaded ? { id: 'race', label: 'Race' } : null,
   ].filter((s): s is NavSection => s !== null)
 
   if (weekend.error || sessions.error) {
@@ -335,7 +413,11 @@ export function WeekendPage() {
           <section id="insights" className="mt-16 scroll-mt-24">
             <SectionTitle>Your three insights</SectionTitle>
             {!insights.data || insights.data.length === 0 ? (
-              <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
+              sessionsLoaded && !raceHappened ? (
+                <Upcoming>No insights yet.</Upcoming>
+              ) : (
+                <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
+              )
             ) : (
               // Full section width, matching the heading above (same call as the Season page's
               // Deployment panels): the narrower max-w-5xl just left-aligned with dead space
@@ -359,11 +441,14 @@ export function WeekendPage() {
 
       <section id="practice" className="mt-20 scroll-mt-24">
         <SectionTitle>Practice</SectionTitle>
-        {!sessionsLoaded ? (
-          <PracticeSkeleton />
-        ) : !practiceHappened ? (
-          <Upcoming>Practice hasn't run yet. Best sectors and top speeds appear here once it has.</Upcoming>
-        ) : (
+        <SessionGate
+          sessionsLoaded={sessionsLoaded}
+          loading={<PracticeSkeleton />}
+          target={nextSessionTarget(['FP1'])}
+          label="Practice"
+          happened={practiceHappened}
+          noData={practiceNoData}
+        >
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {sectors.data ? (
               <ScrollReveal>
@@ -380,35 +465,47 @@ export function WeekendPage() {
               <SkeletonCard label="Top speeds" className="min-h-[300px]" />
             )}
           </div>
-        )}
+        </SessionGate>
       </section>
 
-      {sprintHappened && (
+      {isSprintWeekend && (
         <section id="sprint" className="mt-20 scroll-mt-24">
           <SectionTitle>Sprint</SectionTitle>
-          {sprintPace.data ? (
-            <ScrollReveal>
-              <PaceSpreadChart pace={sprintPace.data} />
-            </ScrollReveal>
-          ) : (
-            <SkeletonCard label="Pace spread" className="min-h-[600px]" />
-          )}
+          <SessionGate
+            sessionsLoaded={sessionsLoaded}
+            loading={<SkeletonCard label="Pace spread" className="min-h-[600px]" />}
+            target={nextSessionTarget(['SQ', 'SPRINT'])}
+            label="Sprint"
+            happened={sprintHappened}
+            noData={sprintNoData}
+          >
+            {sprintPace.data ? (
+              <ScrollReveal>
+                <PaceSpreadChart pace={sprintPace.data} />
+              </ScrollReveal>
+            ) : (
+              <SkeletonCard label="Pace spread" className="min-h-[600px]" />
+            )}
+          </SessionGate>
         </section>
       )}
 
       <section id="qualifying" className="mt-20 scroll-mt-24">
         <SectionTitle>Qualifying</SectionTitle>
-        {!sessionsLoaded ? (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-            <SkeletonCard label="Car character" className="min-h-[520px]" />
-            <SkeletonCard label="The fight to pole" className="hidden min-h-[640px] md:block" />
-            <FightToPoleDesktopNote />
-          </div>
-        ) : !qualiHappened ? (
-          <Upcoming>
-            Qualifying hasn't run yet. The car-character comparison appears here once it has.
-          </Upcoming>
-        ) : (
+        <SessionGate
+          sessionsLoaded={sessionsLoaded}
+          loading={
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+              <SkeletonCard label="Car character" className="min-h-[520px]" />
+              <SkeletonCard label="The fight to pole" className="hidden min-h-[640px] md:block" />
+              <FightToPoleDesktopNote />
+            </div>
+          }
+          target={nextSessionTarget(['Q'])}
+          label="Qualifying"
+          happened={qualiHappened}
+          noData={qualiNoData}
+        >
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {qualiCharacter.data ? (
               <ScrollReveal>
@@ -428,23 +525,25 @@ export function WeekendPage() {
             </div>
             <FightToPoleDesktopNote />
           </div>
-        )}
+        </SessionGate>
       </section>
 
       <section id="race" className="mt-20 scroll-mt-24">
         <SectionTitle>Race</SectionTitle>
-        {!sessionsLoaded ? (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-            <SkeletonCard label="Pace spread" className="min-h-[600px]" />
-            <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
-            <SkeletonCard label="Finishing order" className="min-h-[400px]" />
-          </div>
-        ) : !raceHappened ? (
-          <Upcoming>
-            Race day hasn't happened yet. Pace ranking, tyre degradation and the finishing order appear here once
-            it has.
-          </Upcoming>
-        ) : (
+        <SessionGate
+          sessionsLoaded={sessionsLoaded}
+          loading={
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+              <SkeletonCard label="Pace spread" className="min-h-[600px]" />
+              <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
+              <SkeletonCard label="Finishing order" className="min-h-[400px]" />
+            </div>
+          }
+          target={nextSessionTarget(['R'])}
+          label="Race"
+          happened={raceHappened}
+          noData={raceNoData}
+        >
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {pace.data ? (
               <ScrollReveal>
@@ -473,7 +572,7 @@ export function WeekendPage() {
               <SkeletonCard label="Finishing order" className="mx-auto min-h-[400px] w-full max-w-4xl" />
             )}
           </div>
-        )}
+        </SessionGate>
       </section>
 
       <BackToTopButton />

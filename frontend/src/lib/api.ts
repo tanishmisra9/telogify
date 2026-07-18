@@ -90,6 +90,9 @@ export interface ResultRow {
 export interface SessionInfo {
   session_type: string
   status: string | null
+  // Scheduled UTC start, for counting down to a session that hasn't happened yet; null if
+  // FastF1's schedule doesn't have one (falls back to ingested-only sessions with no date).
+  date_utc: string | null
 }
 
 export interface SectorDominanceRow {

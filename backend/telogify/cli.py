@@ -129,10 +129,18 @@ def _echo_season_final_summary(summary) -> None:
 
 
 def _report_insights_done(state: dict, elapsed: str) -> None:
+    insight_count = state.get("insight_count", 0)
+    quali_insight_count = state.get("quali_insight_count", 0)
     console.print(
-        f"[green]Done:[/green] persisted [bold]{state.get('insight_count', 0)}[/bold] insights, "
-        f"[bold]{state.get('quali_insight_count', 0)}[/bold] qualifying insights [dim]({elapsed})[/dim]."
+        f"[green]Done:[/green] persisted [bold]{insight_count}[/bold] insights, "
+        f"[bold]{quali_insight_count}[/bold] qualifying insights [dim]({elapsed})[/dim]."
     )
+    session_types = state.get("session_types")
+    if insight_count == 0 and quali_insight_count == 0 and session_types:
+        console.print(
+            f"[yellow]Race weekend still in progress[/yellow] "
+            f"(sessions ingested: {', '.join(session_types)}); insights not ready yet."
+        )
 
 
 def _run_insights_one(year: int, round: int) -> None:

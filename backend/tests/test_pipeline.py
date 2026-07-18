@@ -139,11 +139,15 @@ def test_regen_insights_recomputes_candidates_and_skips_ingest(db_session, monke
     monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
     monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
     from telogify.models import RaceWeekend
+    from telogify.models import Session as SessionModel
 
     wk = RaceWeekend(year=2025, round=14, circuit_name="X", country="Y", event_name="Z")
     db_session.add(wk)
     db_session.commit()
     db_session.refresh(wk)
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="Q", status="loaded"))
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="R", status="loaded"))
+    db_session.commit()
 
     called = []
     monkeypatch.setattr(pipeline, "_weekend_id", lambda db, y, r: wk.id)
@@ -172,6 +176,61 @@ def test_regen_insights_errors_without_ingested_weekend(db_session, monkeypatch)
         pipeline.regen_insights(2025, 99, agent_runner=lambda *a, **k: None)
 
 
+def test_regen_insights_quali_only_skips_race_agent(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import RaceWeekend
+    from telogify.models import Session as SessionModel
+
+    wk = RaceWeekend(year=2025, round=20, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="Q", status="loaded"))
+    db_session.commit()
+
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: [])
+
+    race_calls = []
+    quali_calls = []
+    state = pipeline.regen_insights(
+        2025,
+        20,
+        agent_runner=lambda y, r, feedback=None: race_calls.append(1) or _fake_messages(_GOOD_INSIGHTS),
+        quali_agent_runner=lambda y, r, feedback=None: quali_calls.append(1) or _fake_messages(_GOOD_QUALI_INSIGHTS),
+    )
+
+    assert race_calls == []
+    assert quali_calls == [1]
+    assert "insight_count" not in state
+    assert state["quali_insight_count"] == 2
+    assert state["session_types"] == ["Q"]
+
+
+def test_regen_insights_fails_when_no_quali_or_race_ingested(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import RaceWeekend
+    from telogify.models import Session as SessionModel
+
+    wk = RaceWeekend(year=2025, round=21, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="FP1", status="loaded"))
+    db_session.commit()
+
+    called = []
+    with pytest.raises(RuntimeError, match="no qualifying or race data"):
+        pipeline.regen_insights(
+            2025,
+            21,
+            agent_runner=lambda *a, **k: called.append("race"),
+            quali_agent_runner=lambda *a, **k: called.append("quali"),
+        )
+    assert called == []
+
+
 def test_flag_all_flags_each_insight_independently():
     flagged = pipeline._flag_all([
         {"header": "Clean insight", "explanation_web": "W1", "explanation_email": "E1"},
@@ -184,7 +243,11 @@ def test_flag_all_flags_each_insight_independently():
 
 def test_pipeline_runs_phases_in_order(monkeypatch):
     calls = []
-    monkeypatch.setattr(pipeline, "_ingest", lambda s: calls.append("ingest") or {"weekend_id": 1})
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: calls.append("ingest") or {"weekend_id": 1, "session_types": ["Q", "R"]},
+    )
     monkeypatch.setattr(pipeline, "_analyze", lambda s: calls.append("analyze") or {})
     monkeypatch.setattr(pipeline, "_candidates", lambda s: calls.append("candidates") or {})
 
@@ -212,6 +275,99 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
     assert calls == ["ingest", "analyze", "candidates", "insights", "quali_insights"]
     assert state["insight_count"] == 3
     assert state["quali_insight_count"] == 2
+
+
+def test_ingest_returns_session_types(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+
+    class _FakeWeekend:
+        id = 42
+
+    class _FakeData:
+        weekend = _FakeWeekend()
+        sessions = {"FP2": object(), "FP1": object(), "Q": object()}
+
+    monkeypatch.setattr(pipeline, "load_weekend", lambda year, round, db: _FakeData())
+    for name in (
+        "store_straights", "store_stints", "store_results", "store_fingerprints",
+        "store_sector_bests", "store_quali_character", "store_quali_traces",
+        "store_race_control", "store_deployment", "store_accel_samples",
+    ):
+        monkeypatch.setattr(pipeline, name, lambda data, db: None)
+
+    result = pipeline._ingest({"year": 2025, "round": 20})
+    assert result == {"weekend_id": 42, "session_types": ["FP1", "FP2", "Q"]}
+
+
+def test_analyze_skips_without_quali_or_race(monkeypatch):
+    called = []
+    monkeypatch.setattr(pipeline, "store_attributions", lambda wid, db: called.append(wid))
+    monkeypatch.setattr(pipeline, "build_constructor_index", lambda wid, db: called.append(wid))
+
+    result = pipeline._analyze({"weekend_id": 1, "session_types": ["FP1", "FP2"]})
+
+    assert result == {}
+    assert called == []
+
+
+def test_candidates_skips_without_quali_or_race(monkeypatch):
+    called = []
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: called.append(wid) or [])
+
+    result = pipeline._candidates({"weekend_id": 1, "session_types": []})
+
+    assert result == {}
+    assert called == []
+
+
+def test_pipeline_skips_race_insights_when_race_not_ready(monkeypatch):
+    # Only practice + qualifying ingested: quali insights should run, race insights should not.
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": 1, "session_types": ["FP1", "Q"]},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: {})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: calls.append("insights") or {"insight_count": 3})
+    monkeypatch.setattr(
+        pipeline, "_quali_insights", lambda s, r: calls.append("quali_insights") or {"quali_insight_count": 2}
+    )
+
+    state = pipeline.run_weekend(
+        2025, 21, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: []
+    )
+
+    assert calls == ["quali_insights"]
+    assert "insight_count" not in state
+    assert state["quali_insight_count"] == 2
+
+
+def test_pipeline_skips_both_insight_agents_practice_only(monkeypatch):
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": 1, "session_types": ["FP1", "FP2"]},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: {})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: calls.append("insights") or {"insight_count": 3})
+    monkeypatch.setattr(
+        pipeline, "_quali_insights", lambda s, r: calls.append("quali_insights") or {"quali_insight_count": 2}
+    )
+
+    state = pipeline.run_weekend(
+        2025, 22, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: []
+    )
+
+    assert calls == []
+    assert "insight_count" not in state
+    assert "quali_insight_count" not in state
 
 
 def test_run_season_runs_each_planned_round(monkeypatch):
