@@ -353,7 +353,10 @@ def _render_insight_block(slot: int, header: str, body: str, *, team: str | None
 
 
 @app.command("list-insights")
-def list_insights(year: int | None = None) -> None:
+def list_insights(
+    year: int | None = typer.Argument(None, help="Omit for every weekend."),
+    round: int | None = typer.Argument(None, help="Requires YEAR; omit for the whole season."),
+) -> None:
     """Print all persisted insights, grouped by race weekend."""
     from sqlmodel import Session, select
 
@@ -364,6 +367,8 @@ def list_insights(year: int | None = None) -> None:
         query = select(RaceWeekend).order_by(RaceWeekend.year, RaceWeekend.round)
         if year is not None:
             query = query.where(RaceWeekend.year == year)
+        if round is not None:
+            query = query.where(RaceWeekend.round == round)
         weekends = db.exec(query).all()
 
         if not weekends:

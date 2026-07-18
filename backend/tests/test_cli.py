@@ -172,12 +172,30 @@ def test_list_insights_renders_panel_and_escapes_brackets(monkeypatch, test_engi
         ))
         db.commit()
 
-    result = runner.invoke(cli.app, ["list-insights", "--year", "2026"])
+    result = runner.invoke(cli.app, ["list-insights", "2026"])
     out = plain(result.output)
     assert result.exit_code == 0
     assert "Austrian Grand Prix" in out
     assert "Ferrari [scuderia] led sector one" in out
     assert "Mercedes" in out and "swept every sector" in out
+
+
+def test_list_insights_year_and_round_filters_to_one_weekend(monkeypatch, test_engine):
+    from sqlmodel import Session
+
+    from telogify.models import RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        db.add(RaceWeekend(year=2026, round=8, circuit_name="X", country="Y", event_name="Round Eight GP"))
+        db.add(RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Round Nine GP"))
+        db.commit()
+
+    result = runner.invoke(cli.app, ["list-insights", "2026", "9"])
+    out = plain(result.output)
+    assert result.exit_code == 0
+    assert "Round Nine GP" in out
+    assert "Round Eight GP" not in out
 
 
 def test_list_insights_empty_weekend_shows_placeholders(monkeypatch, test_engine):
@@ -191,7 +209,7 @@ def test_list_insights_empty_weekend_shows_placeholders(monkeypatch, test_engine
         db.add(wk)
         db.commit()
 
-    result = runner.invoke(cli.app, ["list-insights", "--year", "2026"])
+    result = runner.invoke(cli.app, ["list-insights", "2026"])
     out = plain(result.output)
     assert result.exit_code == 0
     assert "no insights persisted" in out
