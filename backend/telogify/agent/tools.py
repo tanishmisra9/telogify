@@ -21,6 +21,7 @@ from telogify.analysis.quali_character import (
     label_car_character,
     pick_fastest_corner,
 )
+from telogify.analysis.race_pace import constructor_clean_air
 from telogify.analysis.sectors import sector_dominance
 from telogify.db import engine
 from telogify.models import (
@@ -380,7 +381,18 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
         it in this ranking, 0.0 for the fastest team). Use race_pace_gap_s to frame a
         front-running car against the outright pace leader, and gap_to_team_ahead_s for a
         midfield or backmarker car, whose real rivals are the teams around it in the
-        ranking, not the team that set the fastest pace."""
+        ranking, not the team that set the fastest pace.
+
+        Some teams also carry clean_air_median_s, clean_air_gap_to_fastest_s, and
+        clean_air_n_laps: the median lap time (and gap to the fastest such median) using only
+        race laps run with no car within 0.5s ahead, or with the track clear (the race leader).
+        These fields are present only for teams with at least one qualifying clean-air lap;
+        absent otherwise, never zero. Use them when a team's plain race pace looks misleading,
+        e.g. a leader who cruised in clear air (its clean-air pace shows the pace it actually
+        had in hand) or a car whose laps were mostly run stuck behind traffic (its clean-air
+        pace shows its true pace once out of the wake). The overall_rank ranking above always
+        stays the primary pace story; clean-air numbers are supporting context, not a
+        replacement ranking."""
         with sf() as db:
             wid = _weekend_id(db, year, round_num)
             rows = db.exec(
@@ -408,6 +420,37 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
                 )
                 if gap is not None:
                     prev_gap = gap
+
+            race_sid = _session_id(db, wid, "R")
+            if race_sid is not None:
+                dc_map = {
+                    res.driver: res.constructor
+                    for res in db.exec(
+                        select(SessionResult).where(SessionResult.session_id == race_sid)
+                    ).all()
+                    if res.constructor
+                }
+                stint_dicts = [
+                    {
+                        "driver": st.driver,
+                        "constructor": dc_map.get(st.driver),
+                        "compound": st.compound,
+                        "lap_times": st.lap_times_json or [],
+                        "gaps_to_car_ahead": st.gaps_to_car_ahead_json or [],
+                        "stint_number": st.stint_number,
+                        "lap_start": st.lap_start,
+                    }
+                    for st in db.exec(select(Stint).where(Stint.session_id == race_sid)).all()
+                    if dc_map.get(st.driver)
+                ]
+                clean_air = constructor_clean_air(stint_dicts)
+                for row in out:
+                    ca = clean_air.get(row["constructor"])
+                    if ca is not None:
+                        row["clean_air_median_s"] = round(ca["clean_air_median"], 3)
+                        row["clean_air_gap_to_fastest_s"] = round(ca["clean_air_gap_to_fastest_s"], 3)
+                        row["clean_air_n_laps"] = ca["clean_air_n_laps"]
+
             return json.dumps(out)
 
     @tool

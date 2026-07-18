@@ -263,6 +263,48 @@ def test_constructor_ranking_reports_gap_to_team_ahead(db_session):
     # Haas's real rival is Ferrari (1.3s away), not Mercedes (1.5s away).
     assert by_constructor["Haas"]["gap_to_team_ahead_s"] == pytest.approx(1.3)
     assert by_constructor["Haas"]["race_pace_gap_s"] == pytest.approx(1.5)
+    # No stint data seeded, so no clean-air fields at all: never a fabricated 0.
+    assert "clean_air_median_s" not in by_constructor["Mercedes"]
+
+
+def test_constructor_ranking_includes_clean_air_when_stint_gaps_present(db_session):
+    from telogify.models import SessionResult, Stint
+
+    wk = RaceWeekend(year=2026, round=10, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+
+    db_session.add(ConstructorIndex(weekend_id=wk.id, constructor="Red Bull", overall_rank=1, lap_deficit_s=0.0))
+    db_session.add(ConstructorIndex(weekend_id=wk.id, constructor="Ferrari", overall_rank=2, lap_deficit_s=0.5))
+    db_session.add(SessionResult(session_id=race.id, position=1, driver="VER", constructor="Red Bull"))
+    db_session.add(SessionResult(session_id=race.id, position=2, driver="LEC", constructor="Ferrari"))
+    db_session.add(
+        Stint(
+            session_id=race.id, driver="VER", stint_number=1, lap_start=2, compound="SOFT",
+            lap_times_json=[90.0, 95.0], gaps_to_car_ahead_json=[None, 0.4],
+        )
+    )
+    db_session.add(
+        Stint(
+            session_id=race.id, driver="LEC", stint_number=1, lap_start=2, compound="SOFT",
+            lap_times_json=[91.0, 92.0], gaps_to_car_ahead_json=[1.0, 1.0],
+        )
+    )
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 10, session_factory=lambda: db_session))
+    out = json.loads(tools["get_constructor_ranking"].invoke({}))
+    by_constructor = {r["constructor"]: r for r in out}
+
+    assert by_constructor["Red Bull"]["clean_air_median_s"] == 90.0
+    assert by_constructor["Red Bull"]["clean_air_n_laps"] == 1
+    assert by_constructor["Ferrari"]["clean_air_median_s"] == pytest.approx(91.5)
+    assert by_constructor["Ferrari"]["clean_air_gap_to_fastest_s"] == pytest.approx(1.5)
 
 
 def test_compare_car_speed_profile_reports_cornering_top_speed_and_sectors(db_session):

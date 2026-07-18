@@ -57,6 +57,21 @@ def test_flag_untraceable_numbers_skips_when_no_trace():
     assert flag_untraceable_numbers("330.5 km/h", []) == []
 
 
+def test_flag_untraceable_numbers_traces_clean_air_pace_from_constructor_ranking():
+    text = "In clear air, McLaren's true pace was a 90.421 second lap."
+    trace = [
+        {
+            "tool": "get_constructor_ranking",
+            "args": {},
+            "result": json.dumps(
+                [{"constructor": "McLaren", "overall_rank": 1, "race_pace_gap_s": 0.0,
+                  "clean_air_median_s": 90.421, "clean_air_gap_to_fastest_s": 0.0, "clean_air_n_laps": 6}]
+            ),
+        }
+    ]
+    assert flag_untraceable_numbers(text, trace) == []
+
+
 def test_flag_untraceable_numbers_accepts_rounded_stint_average():
     text = "Leclerc averaged 73.459 seconds per lap on softs."
     trace = [{"tool": "get_stint_summary", "args": {}, "result": '{"avg_pace_s": 73.45858333333333}'}]
