@@ -56,6 +56,17 @@ function resampleToRounds(points: { round: number; value: number }[], roundNums:
   })
 }
 
+// This chart's convention is the same across all three metrics: lower is better (100 = that
+// round's fastest team, higher = further behind). pace/quali already have a backend-computed
+// season aggregate (MetricAgg.mean); cumulative has no dedicated aggregate field, so rank it by
+// its most recent round's trend value instead. A team with no data for the metric sorts last.
+function rankValue(row: SeasonConstructorRow, metric: Metric): number {
+  if (metric === 'pace') return row.pace_gap.mean ?? Infinity
+  if (metric === 'quali') return row.quali_gap_pct.mean ?? Infinity
+  const sorted = [...row.trend.cumulative].sort((a, b) => a.round - b.round)
+  return sorted.length > 0 ? sorted[sorted.length - 1].value : Infinity
+}
+
 // One line per constructor: gap to the round's fastest team, round by round. Lower is
 // better and the y-axis is inverted (0 at top), so a line hugging the top is a season-long
 // front-runner and a line dropping away is a team losing ground. Copies DegradationChart's scaffold.
@@ -100,8 +111,12 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
 
   // Filtered on the team's original (pre-resample) point count, so a team with zero real data
   // for this metric still doesn't render a fabricated flat line — resampling only fills gaps
-  // for teams that have some data.
-  const series = rows
+  // for teams that have some data. Ranked by the selected metric (lower is better, matching this
+  // chart's own convention -- see the caption below) so the legend order actually reflects the
+  // current tab instead of staying frozen at the overall-rank order regardless of which metric
+  // is selected.
+  const series = [...rows]
+    .sort((a, b) => rankValue(a, metric) - rankValue(b, metric))
     .filter((r) => r.trend[metric].length > 0)
     .map((r) => ({ team: r.constructor, values: resampleToRounds(r.trend[metric], roundNums) }))
   const values = series.flatMap((s) => s.values)
