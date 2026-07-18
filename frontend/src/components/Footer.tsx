@@ -66,7 +66,7 @@ export function Footer() {
                     fdataanalysis
                   </span>
                 </a>
-              </Tooltip>{' '}
+              </Tooltip>
               : clean-air filtering, fuel correction model, ERS depletion signal.
             </p>
             <p className="text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>

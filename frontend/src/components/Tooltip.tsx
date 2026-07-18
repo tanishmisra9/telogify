@@ -36,7 +36,7 @@ export function Tooltip({
     clearTimeout(timer.current)
     setOpen(true)
     clearTimeout(autoHideTimer.current)
-    autoHideTimer.current = setTimeout(() => setOpen(false), 2000)
+    autoHideTimer.current = setTimeout(() => setOpen(false), 1500)
   }
 
   const trigger = open
