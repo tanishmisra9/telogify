@@ -25,7 +25,7 @@ export function SeasonStats() {
         <p className="kicker text-sm! text-accent">Telogify&apos;s telemetry so far</p>
         {/* mt-4, not mt-6: matches Countdown's kicker-to-heading gap and Insight's kicker's own
             mb-4, so the kicker-to-content rhythm is one shared token across all three panels. */}
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
+        <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
           {STATS.map(({ key, label, format }) => (
             <div key={key} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               {/* Label sits beside the number, not below it, so the number is sized to leave

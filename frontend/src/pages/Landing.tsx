@@ -5,6 +5,7 @@ import { Insight } from '@/components/Insight'
 import { SeasonStats } from '@/components/SeasonStats'
 import { Tooltip } from '@/components/Tooltip'
 import { useApi, type LatestInsight } from '@/lib/api'
+import { useIsMobile } from '@/lib/useIsMobile'
 
 // Key phrases bolded in ink so each muted paragraph carries one scannable claim.
 function Key({ children }: { children: React.ReactNode }) {
@@ -70,6 +71,7 @@ function CTAs() {
 // voice the weekend page uses. Renders nothing until it has real data, so it never ships broken.
 function LiveInsight() {
   const { data, loading } = useApi<LatestInsight>('/insights/latest')
+  const isMobile = useIsMobile()
   if (loading || !data) return null
   // No BlurFade here: this content mounts only after the fetch resolves, and BlurFade's
   // mount reveal is unreliable for content that appears after an async gate (it can stay at
@@ -79,8 +81,18 @@ function LiveInsight() {
       <Insight
         item={data}
         showSlot={false}
+        collapsible
+        defaultOpen={!isMobile}
         contextLabel={data.event_name}
-        kicker={`Latest verdict · ${data.event_name}`}
+        kicker={
+          // Two lines, not one "Latest verdict · Event Name" string: showSlot={false} puts the
+          // copy/collapse buttons in an absolutely-positioned top-right corner overlay (see
+          // Insight.tsx), and a long combined line ran wide enough to pass underneath them.
+          <>
+            <span className="block">Latest verdict</span>
+            <span className="block">{data.event_name}</span>
+          </>
+        }
         href={`/weekends/${data.year}/${data.round}`}
       />
       <p className="mt-3 text-xs text-muted">Every figure traced to official timing data. Nothing estimated.</p>
