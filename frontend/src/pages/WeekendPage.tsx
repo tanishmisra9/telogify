@@ -264,7 +264,8 @@ function SessionGate({
 function FightToPoleDesktopNote() {
   return (
     <DesktopOnlyNote>
-      Open this weekend on a larger screen to scrub through the lap&apos;s telemetry.
+      The fight to pole: scrub through every driver&apos;s qualifying lap telemetry side by
+      side. Open this weekend on a larger screen to use it.
     </DesktopOnlyNote>
   )
 }
