@@ -15,9 +15,7 @@ export function SeasonStats() {
   const years = (weekends ?? []).map((w) => w.year)
   const year = years.length > 0 ? Math.max(...years) : null
 
-  // ponytail: useApi always fetches on mount, so a placeholder path is used until `year`
-  // resolves; it 404s harmlessly (data stays null) and re-fetches once the real path is known.
-  const { data } = useApi<SeasonStatsData>(year != null ? `/season/${year}/stats` : '/season/0/stats')
+  const { data } = useApi<SeasonStatsData>(year != null ? `/season/${year}/stats` : null)
 
   if (!data || !data.total_laps) return null
 

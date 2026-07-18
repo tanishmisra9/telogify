@@ -262,12 +262,18 @@ export async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export function useApi<T>(path: string) {
+// path may be null to defer fetching (e.g. until a route param or another fetch resolves
+// the real path); loading starts false in that case since nothing is in flight.
+export function useApi<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(path !== null)
 
   useEffect(() => {
+    if (path === null) {
+      setLoading(false)
+      return
+    }
     let alive = true
     setLoading(true)
     apiGet<T>(path)
