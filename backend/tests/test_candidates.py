@@ -4,6 +4,7 @@ from telogify.analysis.candidates import (
     EXPECTATION_FLOOR,
     OBVIOUSNESS_DISCOUNT,
     Signal,
+    _mine_clean_air_pace,
     correlate,
     expectation_factors,
     linear_regression,
@@ -205,3 +206,107 @@ def test_expected_ranks_caches_season_snapshot_per_year(db_session, monkeypatch)
         assert len(calls) == 1  # second lookup reused the cached snapshot, no rebuild
     finally:
         candidates_module._SEASON_SNAPSHOT_CACHE.pop(year, None)
+
+
+# --- _mine_clean_air_pace ---------------------------------------------------
+
+
+def _seed_weekend(db_session, year):
+    from telogify.models import RaceWeekend, Session as SessionRow
+
+    wk = RaceWeekend(year=year, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    return wk, race
+
+
+def _add_stint(db_session, session, driver, lap_times, gaps):
+    from telogify.models import Stint
+
+    db_session.add(
+        Stint(
+            session_id=session.id, driver=driver, stint_number=1, lap_start=2,
+            compound="SOFT", lap_times_json=lap_times, gaps_to_car_ahead_json=gaps,
+        )
+    )
+
+
+def test_mine_clean_air_pace_fires_on_rank_divergence(db_session):
+    wk, race = _seed_weekend(db_session, 2098)
+    dc_map = {"VER": "Red Bull", "LEC": "Ferrari", "NOR": "McLaren"}
+    # Red Bull: half its laps stuck behind traffic (dragging raw median to worst of the three,
+    # 92.5) but the laps it ran in clear air were the fastest on track (clean-air median 85.0,
+    # best of the three): the traffic picture and the true-pace picture disagree by 2 ranks.
+    _add_stint(
+        db_session, race, "VER",
+        [100.0, 100.0, 100.0, 100.0, 100.0, 85.0, 85.0, 85.0, 85.0, 85.0],
+        [0.1, 0.1, 0.1, 0.1, 0.1, None, None, None, None, None],
+    )
+    _add_stint(db_session, race, "LEC", [90.0] * 6, [None] * 6)
+    _add_stint(db_session, race, "NOR", [91.0] * 6, [None] * 6)
+    db_session.commit()
+
+    signals = _mine_clean_air_pace(db_session, [race], dc_map)
+    assert len(signals) == 1
+    sig = signals[0]
+    assert sig.subject == "Red Bull"
+    assert sig.category == "clean_air_pace"
+    assert sig.signal_type == "race_clean_air_pace"
+    assert sig.source_refs[0]["median_rank"] == 3
+    assert sig.source_refs[0]["clean_air_rank"] == 1
+
+
+def test_mine_clean_air_pace_silent_when_ranks_agree(db_session):
+    wk, race = _seed_weekend(db_session, 2097)
+    dc_map = {"VER": "Red Bull", "LEC": "Ferrari"}
+    _add_stint(db_session, race, "VER", [90.0] * 6, [None] * 6)
+    _add_stint(db_session, race, "LEC", [92.0] * 6, [None] * 6)
+    db_session.commit()
+
+    assert _mine_clean_air_pace(db_session, [race], dc_map) == []
+
+
+def test_mine_clean_air_pace_silent_below_min_lap_floor(db_session):
+    wk, race = _seed_weekend(db_session, 2096)
+    dc_map = {"VER": "Red Bull", "LEC": "Ferrari"}
+    # Only 2 clean-air laps each, below MIN_CLEAN_AIR_LAPS: excluded as unreliable, even
+    # though the ranks would otherwise diverge.
+    _add_stint(db_session, race, "VER", [95.0, 95.0, 89.0, 89.0], [0.1, 0.1, None, None])
+    _add_stint(db_session, race, "LEC", [90.0, 90.0, 90.0, 90.0], [None, None, None, None])
+    db_session.commit()
+
+    assert _mine_clean_air_pace(db_session, [race], dc_map) == []
+
+
+def test_mine_clean_air_pace_silent_without_gap_data(db_session):
+    from telogify.models import Stint
+
+    wk, race = _seed_weekend(db_session, 2095)
+    dc_map = {"VER": "Red Bull", "LEC": "Ferrari"}
+    db_session.add(Stint(session_id=race.id, driver="VER", stint_number=1, compound="SOFT", lap_times_json=[90.0] * 6))
+    db_session.add(Stint(session_id=race.id, driver="LEC", stint_number=1, compound="SOFT", lap_times_json=[91.0] * 6))
+    db_session.commit()
+
+    assert _mine_clean_air_pace(db_session, [race], dc_map) == []
+
+
+def test_clean_air_pace_stacks_with_race_pace_on_correlate():
+    # Same subject, distinct categories ("pace" vs "clean_air_pace"): correlate should fuse
+    # them into one cross-channel candidate that outranks either alone.
+    pace = Signal(signal_type="race_pace", category="pace", magnitude=0.5, confidence=1.0, subject="Ferrari")
+    clean_air = Signal(
+        signal_type="race_clean_air_pace", category="clean_air_pace", magnitude=0.3,
+        confidence=1.0, subject="Ferrari",
+    )
+    signals = [pace, clean_air]
+    normalize_and_score(signals)
+    merged = correlate(signals)
+    combined = next(s for s in merged if s.signal_type == "cross_session")
+    assert combined.subject == "Ferrari"
+    assert combined.robustness > pace.robustness
+    assert combined.robustness > clean_air.robustness

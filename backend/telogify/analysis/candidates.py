@@ -23,7 +23,7 @@ from sqlmodel import delete, select
 from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import fit_all_groups
 from telogify.analysis.quali_character import fastest_qualifier_per_constructor
-from telogify.analysis.race_pace import constructor_median_gaps
+from telogify.analysis.race_pace import constructor_clean_air, constructor_median_gaps
 from telogify.analysis.season import build_season_snapshot
 from telogify.analysis.sectors import best_across_sessions
 from telogify.analysis.sessions import pick_session
@@ -59,6 +59,12 @@ OBVIOUSNESS_DISCOUNT = 0.5
 # telling ("backmarker is slow"); damp all its signals toward this floor. Over- and
 # under-deliverers (finished far from their expected order) keep near-full strength.
 EXPECTATION_FLOOR = 0.15
+# A clean-air median off fewer laps than this is noise, not a real read on a car's traffic-free
+# pace; constructors below this floor are excluded from the clean-air ranking entirely.
+MIN_CLEAN_AIR_LAPS = 5
+# Ranking swap this small (a place or two) is within reach of two rankings' noise; only a bigger
+# reshuffle between the raw-median and clean-air pictures is a story worth telling.
+CLEAN_AIR_RANK_DELTA_MIN = 2
 
 
 @dataclass
@@ -309,6 +315,88 @@ def _mine_race_pace(db, sessions, dc_map):
     sprint = pick_session(sessions, ("SPRINT",))
     if sprint is not None:
         out.extend(_mine_race_pace_for_session(db, sprint, dc_map, "sprint_pace"))
+    return out
+
+
+def _mine_clean_air_pace_for_session(
+    db, session: Session, dc_map: dict[str, str], signal_type: str
+) -> list[Signal]:
+    """Signals for constructors whose clean-air rank (median pace on laps run clear of traffic)
+    differs meaningfully from their raw-median rank: a car stuck behind traffic all race reads
+    faster than its raw median suggests, and a comfortable leader's clean-air pace exposes real
+    margin its cruising median hides. Both rankings are computed over the same subset of
+    constructors with enough clean-air laps to be a reliable read, so the comparison is
+    apples-to-apples; a team missing entirely (never ran clear of traffic) is simply excluded,
+    not scored as a false agreement."""
+    stints = db.exec(select(Stint).where(Stint.session_id == session.id)).all()
+    stint_dicts = [
+        {
+            "driver": st.driver,
+            "constructor": dc_map.get(st.driver),
+            "compound": st.compound,
+            "lap_times": st.lap_times_json or [],
+            "gaps_to_car_ahead": st.gaps_to_car_ahead_json or [],
+            "stint_number": st.stint_number,
+            "lap_start": st.lap_start,
+        }
+        for st in stints
+        if dc_map.get(st.driver)
+    ]
+
+    clean_air = constructor_clean_air(stint_dicts)
+    eligible = {c: d for c, d in clean_air.items() if d["clean_air_n_laps"] >= MIN_CLEAN_AIR_LAPS}
+    if len(eligible) < 2:
+        return []
+
+    median_gaps = constructor_median_gaps(stint_dicts)
+    median_rank = {
+        c: i + 1
+        for i, c in enumerate(sorted(eligible, key=lambda c: median_gaps[c]))
+    }
+    clean_air_rank = {
+        c: i + 1
+        for i, c in enumerate(sorted(eligible, key=lambda c: eligible[c]["clean_air_gap_to_fastest_s"]))
+    }
+
+    out = []
+    for constructor, data in eligible.items():
+        rank_delta = median_rank[constructor] - clean_air_rank[constructor]
+        if abs(rank_delta) < CLEAN_AIR_RANK_DELTA_MIN:
+            continue
+        out.append(
+            Signal(
+                signal_type=signal_type,
+                category="clean_air_pace",
+                magnitude=abs(median_gaps[constructor] - data["clean_air_gap_to_fastest_s"]),
+                confidence=1.0,
+                subject=constructor,
+                session_type=session.session_type,
+                source_refs=[
+                    {
+                        "type": signal_type,
+                        "constructor": constructor,
+                        "median_rank": median_rank[constructor],
+                        "clean_air_rank": clean_air_rank[constructor],
+                        "median_gap_to_fastest_s": median_gaps[constructor],
+                        "clean_air_gap_to_fastest_s": data["clean_air_gap_to_fastest_s"],
+                        "clean_air_median_s": data["clean_air_median"],
+                        "clean_air_n_laps": data["clean_air_n_laps"],
+                        "session_type": session.session_type,
+                    }
+                ],
+            )
+        )
+    return out
+
+
+def _mine_clean_air_pace(db, sessions, dc_map):
+    out: list[Signal] = []
+    race = pick_session(sessions, ("R",))
+    if race is not None:
+        out.extend(_mine_clean_air_pace_for_session(db, race, dc_map, "race_clean_air_pace"))
+    sprint = pick_session(sessions, ("SPRINT",))
+    if sprint is not None:
+        out.extend(_mine_clean_air_pace_for_session(db, sprint, dc_map, "sprint_clean_air_pace"))
     return out
 
 
@@ -991,6 +1079,7 @@ def compute_candidates(weekend_id: int, db: DBSession) -> list[Signal]:
         _mine_corner_deltas(db, sessions)
         + _mine_straight_deltas(db, sessions, dc_map)
         + _mine_race_pace(db, sessions, dc_map)
+        + _mine_clean_air_pace(db, sessions, dc_map)
         + _mine_position_swings(db, sessions, dc_map)
         + _mine_sector_deltas(db, sessions, dc_map)
         + _mine_quali_character(db, sessions)
