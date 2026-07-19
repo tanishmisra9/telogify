@@ -353,6 +353,240 @@ def test_compare_car_speed_profile_reports_cornering_top_speed_and_sectors(db_se
     assert out["confident"] is True
 
 
+def test_get_straight_speed_not_found(seeded):
+    tools = _by_name(build_tools(2025, 11, session_factory=seeded))
+    out = json.loads(tools["get_straight_speed"].invoke({"driver": "HAM", "session_type": "R", "drs_zone": 2}))
+    assert out == {"found": False}
+
+
+def test_get_corner_delta_found_and_not_found(db_session):
+    from telogify.models import Attribution
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    db_session.add(Attribution(session_id=race.id, corner_number=3, speed_class="low", constructor_a="Ferrari", constructor_b="Mercedes", delta_s=2.0, confidence=0.9, car_pct=0.7, driver_pct=0.3))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+
+    out = json.loads(tools["get_corner_delta"].invoke({"corner_number": 3, "constructor_a": "Ferrari", "constructor_b": "Mercedes", "session_type": "R"}))
+    assert out["found"] is True
+    assert out["min_speed_delta_kmh"] == 2.0
+
+    # sign flips when the caller asks for the pair in reverse order
+    flipped = json.loads(tools["get_corner_delta"].invoke({"corner_number": 3, "constructor_a": "Mercedes", "constructor_b": "Ferrari", "session_type": "R"}))
+    assert flipped["min_speed_delta_kmh"] == -2.0
+
+    missing = json.loads(tools["get_corner_delta"].invoke({"corner_number": 99, "constructor_a": "Ferrari", "constructor_b": "Mercedes", "session_type": "R"}))
+    assert missing == {"found": False}
+
+
+def test_compare_car_speed_profile_not_found_without_session(db_session):
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["compare_car_speed_profile"].invoke({"constructor_a": "Ferrari", "constructor_b": "Mercedes", "session_type": "R"}))
+    assert out == {"found": False}
+
+
+def test_compare_car_speed_profile_skips_third_party_straights_and_sectors(db_session):
+    from telogify.models import SessionResult
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+
+    db_session.add(SessionResult(session_id=race.id, driver="LEC", constructor="Ferrari"))
+    db_session.add(SessionResult(session_id=race.id, driver="RUS", constructor="Mercedes"))
+    db_session.add(SessionResult(session_id=race.id, driver="VER", constructor="Red Bull"))
+    # Red Bull isn't one of the two compared constructors -> excluded from both straight and sector aggregation
+    db_session.add(StraightSegment(session_id=race.id, driver="VER", drs_zone_id=0, max_speed_kmh=350.0))
+    db_session.add(SectorBest(session_id=race.id, driver="VER", sector=1, best_time_s=27.0))
+    db_session.add(StraightSegment(session_id=race.id, driver="LEC", drs_zone_id=0, max_speed_kmh=340.0))
+    db_session.add(SectorBest(session_id=race.id, driver="LEC", sector=1, best_time_s=28.1))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["compare_car_speed_profile"].invoke({"constructor_a": "Ferrari", "constructor_b": "Mercedes", "session_type": "R"}))
+    assert out["found"] is True
+    assert out["top_speed_delta_kmh"] is None  # Mercedes has no straight-speed data at all
+
+
+def test_get_lap_evolution_found_and_not_found(seeded, db_session):
+    from telogify.models import Stint
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    db_session.add(Stint(session_id=race.id, driver="LEC", stint_number=1, compound="SOFT", avg_pace=90.5, lap_times_json=[90.0, 91.0]))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_lap_evolution"].invoke({"driver": "LEC", "stint_number": 1, "compound": "SOFT"}))
+    assert out["found"] is True
+    assert out["avg_pace_s"] == 90.5
+
+    missing = json.loads(tools["get_lap_evolution"].invoke({"driver": "HAM", "stint_number": 1, "compound": "SOFT"}))
+    assert missing == {"found": False}
+
+
+def test_get_session_results_tool(db_session):
+    from telogify.models import SessionResult
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    db_session.add(SessionResult(session_id=race.id, position=1, driver="VER", constructor="Red Bull", gap_to_leader=0.0, status="Finished"))
+    db_session.add(SessionResult(session_id=race.id, position=2, driver="LEC", constructor="Ferrari", gap_to_leader=5.2, status="Finished"))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_session_results"].invoke({"session_type": "R"}))
+    assert [r["driver"] for r in out] == ["VER", "LEC"]
+    assert out[1]["gap_to_leader_s"] == 5.2
+
+
+def test_get_stint_summary_tool(db_session):
+    from telogify.models import Stint
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    db_session.add(Stint(session_id=race.id, driver="LEC", stint_number=1, compound="SOFT", lap_start=1, lap_end=20, avg_pace=90.5))
+    db_session.add(Stint(session_id=race.id, driver="LEC", stint_number=2, compound="HARD", lap_start=21, lap_end=50, avg_pace=89.2))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_stint_summary"].invoke({"driver": "LEC", "session_type": "R"}))
+    assert [s["stint_number"] for s in out] == [1, 2]
+    assert out[1]["compound"] == "HARD"
+
+
+def test_get_race_control_events_tool(db_session):
+    from telogify.models import RaceControlEvent
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    db_session.add(RaceControlEvent(session_id=race.id, lap=19, driver="VER", kind="incident", message="NOTED"))
+    db_session.add(RaceControlEvent(session_id=race.id, lap=30, driver="LEC", kind="collision", message="COLLISION"))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_race_control_events"].invoke({"driver": "", "session_type": "R"}))
+    assert [e["kind"] for e in out] == ["incident", "collision"]
+
+    filtered = json.loads(tools["get_race_control_events"].invoke({"driver": "VER", "session_type": "R"}))
+    assert len(filtered) == 1 and filtered[0]["driver"] == "VER"
+
+    # no session of this type at all -> found no session -> empty list, not an error
+    missing = json.loads(tools["get_race_control_events"].invoke({"driver": "", "session_type": "SPRINT"}))
+    assert missing == []
+
+
+def test_get_deployment_empty_without_session_or_rows(db_session):
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    quali = SessionRow(weekend_id=wk.id, session_type="Q", status="loaded")
+    db_session.add(quali)
+    db_session.commit()
+    db_session.refresh(quali)
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    # session_type SQ has no matching session row at all -> sid is None
+    no_session = json.loads(tools["get_deployment"].invoke({"driver": "", "session_type": "SQ"}))
+    assert no_session == []
+    # session exists but no DeploymentTrace rows
+    no_rows = json.loads(tools["get_deployment"].invoke({"driver": "", "session_type": "Q"}))
+    assert no_rows == []
+
+
+def test_get_race_deployment_character_empty_cases(db_session):
+    from telogify.models import AccelSample
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    # no race session at all -> sid is None
+    assert json.loads(tools["get_race_deployment_character"].invoke({"constructor": ""})) == []
+
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    speeds = [150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0]
+    # only 2 constructors with usable samples -> below the len(fits) < 3 floor
+    db_session.add(AccelSample(session_id=race.id, driver="VER", constructor="A", speed_kmh_json=speeds, longitudinal_accel_ms2_json=[1.0] * len(speeds)))
+    db_session.add(AccelSample(session_id=race.id, driver="LEC", constructor="B", speed_kmh_json=speeds, longitudinal_accel_ms2_json=[1.0] * len(speeds)))
+    # a third constructor with too few points inside the band
+    db_session.add(AccelSample(session_id=race.id, driver="HAM", constructor="C", speed_kmh_json=[150.0, 160.0], longitudinal_accel_ms2_json=[1.0, 1.02]))
+    db_session.commit()
+    assert json.loads(tools["get_race_deployment_character"].invoke({"constructor": ""})) == []
+
+
+def test_get_quali_character_empty_without_session(db_session):
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_quali_character"].invoke({}))
+    assert out == {"rows": [], "fastest_corner_number": None, "sector_dominance": []}
+
+
+def test_constructor_ranking_handles_missing_lap_deficit(db_session):
+    wk = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(ConstructorIndex(weekend_id=wk.id, constructor="Mercedes", overall_rank=1, lap_deficit_s=None))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 9, session_factory=lambda: db_session))
+    out = json.loads(tools["get_constructor_ranking"].invoke({}))
+    assert out[0]["gap_to_team_ahead_s"] is None
+
+
 def test_build_agent_fails_loud_without_api_key(monkeypatch):
     from telogify.agent import graph
     from telogify.config import settings

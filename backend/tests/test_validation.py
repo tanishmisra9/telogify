@@ -539,3 +539,203 @@ def test_validate_insights_catches_gap_in_header():
     ]
     flagged = validate_insights(insights, trace=[])
     assert 1 in flagged and any("header:" in issue for issue in flagged[1])
+
+
+# --- edge-case branches: malformed trace entries, empty inputs, remaining flag paths --------
+
+
+def test_parse_tool_results_skips_empty_and_invalid_json_entries():
+    trace = [
+        {"tool": "get_quali_character", "result": ""},  # falsy result -> skipped
+        {"tool": "get_quali_character", "result": "not json"},  # invalid JSON -> skipped
+        {"tool": "get_quali_character", "result": '{"top_speed_kmh": 330.0}'},
+    ]
+    text = "Ferrari topped 330.0 km/h in qualifying."
+    assert flag_qualifying_only_finding(text, trace) != []
+
+
+def test_numeric_leaves_ignores_booleans():
+    trace = [{"tool": "get_quali_character", "result": json.dumps({"is_representative": True, "top_speed_kmh": 330.0})}]
+    text = "Ferrari topped 330.0 km/h in qualifying."
+    assert flag_qualifying_only_finding(text, trace) != []
+
+
+def test_candidate_session_type_handles_string_dict_and_missing_refs():
+    trace = [
+        {
+            "tool": "get_candidate_insights",
+            "result": json.dumps(
+                [
+                    {"category": "deployment", "source_refs": json.dumps({"session_type": "Q"}), "excess_clip_m": 150.0},
+                    {"category": "deployment", "source_refs": "not json", "excess_clip_m": 151.0},
+                    {"category": "deployment", "source_refs": [], "excess_clip_m": 152.0},
+                ]
+            ),
+        }
+    ]
+    text = "Ferrari's deployment showed 150.0, 151.0, and 152.0 metres of clip in qualifying."
+    # 151/152 aren't quali-sourced (no resolvable session_type) so leak into the "other" pool,
+    # which means not every cited number traces only to qualifying data -> no flag.
+    assert flag_qualifying_only_finding(text, trace) == []
+
+
+def test_non_quali_character_numbers_skips_malformed_entries():
+    trace = [
+        {"tool": "get_quali_character", "result": json.dumps({"top_speed_kmh": 330.0})},
+        {"tool": "get_stint_summary", "result": ""},  # falsy -> skipped
+        {"tool": "get_stint_summary", "result": "not json"},  # invalid JSON -> skipped
+        {
+            "tool": "get_candidate_insights",
+            "result": json.dumps(["not-a-dict", {"category": "quali_character", "value": 999.0}]),
+        },
+    ]
+    text = "Ferrari topped 330.0 km/h in qualifying."
+    # every malformed/quali_character entry is excluded from the "other" pool, so 330.0 still
+    # traces only to qualifying data.
+    assert flag_qualifying_only_finding(text, trace) != []
+
+
+def test_results_only_insight_skips_malformed_non_results_entries():
+    trace = [
+        {"tool": "get_session_results", "result": json.dumps({"gap_to_leader": 1.234})},
+        {"tool": "get_stint_summary", "result": ""},  # falsy -> skipped
+        {"tool": "get_stint_summary", "result": "not json"},  # invalid JSON -> skipped
+    ]
+    text = "Ferrari trailed by 1.234 seconds."
+    assert flag_results_only_insight(text, trace) != []
+
+
+def test_practice_sector_deficits_skips_malformed_refs():
+    trace = [
+        {
+            "tool": "get_candidate_insights",
+            "result": json.dumps(
+                [
+                    {"source_refs": "not json"},  # invalid JSON string -> skipped
+                    {"source_refs": {"type": "sector_delta", "deficit_s": 0.5}},  # dict, not list -> skipped
+                    {"source_refs": ["not-a-dict", {"type": "sector_delta", "deficit_s": 0.5}]},
+                ]
+            ),
+        }
+    ]
+    text = "In qualifying the car was 0.5 seconds off in the middle sector."
+    issues = flag_qualifying_practice_sector_mismatch(text, trace)
+    assert len(issues) == 1
+
+
+def test_flag_false_retirement_causation_no_events_in_trace():
+    text = "Verstappen's retirement traces to a lap-19 incident."
+    assert flag_false_retirement_causation(text, []) == []
+
+
+def test_flag_false_retirement_causation_safety_car_only_does_not_flag():
+    text = "Verstappen's retirement traces to a lap-19 situation."
+    trace = [
+        {"tool": "get_race_control_events", "result": json.dumps([{"lap": 19, "kind": "safety_car", "message": "SC DEPLOYED"}])}
+    ]
+    assert flag_false_retirement_causation(text, trace) == []
+
+
+def test_flag_false_retirement_causation_allows_real_collision_cause():
+    # causal language present AND a real cause in race control -> not a false attribution
+    text = "Verstappen's retirement traces to a lap-19 collision with Gasly."
+    trace = [{"tool": "get_race_control_events", "result": json.dumps([{"lap": 19, "kind": "collision", "message": "COLLISION"}])}]
+    assert flag_false_retirement_causation(text, trace) == []
+
+
+def test_flag_qualifying_practice_sector_mismatch_no_matching_deficit_value():
+    trace = [{"tool": "get_candidate_insights", "result": json.dumps([{"source_refs": [{"type": "sector_delta", "deficit_s": 0.5}]}])}]
+    text = "In qualifying the car was 0.9 seconds off in the middle sector."
+    assert flag_qualifying_practice_sector_mismatch(text, trace) == []
+
+
+def test_flag_qualifying_practice_sector_mismatch_skips_non_matching_windows():
+    trace = [
+        {"tool": "get_candidate_insights", "result": json.dumps([{"source_refs": [{"type": "sector_delta", "deficit_s": 0.5}]}])}
+    ]
+    # no qualifying context at all -> skipped
+    assert flag_qualifying_practice_sector_mismatch(
+        "The car was 0.5 seconds off in the middle sector during the race.", trace
+    ) == []
+    # explicitly practice-framed -> skipped
+    assert flag_qualifying_practice_sector_mismatch(
+        "In practice the car was 0.5 seconds off in the middle sector, in qualifying trim.", trace
+    ) == []
+    # qualifying context but no sector wording -> skipped
+    assert flag_qualifying_practice_sector_mismatch(
+        "In qualifying the car was 0.5 seconds off the pace.", trace
+    ) == []
+
+
+def test_flag_false_deployment_superlative_needs_at_least_two_deployments():
+    text = "Antonelli posted the lowest Q clip in the field at 473.6 metres of ERS clipping."
+    trace = [{"tool": "get_deployment", "result": json.dumps([{"driver": "ANT", "total_clip_m": 473.6, "max_clip_m": 200.0}])}]
+    assert flag_false_deployment_superlative(text, trace) == []
+
+
+def test_flag_false_deployment_superlative_ignores_small_metre_figures():
+    text = "Antonelli posted the lowest Q clip in the field, closing the final 3 metres flat out."
+    trace = [
+        {
+            "tool": "get_deployment",
+            "result": json.dumps(
+                [
+                    {"driver": "ANT", "total_clip_m": 473.6, "max_clip_m": 200.0},
+                    {"driver": "GAS", "total_clip_m": 470.9, "max_clip_m": 180.0},
+                ]
+            ),
+        }
+    ]
+    # cited "3 metres" is below the noise floor -> no real clip figure ever matched
+    assert flag_false_deployment_superlative(text, trace) == []
+
+
+def test_trace_blob_handles_none_and_non_string_results():
+    trace = [
+        {"tool": "get_stint_summary", "result": None},
+        {"tool": "get_deployment", "result": {"total_clip_m": 42.0}},
+    ]
+    text = "The car clipped 42.0 metres."
+    assert flag_untraceable_numbers(text, trace) == []
+
+
+def test_flag_weak_deployment_cluster_allows_wide_spread():
+    text = "Antonelli recorded 1300 metres of clipping before the braking zone versus Leclerc's 1100 metres."
+    assert flag_weak_deployment_cluster(text, []) == []
+
+
+def test_flag_cross_insight_conflicts_allows_sprint_qualified_difference():
+    insights = [
+        {"header": "Ferrari had the slowest top speed in the sprint", "explanation_web": "", "explanation_email": ""},
+        {"header": "Ferrari showed the fastest straight-line speed in the race", "explanation_web": "", "explanation_email": ""},
+    ]
+    assert flag_cross_insight_conflicts(insights) == []
+
+
+def test_validate_insights_catches_every_remaining_flag_type():
+    trace = [
+        {"tool": "get_race_control_events", "result": json.dumps([{"lap": 19, "driver": "VER", "kind": "incident", "message": "NOTED"}])},
+        {"tool": "get_candidate_insights", "result": json.dumps([{"source_refs": [{"type": "sector_delta", "sector": 2, "deficit_s": 0.767}]}])},
+        {
+            "tool": "get_deployment",
+            "result": json.dumps(
+                [
+                    {"driver": "ANT", "total_clip_m": 473.6, "max_clip_m": 200.0},
+                    {"driver": "GAS", "total_clip_m": 470.9, "max_clip_m": 180.0},
+                ]
+            ),
+        },
+    ]
+    insights = [
+        {"header": "H1", "explanation_web": "Verstappen's retirement traces to a lap-19 incident.", "explanation_email": ""},
+        {"header": "H2", "explanation_web": "In qualifying the car was 0.767 seconds off in sector 2.", "explanation_email": ""},
+        {"header": "H3", "explanation_web": "Antonelli posted the lowest Q clip in the field at 473.6 metres.", "explanation_email": ""},
+        {
+            "header": "H4",
+            "explanation_web": "Deployment data shows Antonelli at 473.6 metres and Gasly at 470.9 metres before the braking zone.",
+            "explanation_email": "",
+        },
+        {"header": "H5", "explanation_web": "The quick Q cars were giving up speed.", "explanation_email": ""},
+    ]
+    flagged = validate_insights(insights, trace, allow_qualifying_only=True)
+    assert set(flagged) == {1, 2, 3, 4, 5}

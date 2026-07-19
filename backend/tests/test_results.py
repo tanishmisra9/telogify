@@ -1,4 +1,5 @@
 import pandas as pd
+from sqlmodel import select
 
 from telogify.ingest.results import (
     compound_letter,
@@ -176,3 +177,62 @@ def test_format_gap_label_shows_tenth_second_gap():
 
 def test_format_gap_label_dns():
     assert format_gap_label(20, None, None, None, "Did not start") == "DNS"
+
+
+def test_laps_down_none_when_lap_counts_missing():
+    assert laps_down(None, 71.0) is None
+    assert laps_down(70.0, None) is None
+
+
+def test_format_gap_label_lapped_without_lap_counts_falls_back():
+    assert format_gap_label(9, None, None, None, "Lapped") == "+1 Lap"
+
+
+def test_format_gap_label_unmapped_status_returned_verbatim():
+    assert format_gap_label(15, None, None, None, "Disqualified") == "Disqualified"
+
+
+def test_int_and_float_helpers_handle_unparseable_values():
+    from telogify.ingest.results import _float, _int
+
+    assert _int("not-a-number") is None
+    assert _int(float("nan")) is None
+    assert _float(float("nan")) is None
+    assert _float("not-a-number") is None
+
+
+# --- store_results: DB orchestration ----------------------------------------
+
+
+def test_store_results_persists_rows_and_skips_unmatched_session(db_session):
+    from telogify.ingest.loader import WeekendData
+    from telogify.ingest.results import store_results
+    from telogify.models import RaceWeekend, Session as SessionRow, SessionResult
+
+    wk = RaceWeekend(year=2066, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+
+    results = pd.DataFrame(
+        [
+            {"Position": 1, "Abbreviation": "VER", "TeamName": "Red Bull Racing", "Time": pd.Timedelta(seconds=5400), "Laps": 58.0, "Status": "Finished"},
+        ]
+    )
+    race_session = _FakeSession("Race", results)
+    data = WeekendData(weekend=wk, sessions={"R": race_session, "Q": race_session})  # "Q" has no matching DB row
+
+    store_results(data, db_session)
+
+    stored = db_session.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all()
+    assert len(stored) == 1
+    assert stored[0].driver == "VER"
+
+    # idempotent re-run (delete + reinsert) leaves exactly one row
+    store_results(data, db_session)
+    stored_again = db_session.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all()
+    assert len(stored_again) == 1

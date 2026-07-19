@@ -318,6 +318,185 @@ def test_sprint_session_endpoints(client, test_engine):
     assert client.get("/weekends/2025/11/pace?session=SPRINT").json()["drivers"][0]["id"] == "VER"
 
 
+def test_latest_insight_none_when_no_insights_exist(test_engine):
+    from telogify.api.main import app as fresh_app
+
+    def override():
+        with Session(test_engine) as s:
+            yield s
+
+    fresh_app.dependency_overrides[get_session] = override
+    try:
+        client = TestClient(fresh_app)
+        assert client.get("/insights/latest").json() is None
+    finally:
+        fresh_app.dependency_overrides.clear()
+
+
+def test_next_race_uses_schedule_events_cache_wrapper(client, monkeypatch):
+    from datetime import datetime, timedelta
+
+    from telogify.analysis.schedule import Event
+    from telogify.api import routes
+
+    routes._schedule_events.cache_clear()
+    now = datetime.utcnow()
+    events = (Event(round=9, name="Silverstone", date=now + timedelta(days=10)),)
+    monkeypatch.setattr(routes, "fetch_season_schedule", lambda year: events if year == now.year else ())
+    body = client.get("/next-race").json()
+    assert body["event_name"] == "Silverstone"
+    routes._schedule_events.cache_clear()
+
+
+def test_next_race_none_when_no_upcoming_events(client, monkeypatch):
+    from telogify.api import routes
+
+    monkeypatch.setattr(routes, "_schedule_events", lambda year: ())
+    assert client.get("/next-race").json() is None
+
+
+def test_empty_weekend_endpoints_return_placeholder_shapes(test_engine):
+    """A weekend with no ingested sessions at all: every 'no data yet' branch in one pass."""
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2024, round=1, circuit_name="X", country="Y", event_name="Empty GP")
+        db.add(wk)
+        db.commit()
+
+    def override():
+        with Session(test_engine) as s:
+            yield s
+
+    from telogify.api.main import app as fresh_app
+
+    fresh_app.dependency_overrides[get_session] = override
+    try:
+        client = TestClient(fresh_app)
+        assert client.get("/weekends/2024/1/pace").json()["drivers"] == []
+        sectors = client.get("/weekends/2024/1/sectors").json()
+        assert sectors == {"indicative": True, "drivers": [], "dominance": []}
+        topspeeds = client.get("/weekends/2024/1/topspeeds").json()
+        assert topspeeds == {"indicative": True, "drivers": []}
+        qc = client.get("/weekends/2024/1/quali-character").json()
+        assert qc["session_type"] is None and qc["rows"] == []
+        trace = client.get("/weekends/2024/1/quali-trace").json()
+        assert trace == {"session_type": None, "grid_m": [], "corners": [], "drivers": []}
+        degradation = client.get("/weekends/2024/1/degradation").json()
+        assert degradation == {"fits": [], "points": [], "reference_age_laps": None}
+        assert client.get("/weekends/2024/1/results").json() == []
+        summary = client.get("/weekends/2024/1/session-summary?session=Q").json()
+        assert summary["session_type"] is None and summary["order"] == []
+    finally:
+        fresh_app.dependency_overrides.clear()
+
+
+def test_quali_trace_endpoint_serves_persisted_rows(test_engine):
+    from telogify.models import QualiTrace
+
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2023, round=1, circuit_name="X", country="Y", event_name="Trace GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        quali = SessionRow(weekend_id=wk.id, session_type="Q", status="loaded")
+        db.add(quali)
+        db.commit()
+        db.refresh(quali)
+        db.add(QualiTrace(
+            session_id=quali.id, driver="LEC", constructor="Ferrari", lap_time_s=80.0, is_pole=True,
+            grid_m=[0.0, 100.0], corners_json=[{"number": 1, "distance_m": 50.0}],
+            speed_kmh=[300.0, 310.0], throttle_pct=[100.0, 100.0], delta_s=[0.0, 0.0],
+        ))
+        db.commit()
+
+    def override():
+        with Session(test_engine) as s:
+            yield s
+
+    from telogify.api.main import app as fresh_app
+
+    fresh_app.dependency_overrides[get_session] = override
+    try:
+        client = TestClient(fresh_app)
+        out = client.get("/weekends/2023/1/quali-trace").json()
+        assert out["session_type"] == "Q"
+        assert out["drivers"][0]["driver"] == "LEC"
+        assert out["drivers"][0]["is_pole"] is True
+    finally:
+        fresh_app.dependency_overrides.clear()
+
+
+def test_degradation_skips_unmapped_constructor_and_missing_tyre_age(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        # a driver with no SessionResult row -> no constructor mapping -> excluded
+        db.add(Stint(
+            session_id=race.id, driver="UNKNOWN", stint_number=1, compound="SOFT", lap_start=1, lap_end=6,
+            avg_pace=90.0, lap_times_json=[90.0] * 6, tyre_ages_json=[1, 2, 3, 4, 5, 6],
+        ))
+        # a stint with a None tyre age entry -> that lap dropped
+        db.add(Stint(
+            session_id=race.id, driver="NOR", stint_number=2, compound="HARD", lap_start=21, lap_end=22,
+            avg_pace=89.0, lap_times_json=[89.0, 89.5], tyre_ages_json=[None, 1],
+        ))
+        db.commit()
+
+    data = client.get("/weekends/2025/11/degradation").json()
+    assert not any(p["constructor"] == "UNKNOWN" for p in data["points"])
+    assert not any(p["tyre_age"] is None for p in data["points"])
+
+
+def test_session_summary_winner_total_time_takes_priority(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        winner = db.exec(select(SessionResult).where(SessionResult.session_id == race.id, SessionResult.position == 1)).first()
+        winner.total_time_s = 5432.106
+        db.add(winner)
+        db.commit()
+
+    summary = client.get("/weekends/2025/11/session-summary?session=R").json()
+    assert summary["order"][0]["gap_label"] == "1:30:32.106"
+
+
+def test_results_winner_total_time_takes_priority_over_gap_label(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        winner = db.exec(select(SessionResult).where(SessionResult.session_id == race.id, SessionResult.position == 1)).first()
+        winner.total_time_s = 5432.106
+        db.add(winner)
+        db.commit()
+
+    rows = client.get("/weekends/2025/11/results").json()
+    assert rows[0]["gap_label"] == "1:30:32.106"
+
+
+def test_season_snapshot_404_for_unseen_year(client):
+    assert client.get("/season/2019").status_code == 404
+
+
+def test_season_snapshot_ok_for_seeded_year(client):
+    out = client.get("/season/2025").json()
+    assert out["year"] == 2025
+    assert "constructors" in out
+
+
+def test_quali_trace_endpoint_session_exists_without_rows(client):
+    # fixture's Q session has no QualiTrace rows -> the "session exists but no traces" branch
+    out = client.get("/weekends/2025/11/quali-trace").json()
+    assert out == {"session_type": "Q", "grid_m": [], "corners": [], "drivers": []}
+
+
+def test_season_stats_404_for_unseen_year(client):
+    assert client.get("/season/2019/stats").status_code == 404
+
+
+def test_season_stats_ok_for_seeded_year(client):
+    out = client.get("/season/2025/stats").json()
+    assert out is not None and "total_laps" in out
+
+
 def test_season_deployment_shape_without_insights(client):
     out = client.get("/season/2025/deployment").json()
     assert "scatter" in out and "pu_groups" in out and "insights" in out

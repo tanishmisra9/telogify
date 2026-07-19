@@ -500,6 +500,158 @@ def test_run_season_progress_callbacks_fire_in_order(monkeypatch):
     ]
 
 
+def test_analyze_runs_when_quali_or_race_present(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    called = []
+    monkeypatch.setattr(pipeline, "store_attributions", lambda wid, db: called.append(("attr", wid)))
+    monkeypatch.setattr(pipeline, "build_constructor_index", lambda wid, db: called.append(("idx", wid)))
+
+    result = pipeline._analyze({"weekend_id": 7, "session_types": ["Q", "R"]})
+
+    assert result == {}
+    assert called == [("attr", 7), ("idx", 7)]
+
+
+def test_candidates_runs_when_quali_or_race_present(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    called = []
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: called.append(wid) or [])
+
+    result = pipeline._candidates({"weekend_id": 7, "session_types": ["R"]})
+
+    assert result == {}
+    assert called == [7]
+
+
+def test_insights_logs_deployment_calls_on_rejection(db_session, monkeypatch, caplog):
+    import logging
+
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import RaceWeekend
+
+    wk = RaceWeekend(year=2025, round=23, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    def _messages_with_tool_call(insights):
+        return [
+            AIMessage(content="", tool_calls=[{"name": "get_deployment", "args": {}, "id": "t1", "type": "tool_call"}]),
+            ToolMessage(content='[{"driver": "LEC", "total_clip_m": 40.0}]', tool_call_id="t1"),
+            AIMessage(content=json.dumps(insights)),
+        ]
+
+    attempts = []
+
+    def runner(year, round, feedback=None):
+        attempts.append(feedback)
+        if len(attempts) == 1:
+            return _messages_with_tool_call(_BAD_INSIGHTS)
+        return _messages_with_tool_call(_GOOD_INSIGHTS)
+
+    with caplog.at_level(logging.INFO, logger="telogify.insights"):
+        state = pipeline._insights({"year": 2025, "round": 23, "weekend_id": wk.id}, runner)
+    assert state["insight_count"] == 3
+    assert any("get_deployment calls" in r.message for r in caplog.records)
+
+
+def test_default_agent_runner_invokes_build_agent(monkeypatch):
+    calls = []
+
+    class _FakeAgent:
+        def invoke(self, payload, config):
+            calls.append((payload, config))
+            return {"messages": ["m1", "m2"]}
+
+    monkeypatch.setattr(pipeline, "build_agent", lambda year, round: _FakeAgent())
+
+    result = pipeline._default_agent_runner(2025, 11)
+    assert result == ["m1", "m2"]
+    assert calls[0][1]["configurable"]["thread_id"] == "agent-2025-11"
+    assert "feedback" not in calls[0][0]["messages"][0][1]
+
+    calls.clear()
+    result = pipeline._default_agent_runner(2025, 11, feedback="fix the header")
+    assert "fix the header" in calls[0][0]["messages"][0][1]
+
+
+def test_default_quali_agent_runner_invokes_build_agent(monkeypatch):
+    calls = []
+
+    class _FakeAgent:
+        def invoke(self, payload, config):
+            calls.append((payload, config))
+            return {"messages": ["m1"]}
+
+    monkeypatch.setattr(pipeline, "build_agent", lambda year, round, system_prompt=None: _FakeAgent())
+
+    result = pipeline._default_quali_agent_runner(2025, 11)
+    assert result == ["m1"]
+    assert calls[0][1]["configurable"]["thread_id"] == "quali-agent-2025-11"
+
+    calls.clear()
+    pipeline._default_quali_agent_runner(2025, 11, feedback="fix the team name")
+    assert "fix the team name" in calls[0][0]["messages"][0][1]
+
+
+def test_run_ingest_returns_merged_state(monkeypatch):
+    monkeypatch.setattr(pipeline, "_ingest", lambda s: {"weekend_id": 5, "session_types": ["R"]})
+    result = pipeline.run_ingest(2025, 11)
+    assert result == {"year": 2025, "round": 11, "weekend_id": 5, "session_types": ["R"]}
+
+
+def test_season_rounds_uses_fetched_schedule(monkeypatch):
+    from datetime import datetime
+
+    from telogify.analysis.schedule import Event
+
+    events = (
+        Event(round=1, name="A", date=datetime(2025, 3, 1)),
+        Event(round=2, name="B", date=datetime(2025, 3, 15)),
+    )
+    monkeypatch.setattr(pipeline, "fetch_season_schedule", lambda year: events)
+    rounds = pipeline.season_rounds(2025, now=datetime(2025, 3, 10))
+    assert rounds == [1]
+
+
+def test_run_season_stops_on_first_failure_when_continue_on_error_false(monkeypatch):
+    monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
+
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None):
+        if round == 1:
+            raise RuntimeError("boom")
+        return {"insight_count": 3, "quali_insight_count": 2}
+
+    monkeypatch.setattr(pipeline, "run_weekend", fake_run_weekend)
+
+    summary = pipeline.run_season(2026, continue_on_error=False)
+    assert len(summary.results) == 1
+    assert not summary.results[0].ok
+
+
+def test_run_insights_season_stops_on_first_failure_when_continue_on_error_false(monkeypatch):
+    monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
+
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None):
+        if round == 1:
+            raise RuntimeError("boom")
+        # slow down the other rounds so round 1's failure has a chance to cancel them
+        import time
+
+        time.sleep(0.05)
+        return {"insight_count": 3, "quali_insight_count": 2}
+
+    monkeypatch.setattr(pipeline, "regen_insights", fake_regen)
+
+    summary = pipeline.run_insights_season(2026, continue_on_error=False, max_workers=3)
+    assert any(not r.ok for r in summary.results)
+
+
 def test_run_insights_season_progress_callbacks_on_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     events = []

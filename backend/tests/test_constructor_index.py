@@ -1,5 +1,9 @@
+from sqlmodel import select
+
 from telogify.analysis.constructor_index import (
     CornerScore,
+    _race_stints_as_dicts,
+    build_constructor_index,
     rank_constructors,
     summarize_constructor,
     weighted_mean,
@@ -45,3 +49,84 @@ def test_constructor_median_gaps_relative_to_fastest():
     assert gaps["Red Bull"] == 0.0
     assert abs(gaps["Ferrari"] - 0.3) < 1e-9
     assert abs(gaps["Mercedes"] - 1.0) < 1e-9
+
+
+# --- DB-side orchestration --------------------------------------------------
+
+
+def test_race_stints_as_dicts_empty_without_a_race_session(db_session):
+    from telogify.models import RaceWeekend, Session as SessionRow
+
+    wk = RaceWeekend(year=2071, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    fp1 = SessionRow(weekend_id=wk.id, session_type="FP1", status="loaded")
+    db_session.add(fp1)
+    db_session.commit()
+    db_session.refresh(fp1)
+
+    assert _race_stints_as_dicts(db_session, [fp1], {}) == []
+
+
+def test_build_constructor_index_ranks_by_race_pace_and_persists_corner_scores(db_session):
+    from telogify.models import ConstructorIndex, Fingerprint, RaceWeekend, Session as SessionRow, SessionResult, Stint
+
+    wk = RaceWeekend(year=2070, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    fp1 = SessionRow(weekend_id=wk.id, session_type="FP1", status="loaded")
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(fp1)
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(fp1)
+    db_session.refresh(race)
+
+    db_session.add_all(
+        [
+            SessionResult(session_id=fp1.id, driver="LEC", constructor="Ferrari", position=1),
+            SessionResult(session_id=fp1.id, driver="VER", constructor="Red Bull", position=2),
+        ]
+    )
+    db_session.add_all(
+        [
+            # corner 1: both constructors represented -> a real field to measure advantage against
+            Fingerprint(session_id=fp1.id, driver="LEC", corner_number=1, min_speed=200.0, clean_lap_count=8),
+            Fingerprint(session_id=fp1.id, driver="VER", corner_number=1, min_speed=210.0, clean_lap_count=8),
+            # corner 2: only Ferrari present -> len(by_constructor) < 2, skipped
+            Fingerprint(session_id=fp1.id, driver="LEC", corner_number=2, min_speed=150.0, clean_lap_count=8),
+        ]
+    )
+    db_session.add_all(
+        [
+            Stint(session_id=race.id, driver="VER", stint_number=1, lap_start=2, compound="SOFT", lap_times_json=[90.0] * 6),
+            Stint(session_id=race.id, driver="LEC", stint_number=1, lap_start=2, compound="SOFT", lap_times_json=[91.0] * 6),
+        ]
+    )
+    db_session.commit()
+
+    build_constructor_index(wk.id, db_session)
+
+    rows = {
+        r.constructor: r
+        for r in db_session.exec(
+            select(ConstructorIndex).where(ConstructorIndex.weekend_id == wk.id)
+        ).all()
+    }
+    assert set(rows) == {"Ferrari", "Red Bull"}
+    # Red Bull ran the faster race pace -> ranked ahead despite Ferrari's corner-1 disadvantage
+    assert rows["Red Bull"].overall_rank == 1
+    assert rows["Ferrari"].overall_rank == 2
+    assert rows["Red Bull"].lap_deficit_s == 0.0
+    assert rows["Ferrari"].lap_deficit_s > 0.0
+    # corner 1 gave Red Bull a positive high-speed advantage over the field mean
+    assert rows["Red Bull"].high_score > 0.0
+
+    # idempotent re-run (delete + reinsert) leaves exactly two rows, not duplicates
+    build_constructor_index(wk.id, db_session)
+    rows_again = db_session.exec(
+        select(ConstructorIndex).where(ConstructorIndex.weekend_id == wk.id)
+    ).all()
+    assert len(rows_again) == 2

@@ -1,3 +1,5 @@
+from sqlmodel import select
+
 from telogify.ingest.race_control import parse_race_control
 
 
@@ -61,3 +63,70 @@ def test_skips_empty_messages_and_blank_laps():
         {"Lap": "  ", "Message": "SAFETY CAR DEPLOYED"},
     ])
     assert len(ev) == 1 and ev[0].kind == "safety_car" and ev[0].lap is None
+
+
+def test_unparseable_lap_value_falls_back_to_none():
+    ev = parse_race_control([{"Lap": "not-a-number", "Message": "SAFETY CAR DEPLOYED"}])
+    assert len(ev) == 1 and ev[0].lap is None
+
+
+# --- store_race_control: DB orchestration -----------------------------------
+
+
+def test_store_race_control_persists_events_and_skips_non_race_sessions(db_session):
+    import pandas as pd
+
+    from telogify.ingest.loader import WeekendData
+    from telogify.ingest.race_control import store_race_control
+    from telogify.models import RaceControlEvent, RaceWeekend, Session as SessionRow
+
+    wk = RaceWeekend(year=2068, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+
+    class _FakeSession:
+        def __init__(self, messages):
+            self.race_control_messages = pd.DataFrame(messages)
+
+    race_session = _FakeSession([{"Lap": 19, "Message": "COLLISION (VER) AND (GAS)"}])
+    # Q isn't a race/sprint session -> skipped entirely without touching race_control_messages
+    quali_session = _FakeSession([{"Lap": 1, "Message": "COLLISION (LEC) AND (HAM)"}])
+
+    data = WeekendData(weekend=wk, sessions={"R": race_session, "Q": quali_session})
+    store_race_control(data, db_session)
+
+    stored = db_session.exec(select(RaceControlEvent).where(RaceControlEvent.session_id == race.id)).all()
+    assert {e.driver for e in stored} == {"VER", "GAS"}
+
+    # idempotent re-run (delete + reinsert) leaves exactly two rows, not duplicates
+    store_race_control(data, db_session)
+    stored_again = db_session.exec(select(RaceControlEvent).where(RaceControlEvent.session_id == race.id)).all()
+    assert len(stored_again) == 2
+
+
+def test_store_race_control_handles_missing_race_control_messages(db_session):
+    from telogify.ingest.loader import WeekendData
+    from telogify.ingest.race_control import store_race_control
+    from telogify.models import RaceControlEvent, RaceWeekend, Session as SessionRow
+
+    wk = RaceWeekend(year=2067, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+
+    # a session object with no race_control_messages attribute -> AttributeError caught, records=[]
+    # "SPRINT" is a race session type but has no matching DB Session row -> skipped
+    data = WeekendData(weekend=wk, sessions={"R": object(), "SPRINT": object()})
+    store_race_control(data, db_session)
+
+    stored = db_session.exec(select(RaceControlEvent).where(RaceControlEvent.session_id == race.id)).all()
+    assert stored == []

@@ -1,8 +1,11 @@
+from sqlmodel import select
+
 from telogify.analysis.attribution import (
     DriverCorner,
     aggregate_driver_corner,
     attribute_corner,
     classify_speed,
+    store_attributions,
 )
 
 
@@ -74,3 +77,57 @@ def test_driver_confidence_scales_to_target_laps():
     assert driver_confidence(TARGET_LAPS // 2) == 0.5
     assert driver_confidence(TARGET_LAPS) == 1.0
     assert driver_confidence(TARGET_LAPS + 5) == 1.0
+
+
+# --- DB-side orchestration --------------------------------------------------
+
+
+def test_store_attributions_persists_pairwise_corner_deltas(db_session):
+    from telogify.models import Attribution, Fingerprint, RaceWeekend, Session as SessionRow, SessionResult
+
+    wk = RaceWeekend(year=2072, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    session = SessionRow(weekend_id=wk.id, session_type="FP1", status="loaded")
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    db_session.add_all(
+        [
+            SessionResult(session_id=session.id, driver="LEC", constructor="Ferrari", position=1),
+            SessionResult(session_id=session.id, driver="HAM", constructor="Ferrari", position=2),
+            SessionResult(session_id=session.id, driver="VER", constructor="Red Bull", position=3),
+            SessionResult(session_id=session.id, driver="PER", constructor="Red Bull", position=4),
+            # NOR has fingerprints but no SessionResult row -> no constructor mapping, excluded
+        ]
+    )
+    db_session.add_all(
+        [
+            Fingerprint(session_id=session.id, driver="LEC", corner_number=1, min_speed=200.0, clean_lap_count=8),
+            Fingerprint(session_id=session.id, driver="HAM", corner_number=1, min_speed=198.0, clean_lap_count=8),
+            Fingerprint(session_id=session.id, driver="VER", corner_number=1, min_speed=210.0, clean_lap_count=8),
+            Fingerprint(session_id=session.id, driver="PER", corner_number=1, min_speed=208.0, clean_lap_count=8),
+            # thin sample (< MIN_CLEAN_LAPS) at corner 2 -> aggregate_driver_corner drops it
+            Fingerprint(session_id=session.id, driver="LEC", corner_number=2, min_speed=150.0, clean_lap_count=2),
+            Fingerprint(session_id=session.id, driver="NOR", corner_number=1, min_speed=205.0, clean_lap_count=8),
+        ]
+    )
+    db_session.commit()
+
+    store_attributions(wk.id, db_session)
+
+    stored = db_session.exec(
+        select(Attribution).where(Attribution.session_id == session.id)
+    ).all()
+    assert len(stored) == 1  # only corner 1 has 2+ constructors with a valid aggregate
+    assert stored[0].corner_number == 1
+    assert {stored[0].constructor_a, stored[0].constructor_b} == {"Ferrari", "Red Bull"}
+
+    # idempotent re-run (delete + reinsert) leaves exactly one row, not a duplicate
+    store_attributions(wk.id, db_session)
+    stored_again = db_session.exec(
+        select(Attribution).where(Attribution.session_id == session.id)
+    ).all()
+    assert len(stored_again) == 1
