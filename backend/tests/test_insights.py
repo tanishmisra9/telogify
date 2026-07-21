@@ -17,9 +17,9 @@ def test_strip_em_dashes():
 
 
 def test_parse_insights_tolerates_surrounding_prose():
-    text = 'Here are the insights:\n[{"header":"H1","explanation_web":"W1","explanation_email":"E1"},' \
-           '{"header":"H2","explanation_web":"W2","explanation_email":"E2"},' \
-           '{"header":"H3","explanation_web":"W3","explanation_email":"E3"}]\nDone.'
+    text = 'Here are the insights:\n[{"team":"T1","header":"H1","explanation_web":"W1","explanation_email":"E1"},' \
+           '{"team":"T2","header":"H2","explanation_web":"W2","explanation_email":"E2"},' \
+           '{"team":"T3","header":"H3","explanation_web":"W3","explanation_email":"E3"}]\nDone.'
     out = parse_insights(text)
     assert len(out) == 3 and out[0]["header"] == "H1"
 
@@ -27,18 +27,18 @@ def test_parse_insights_tolerates_surrounding_prose():
 def test_parse_insights_tolerates_trailing_prose_with_bracket():
     # The real failure: a trailing note containing ']' made find('[')..rfind(']') over-grab
     # and json.loads choke on 'Extra data'. The balanced-scan parser must stop at the array end.
-    text = '[{"header":"H1","explanation_web":"W1","explanation_email":"E1"},' \
-           '{"header":"H2","explanation_web":"W2","explanation_email":"E2"},' \
-           '{"header":"H3","explanation_web":"W3","explanation_email":"E3"}]\n' \
+    text = '[{"team":"T1","header":"H1","explanation_web":"W1","explanation_email":"E1"},' \
+           '{"team":"T2","header":"H2","explanation_web":"W2","explanation_email":"E2"},' \
+           '{"team":"T3","header":"H3","explanation_web":"W3","explanation_email":"E3"}]\n' \
            'Note: numbers are from tool returns [see above].'
     out = parse_insights(text)
     assert len(out) == 3 and out[2]["header"] == "H3"
 
 
 def test_parse_insights_handles_bracket_inside_string_value():
-    text = '[{"header":"Ferrari [scuderia] led S1","explanation_web":"W","explanation_email":"E"},' \
-           '{"header":"H2","explanation_web":"W2","explanation_email":"E2"},' \
-           '{"header":"H3","explanation_web":"W3","explanation_email":"E3"}]'
+    text = '[{"team":"T1","header":"Ferrari [scuderia] led S1","explanation_web":"W","explanation_email":"E"},' \
+           '{"team":"T2","header":"H2","explanation_web":"W2","explanation_email":"E2"},' \
+           '{"team":"T3","header":"H3","explanation_web":"W3","explanation_email":"E3"}]'
     out = parse_insights(text)
     assert out[0]["header"] == "Ferrari [scuderia] led S1"
 
@@ -65,7 +65,7 @@ def test_parse_insights_rejects_no_json_array():
 
 def test_parse_insights_truncates_to_three():
     items = [
-        {"header": f"H{i}", "explanation_web": f"W{i}", "explanation_email": f"E{i}"}
+        {"team": f"T{i}", "header": f"H{i}", "explanation_web": f"W{i}", "explanation_email": f"E{i}"}
         for i in range(1, 6)
     ]
     out = parse_insights(json.dumps(items))

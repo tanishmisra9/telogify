@@ -262,6 +262,7 @@ class Insight(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     weekend_id: int = Field(foreign_key="race_weekend.id", index=True)
     slot: int  # 1-3
+    team: str | None = None
     header: str
     explanation_web: str
     explanation_email: str

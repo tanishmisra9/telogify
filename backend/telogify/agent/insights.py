@@ -13,7 +13,7 @@ from telogify.agent.guardrails import flag_unsupported_claims
 from telogify.models import Insight
 from telogify.serialize import round_prose_numbers, strip_em_dashes
 
-_REQUIRED_KEYS = ("header", "explanation_web", "explanation_email")
+_REQUIRED_KEYS = ("team", "header", "explanation_web", "explanation_email")
 _QUALI_REQUIRED_KEYS = ("team", "header", "explanation_web", "explanation_email")
 
 

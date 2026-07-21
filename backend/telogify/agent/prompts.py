@@ -18,7 +18,7 @@ PICK FOR SURPRISE diversity rule, and Output format differ by scope.
 # SYSTEM_PROMPT/QUALI_SYSTEM_PROMPT or the shared constants above; bump MAJOR (reset MINOR to 0)
 # only on another rewrite of that scale. Stamped onto every persisted insight so a published
 # insight can be traced back to the exact prompt revision that generated it.
-PROMPT_VERSION = "3.2"
+PROMPT_VERSION = "3.3"
 
 _OBSERVED_BEHAVIOR_ONLY = """OBSERVED BEHAVIOR ONLY:
 Never infer the underlying engineering mechanism behind a telemetry observation (harvesting, \
@@ -514,6 +514,7 @@ done, your final message must be a raw JSON array of exactly 3 objects. During t
 turns you may emit tool calls normally; the JSON-only rule applies only to that final message. \
 Do not wrap the output in Markdown backticks or add conversational filler. Each object has these \
 keys:
+  "team": the exact constructor name from the data that this insight is primarily about,
   "header": the punchy plain-English claim,
   "explanation_web": the 2 to 3 sentence web version,
   "explanation_email": exactly 1 sentence, the single strongest claim only.
