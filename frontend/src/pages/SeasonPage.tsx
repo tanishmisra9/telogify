@@ -222,10 +222,12 @@ function SeasonView({ year }: { year: number }) {
                           // picking one of several team colors. block sm:inline on the customer
                           // span: forces its own line on mobile (crammed onto one line with a
                           // longer manufacturer name otherwise), stays inline at sm+ as before.
+                          // Comma-separated, no bullets -- the color/weight contrast between
+                          // the bold manufacturer name and this muted list is separator enough.
                           kicker={
                             <>
-                              <span style={{ color: teamColor }}>{item.pu} power</span>
-                              <span className="block text-muted sm:inline"> · {item.teams.join(' · ')}</span>
+                              <span className="font-semibold" style={{ color: teamColor }}>{item.pu} power</span>
+                              <span className="block text-muted sm:inline"> {item.teams.join(', ')}</span>
                             </>
                           }
                           contextLabel={`${year} season deployment`}
