@@ -473,14 +473,19 @@ def preview_digest(
 
     with Session(engine) as db:
         html_body = render_digest_preview(year, round, db, design=design)
-    # Wrap in a minimal standards-mode shell for browser preview only (real sends stay a bare
-    # fragment; without a doctype, browsers render file:// fragments in quirks mode, which
-    # breaks the box model and causes horizontal overflow that doesn't happen in an inbox).
-    page = (
-        "<!doctype html><html><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width, initial-scale=1'></head>"
-        f"<body style='margin:0'>{html_body}</body></html>"
-    )
+    # Neubrutalist/Conversational already render a full standalone document (real Google Fonts
+    # need a <head>); wrapping that in another <html><body> would double-nest it. Production
+    # stays a bare fragment and still needs the wrapper shell for browser preview (without a
+    # doctype, browsers render file:// fragments in quirks mode, which breaks the box model and
+    # causes horizontal overflow that doesn't happen in an inbox).
+    if html_body.lstrip().lower().startswith("<!doctype"):
+        page = html_body
+    else:
+        page = (
+            "<!doctype html><html><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width, initial-scale=1'></head>"
+            f"<body style='margin:0'>{html_body}</body></html>"
+        )
     Path(out).write_text(page)
     console.print(f"[green]Wrote preview to[/green] [cyan]{escape(out)}[/cyan]")
 

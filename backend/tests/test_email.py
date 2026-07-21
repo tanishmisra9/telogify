@@ -414,15 +414,25 @@ def test_render_email_neubrutalist_renders_core_content():
         winner=_winner(), pace_spread=_pace_spread(), practice=_practice(),
         quali_insight=_quali_insight(), next_race=next_race,
     )
-    assert "<style" not in html
-    assert "class=" not in html
+    # full standalone document (real webfonts need a <head>), mirroring digest-v59.html
+    assert html.lower().startswith("<!doctype html>")
+    assert "<style>" in html
+    assert "fonts.googleapis.com" in html and "Archivo+Black" in html and "Space+Mono" in html
     assert "READ THE FULL ANALYSIS" in html
     assert "Belgian Grand Prix" in html
-    assert "7.004 KM" in html
     # practice headlines the real absolute sector time (28.094s), not the margin (0.019s)
     assert "28.094s" in html
     assert "0.019s" not in html
     assert "#E8002D" in html  # Ferrari team color present (top speed row)
+    # ransom-note headline: first name plain, surname big/red, verdict in a black box, rival
+    # team wavy-underlined
+    assert '<span class="a">Charles</span>' in html
+    # surname is styled in the winner's team color, not a fixed hex
+    assert '<span class="b" style="color:#E8002D">LECLERC</span>' in html
+    assert '<span class="c">WON</span>' in html
+    assert '<span class="e">Mercedes</span>' in html
+    # next-race panel is light (matching v59), not the dark-inverted regression
+    assert '<div class="next-race">' in html
 
 
 def test_render_email_conversational_renders_core_content():
@@ -435,15 +445,27 @@ def test_render_email_conversational_renders_core_content():
         quali_insight=_quali_insight(), next_race=next_race,
         now=datetime(2026, 7, 20, 15, 0),  # a Monday
     )
-    assert "<style" not in html
-    assert "class=" not in html
-    assert "Read the full analysis" in html
+    # full standalone document (real webfonts need a <head>), mirroring digest-v64.html
+    assert html.lower().startswith("<!doctype html>")
+    assert "<style>" in html
+    assert "fonts.googleapis.com" in html and "Instrument+Sans" in html and "JetBrains+Mono" in html
     assert "Belgian Grand Prix" in html
     assert "7.004 km circuit" in html
     assert "MONDAY" in html
     assert "6:42" not in html and ":00<" not in html  # day only, no time-of-day
     # insight text is verbatim, not paraphrased
     assert "Insight 1 headline" in html
+    # practice shows the real absolute sector time, not the margin
+    assert "28.094s" in html
+    assert "0.019s" not in html
+    # typing indicator (static dots -- email clients don't animate reliably)
+    assert 'class="typing"' in html and "Telogify is typing" in html
+    # v64's real two-part CTA: a decorative non-clickable "sent" bubble, plus a separate real link
+    assert '<div class="sent-bubble">I want to read the full analysis!</div>' in html
+    assert '<a class="qr" href="https://telogify.app/weekends/2025/11">Read the full analysis' in html
+    # numbers inside insight/qualifying prose get the .num highlight treatment (v64), unlike
+    # Neubrutalist's plain body text
+    assert '<span class="num">12 km/h</span>' in html
 
 
 def test_render_digest_preview_uses_override_then_stored_then_production_default(db_session):
