@@ -457,6 +457,11 @@ def preview_digest(
     year: int,
     round: int,
     out: str = typer.Option("digest-preview.html", "--out", help="Path to write the rendered HTML."),
+    design: str = typer.Option(
+        None, "--design",
+        help="Which design to render: production, neubrutalist, or conversational. "
+        "Defaults to the weekend's already-sent design, or production if none yet.",
+    ),
 ) -> None:
     """Render the email digest to a local HTML file for browser preview. No send, no API key."""
     from pathlib import Path
@@ -467,7 +472,7 @@ def preview_digest(
     from telogify.email import render_digest_preview
 
     with Session(engine) as db:
-        html_body = render_digest_preview(year, round, db)
+        html_body = render_digest_preview(year, round, db, design=design)
     # Wrap in a minimal standards-mode shell for browser preview only (real sends stay a bare
     # fragment; without a doctype, browsers render file:// fragments in quirks mode, which
     # breaks the box model and causes horizontal overflow that doesn't happen in an inbox).

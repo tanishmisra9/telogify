@@ -12,6 +12,7 @@ parts) so addresses are never shared across recipients.
 """
 
 import html
+import random
 import re
 from datetime import datetime
 
@@ -268,7 +269,7 @@ def _next_race_html(next_race: dict | None) -> str:
     # alignment), the unit riding the number's floor to its right -- not stacked underneath.
     stat_cells = []
     for i, (value, caption) in enumerate(stats):
-        align = "left" if i == 0 else "right"
+        align = "left"
         caption_html = (
             f'<span style="font-family:{_FONT_MONO};font-size:11px;letter-spacing:0.08em;'
             f'text-transform:uppercase;color:{_MUTED};margin-left:6px">{html.escape(caption)}</span>'
@@ -284,8 +285,15 @@ def _next_race_html(next_race: dict | None) -> str:
         f'{html.escape(next_race["place"])}</p>'
     ) if next_race.get("place") else ""
 
+    # A bespoke panel-open (not the shared _PANEL_OPEN) with real top margin -- this panel sits
+    # right after the CTA button, and _PANEL_OPEN's usual margin:0 0 20px 0 (no top margin) left
+    # it flush against the button above with no breathing room.
+    panel_open = (
+        f'<div style="background:{_SURFACE};border:1.5px solid {_INK};box-shadow:4px 4px 0 {_INK};'
+        'border-radius:2px;padding:24px;margin:32px 0 20px 0">'
+    )
     return (
-        _PANEL_OPEN
+        panel_open
         + _kicker(f"Next race &middot; Round {next_race['round']}", margin="0 0 6px 0")
         + f'<h2 style="margin:0 0 4px 0;font-family:{_FONT_DISPLAY};font-size:19px;'
         f'letter-spacing:-0.01em;font-weight:600;color:{_INK}">{html.escape(next_race["name"])}</h2>'
@@ -318,7 +326,7 @@ def _practice_html(practice: dict | None) -> str:
     # the same visual language instead of its own one-off layout. Driver name is a smaller
     # caption under the constructor, gap/unit context a smaller caption under the figure.
     rows = []
-    for sector, constructor, driver, margin in practice["sectors"]:
+    for sector, constructor, driver, margin, _best_time_s in practice["sectors"]:
         driver_name = _full_driver_name(driver) if driver else None
         value = f"{margin:.3f}s" if margin is not None else "—"
         rows.append((f"S{sector}", constructor, driver_name, value, "clear"))
@@ -427,8 +435,16 @@ def render_email(
     for i, ins in enumerate(insights, start=1):
         header = _clean(ins.header)
         body = _emphasize_numbers(_clean(_first_sentence(ins.explanation_email)))
+        # Team-colored border when the insight has a team on it, falling back to the shared
+        # ink border for the rare row that doesn't (an un-backfilled or genuinely ambiguous
+        # older insight).
+        border_color = _team_color(ins.team) if ins.team else _INK
+        card_open = (
+            f'<div style="background:{_SURFACE};border:1.5px solid {border_color};'
+            f'box-shadow:4px 4px 0 {_INK};border-radius:2px;padding:24px;margin:0 0 20px 0">'
+        )
         cards.append(
-            _PANEL_OPEN
+            card_open
             + f'<p style="margin:0 0 6px 0;font-family:{_FONT_MONO};font-size:12px;'
             f'letter-spacing:0.1em;color:{_ACCENT}">0{i}</p>'
             f'<h2 style="margin:0 0 8px 0;font-family:{_FONT_DISPLAY};font-size:21px;'
@@ -523,7 +539,7 @@ def render_email_plaintext(
     if practice is not None:
         lines.append("FAST OUT THE GATES")
         lines.append("")
-        for sector, constructor, driver, margin in practice["sectors"]:
+        for sector, constructor, driver, margin, _best_time_s in practice["sectors"]:
             driver_bit = f" ({_full_driver_name(driver)})" if driver else ""
             clear_bit = f", {margin:.3f}s clear" if margin is not None else ""
             lines.append(f"  S{sector}: {constructor}{driver_bit}{clear_bit}")
@@ -594,6 +610,454 @@ def render_email_plaintext(
     return "\n".join(lines)
 
 
+# Neubrutalist design: its own palette/type voice (near-black ink, thick borders, hard offset
+# shadows, a monospace body for a "data sheet/zine" feel), reusing render_email's shared
+# helpers (_full_driver_name, _clean, _first_sentence, _emphasize_numbers, _team_color,
+# _darken) and email-safety conventions (inline styles only, role="presentation" tables, no
+# <style>/classes/flexbox/custom fonts) throughout. Section order matches render_email exactly.
+_NB_INK = "#0a0a0a"
+_NB_BG = "#f2f2ea"
+_NB_SURFACE = "#ffffff"
+_NB_ACCENT = "#E10600"
+_NB_YELLOW = "#FFE500"
+_NB_MUTED = "#5c5c5c"
+_NB_FONT_DISPLAY = "'Arial Black','Franklin Gothic Bold',Impact,sans-serif"
+_NB_FONT_BODY = "'Courier New',Courier,monospace"
+
+
+def _nb_panel_open(border_color: str = _NB_INK, *, margin: str = "0 0 20px 0") -> str:
+    return (
+        f'<div style="background:{_NB_SURFACE};border:3px solid {border_color};'
+        f'box-shadow:6px 6px 0 {_NB_INK};padding:22px;margin:{margin}">'
+    )
+
+
+def _nb_section_title(text: str) -> str:
+    return (
+        f'<p style="margin:36px 0 14px 0;display:inline-block;background:{_NB_INK};color:#fff;'
+        f'font-family:{_NB_FONT_DISPLAY};font-size:20px;font-weight:800;padding:5px 12px">{text}</p>'
+    )
+
+
+def _nb_practice_html(practice: dict | None) -> str:
+    if practice is None:
+        return ""
+    rows = []
+    for sector, constructor, driver, _margin, best_time_s in practice["sectors"]:
+        driver_name = _full_driver_name(driver) if driver else None
+        value = f"{best_time_s:.3f}s" if best_time_s is not None else "—"
+        rows.append((f"S{sector}", constructor, driver_name, value))
+    kmh = practice["top_speed_kmh"]
+    mph = kmh * 0.621371
+    rows.append(
+        ("TS", practice["top_speed_constructor"], _full_driver_name(practice["top_speed_driver"]),
+         f"{kmh:.0f} km/h ({mph:.0f} mph)")
+    )
+    row_html = []
+    for label, constructor, driver_name, value in rows:
+        rule = (
+            f'<span style="display:inline-block;width:4px;height:14px;background:'
+            f'{_team_color(constructor or "")};margin-right:8px;vertical-align:middle"></span>'
+        )
+        driver_bit = f" &middot; {html.escape(driver_name)}" if driver_name else ""
+        row_html.append(
+            '<tr>'
+            f'<td style="padding:10px 0;border-bottom:2px dashed {_NB_INK}55;font-family:'
+            f'{_NB_FONT_DISPLAY};font-size:13px;color:{_NB_INK};vertical-align:top">{label}</td>'
+            f'<td style="padding:10px 8px;border-bottom:2px dashed {_NB_INK}55;font-family:'
+            f'{_NB_FONT_BODY};font-size:14px;color:{_NB_INK}">{rule}{html.escape(constructor or "Unknown")}'
+            f'{driver_bit}</td>'
+            f'<td style="padding:10px 0;border-bottom:2px dashed {_NB_INK}55;text-align:right;'
+            f'font-family:{_NB_FONT_DISPLAY};font-size:16px;color:{_NB_ACCENT};white-space:nowrap">'
+            f'{html.escape(value)}</td>'
+            '</tr>'
+        )
+    return (
+        _nb_panel_open()
+        + f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+        + "".join(row_html)
+        + "</table></div>"
+    )
+
+
+def _nb_qualifying_html(quali: QualiInsight | None) -> str:
+    if quali is None:
+        return ""
+    header = _clean(quali.header)
+    body = _emphasize_numbers(_clean(_first_sentence(quali.explanation_email)))
+    team_label = ""
+    if quali.team:
+        team_label = (
+            f'<p style="margin:0 0 8px 0;display:inline-block;background:{_NB_YELLOW};'
+            f'font-family:{_NB_FONT_DISPLAY};font-size:11px;padding:2px 8px;color:{_NB_INK}">'
+            f'{html.escape(quali.team.upper())}</p>'
+        )
+    border = _team_color(quali.team) if quali.team else _NB_INK
+    return (
+        _nb_panel_open(border)
+        + team_label
+        + f'<h2 style="margin:0 0 8px 0;font-family:{_NB_FONT_DISPLAY};font-size:20px;'
+        f'color:{_NB_INK}">{header}</h2>'
+        + f'<p style="margin:0;font-size:14px;line-height:1.6;font-family:{_NB_FONT_BODY};'
+        f'color:{_NB_INK}">{body}</p>'
+        "</div>"
+    )
+
+
+def _nb_pace_spread_html(pace_spread: dict | None) -> str:
+    if pace_spread is None:
+        return ""
+    fastest = html.escape(pace_spread["fastest"])
+    row_html = []
+    for name, gap in pace_spread["rows"]:
+        color = _team_color(name)
+        row_html.append(
+            '<tr>'
+            f'<td style="padding:10px 0;border-bottom:2px dashed {_NB_INK}55;font-family:'
+            f'{_NB_FONT_BODY};font-size:14px;color:{_NB_INK}">'
+            f'<span style="display:inline-block;width:11px;height:11px;background:{color};'
+            f'border:2px solid {_NB_INK};margin-right:8px;vertical-align:middle"></span>'
+            f'{html.escape(name)}</td>'
+            f'<td style="padding:10px 0;border-bottom:2px dashed {_NB_INK}55;text-align:right;'
+            f'font-family:{_NB_FONT_DISPLAY};font-size:18px;color:{color}">{html.escape(gap)}</td>'
+            '</tr>'
+        )
+    return (
+        _nb_panel_open()
+        + f'<p style="margin:0 0 14px 0;font-family:{_NB_FONT_BODY};font-size:13px;'
+        f'color:{_NB_INK}">{fastest} set the pace this weekend. Gap per lap, race pace:</p>'
+        + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+        + "".join(row_html)
+        + "</table></div>"
+    )
+
+
+def _nb_next_race_html(next_race: dict | None) -> str:
+    if next_race is None:
+        return ""
+    days = next_race["days"]
+    when = "TODAY" if days == 0 else ("TOMORROW" if days == 1 else f"{days} DAYS")
+    stats = f'<span style="font-family:{_NB_FONT_DISPLAY};font-size:22px;color:{_NB_YELLOW}">{html.escape(when)}</span>'
+    length_km = next_race.get("length_km")
+    if length_km is not None:
+        stats += (
+            f'<span style="font-family:{_NB_FONT_DISPLAY};font-size:22px;color:{_NB_YELLOW};'
+            f'margin-left:22px">{length_km:.3f} KM</span>'
+        )
+    return (
+        f'<div style="background:{_NB_INK};border:3px solid {_NB_INK};box-shadow:6px 6px 0 '
+        f'{_NB_ACCENT};padding:22px;margin:32px 0 20px 0">'
+        f'<p style="margin:0 0 8px 0;display:inline-block;background:{_NB_ACCENT};color:#fff;'
+        f'font-family:{_NB_FONT_DISPLAY};font-size:11px;padding:3px 9px">'
+        f'NEXT UP &middot; ROUND {next_race["round"]}</p>'
+        f'<h3 style="margin:8px 0 4px 0;font-family:{_NB_FONT_DISPLAY};font-size:22px;color:#fff">'
+        f'{html.escape(next_race["name"])}</h3>'
+        + (
+            f'<p style="margin:0 0 14px 0;font-family:{_NB_FONT_BODY};font-size:13px;color:#ccc">'
+            f'{html.escape(next_race["place"])}</p>' if next_race.get("place") else ""
+        )
+        + f'<p style="margin:0">{stats}</p></div>'
+    )
+
+
+def render_email_neubrutalist(
+    weekend: RaceWeekend,
+    insights: list[Insight],
+    base_url: str,
+    *,
+    winner: dict | None = None,
+    next_race: dict | None = None,
+    pace_spread: dict | None = None,
+    practice: dict | None = None,
+    quali_insight: QualiInsight | None = None,
+) -> str:
+    cta_url = f"{base_url.rstrip('/')}/weekends/{weekend.year}/{weekend.round}"
+    event_name = html.escape(weekend.event_name)
+    preheader_text, _ = _opener_html(winner, pace_spread)
+
+    practice_section = (
+        _nb_section_title("FAST OUT THE GATES") + _nb_practice_html(practice) if practice else ""
+    )
+    qualifying_section = (
+        _nb_section_title("QUALIFYING HOUR") + _nb_qualifying_html(quali_insight)
+        if quali_insight else ""
+    )
+
+    cards = []
+    for i, ins in enumerate(insights, start=1):
+        header = _clean(ins.header)
+        body = _emphasize_numbers(_clean(_first_sentence(ins.explanation_email)))
+        border = _team_color(ins.team) if ins.team else _NB_INK
+        num_badge = (
+            f'<span style="display:inline-block;width:34px;height:34px;line-height:34px;'
+            f'text-align:center;background:{_NB_YELLOW};border:3px solid {_NB_INK};'
+            f'border-radius:50%;font-family:{_NB_FONT_DISPLAY};font-size:15px;color:{_NB_INK};'
+            f'margin-bottom:10px">{i}</span>'
+        )
+        cards.append(
+            _nb_panel_open(border)
+            + num_badge
+            + f'<h2 style="margin:0 0 8px 0;font-family:{_NB_FONT_DISPLAY};font-size:19px;'
+            f'color:{_NB_INK}">{header}</h2>'
+            f'<p style="margin:0;font-size:14px;line-height:1.65;font-family:{_NB_FONT_BODY};'
+            f'color:{_NB_INK}">{body}</p>'
+            "</div>"
+        )
+
+    cta = (
+        f'<a href="{html.escape(cta_url)}" style="display:block;box-sizing:border-box;'
+        'width:100%;margin-top:20px;padding:16px 20px;text-align:center;text-decoration:none;'
+        f'background:{_NB_ACCENT};color:#fff;border:3px solid {_NB_INK};box-shadow:6px 6px 0 '
+        f'{_NB_INK};font-family:{_NB_FONT_DISPLAY};font-size:17px">READ THE FULL ANALYSIS</a>'
+    )
+    methodology = (
+        f'<p style="margin:24px 0 0 0;font-family:{_NB_FONT_BODY};font-size:11px;line-height:1.6;'
+        f'color:{_NB_MUTED}">Methodology inputs come from Mirco Bartolozzi (@fdataanalysis), '
+        "covering clean-air filtering, fuel correction, and the ERS depletion signal. "
+        "Timing data comes from FastF1.</p>"
+    )
+    sign_off = (
+        f'<p style="margin:20px 0 0 0;font-family:{_NB_FONT_BODY};font-size:13px;color:{_NB_INK}">'
+        "See you after the next session.</p>"
+    )
+    copyright_line = (
+        f'<p style="margin:20px 0 0 0;font-family:{_NB_FONT_BODY};font-size:11px;color:{_NB_MUTED}">'
+        f"&copy; {weekend.year} Tanish Misra &middot; "
+        f'<a href="{html.escape(base_url.rstrip("/"))}/unsubscribe" style="color:{_NB_MUTED}">'
+        "Unsubscribe</a></p>"
+    )
+
+    return (
+        f'<div style="display:none;max-height:0;overflow:hidden;opacity:0">{preheader_text}</div>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+        f'style="background:{_NB_BG}"><tr><td align="center" style="padding:32px 16px">'
+        f'<div style="max-width:560px;margin:0 auto;text-align:left;background:{_NB_SURFACE};'
+        f'border:3px solid {_NB_INK};padding:28px 24px">'
+        '<div style="margin:0 0 20px 0;text-align:center">'
+        '<svg width="40" height="40" viewBox="0 0 32 32" fill="none" stroke-width="3" '
+        'stroke-linecap="round" stroke-linejoin="round" '
+        'style="display:inline-block;vertical-align:middle">'
+        f'<path d="M2 16 L6 7 L10 25 L13 11 L16 20 L18 16" stroke="{_NB_INK}"></path>'
+        f'<path d="M18 16 L30 16" stroke="{_NB_ACCENT}"></path>'
+        "</svg>"
+        f'<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
+        f'font-family:{_NB_FONT_DISPLAY};font-size:34px;color:{_NB_INK}">telo'
+        f'<span style="color:{_NB_ACCENT}">gify</span></span></div>'
+        f'<p style="margin:0 0 24px 0;text-align:center;font-family:{_NB_FONT_BODY};font-size:14px;'
+        f'letter-spacing:0.08em;text-transform:uppercase;color:{_NB_MUTED}">{event_name}</p>'
+        + f'<p style="margin:0 0 24px 0;font-family:{_NB_FONT_BODY};font-size:15px;line-height:1.6;'
+        f'color:{_NB_INK}">{preheader_text}</p>'
+        + practice_section
+        + qualifying_section
+        + _nb_section_title("THE 3 INSIGHTS")
+        + "".join(cards)
+        + _nb_pace_spread_html(pace_spread)
+        + cta
+        + _nb_next_race_html(next_race)
+        + methodology
+        + sign_off
+        + copyright_line
+        + "</div></td></tr></table>"
+    )
+
+
+# Conversational design: an iMessage-style chat thread. Reuses render_email's own palette
+# tokens (_INK, _MUTED, _FONT_SANS, _FONT_MONO, _FONT_DISPLAY, _ACCENT) for the masthead and
+# body text -- this design's own identity is structural (bubbles), not a different typographic
+# voice -- plus a few bubble-specific surface colors. Same email-safety conventions as
+# render_email throughout (inline styles, role="presentation" tables, no <style>/classes).
+_CV_BG = "#EFEEE9"
+_CV_BUBBLE = "#FFFFFF"
+_CV_BUBBLE_BORDER = "#E4E2DB"
+_CV_SENT_INK = "#FFF6F5"
+
+
+def _cv_bubble(content_html: str, *, max_width: str = "420px") -> str:
+    return (
+        '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px 0">'
+        f'<tr><td style="background:{_CV_BUBBLE};border:1px solid {_CV_BUBBLE_BORDER};'
+        f'border-radius:16px 16px 16px 4px;padding:11px 15px;max-width:{max_width};'
+        f'font-family:{_FONT_SANS};font-size:15px;line-height:1.42;color:{_INK}">{content_html}'
+        "</td></tr></table>"
+    )
+
+
+def _cv_data_bubble(rows_html: str) -> str:
+    return (
+        '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px 0">'
+        f'<tr><td style="background:{_CV_BUBBLE};border:1px solid {_CV_BUBBLE_BORDER};'
+        'border-radius:16px 16px 16px 4px;padding:13px 16px;max-width:460px">'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows_html}'
+        "</table></td></tr></table>"
+    )
+
+
+def _cv_data_row(label_html: str, value: str) -> str:
+    return (
+        "<tr>"
+        f'<td style="padding:5px 0;border-bottom:1px solid #F0EFEA;font-family:{_FONT_SANS};'
+        f'font-size:14px;color:{_INK}">{label_html}</td>'
+        f'<td style="padding:5px 0;border-bottom:1px solid #F0EFEA;text-align:right;'
+        f'font-family:{_FONT_MONO};font-size:15px;font-weight:600;color:{_INK};white-space:nowrap">'
+        f"{html.escape(value)}</td>"
+        "</tr>"
+    )
+
+
+def _cv_insight_bubble(number: str, team: str | None, header: str, body: str) -> str:
+    color = _team_color(team) if team else _MUTED
+    tag = (
+        f'<span style="display:inline-block;font-family:{_FONT_MONO};font-size:10.5px;'
+        f'font-weight:600;letter-spacing:0.06em;color:{color};border:1.5px solid {color};'
+        f'border-radius:5px;padding:2px 8px;margin-bottom:8px">{number}</span><br>'
+    )
+    return (
+        '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px 0">'
+        f'<tr><td style="background:{_CV_BUBBLE};border:1px solid {_CV_BUBBLE_BORDER};'
+        'border-radius:16px 16px 16px 4px;padding:14px 16px;max-width:460px">'
+        f"{tag}"
+        f'<p style="margin:0 0 5px 0;font-weight:700;font-size:15.5px;line-height:1.32;'
+        f'font-family:{_FONT_SANS};color:{_INK}">{header}</p>'
+        f'<p style="margin:0;font-size:14px;line-height:1.48;font-family:{_FONT_SANS};'
+        f'color:#4A443E">{body}</p>'
+        "</td></tr></table>"
+    )
+
+
+def render_email_conversational(
+    weekend: RaceWeekend,
+    insights: list[Insight],
+    base_url: str,
+    *,
+    winner: dict | None = None,
+    next_race: dict | None = None,
+    pace_spread: dict | None = None,
+    practice: dict | None = None,
+    quali_insight: QualiInsight | None = None,
+    now: datetime | None = None,
+) -> str:
+    now = now or datetime.utcnow()
+    cta_url = f"{base_url.rstrip('/')}/weekends/{weekend.year}/{weekend.round}"
+    event_name = html.escape(weekend.event_name)
+    preheader_text, _ = _opener_html(winner, pace_spread)
+
+    bubbles = [_cv_bubble("Hey, the race is done! Results are in."), _cv_bubble(preheader_text)]
+
+    if practice is not None:
+        bubbles.append(_cv_bubble("First up, practice:"))
+        rows = []
+        for sector, constructor, driver, _margin, best_time_s in practice["sectors"]:
+            driver_bit = f"<span style=\"color:{_MUTED};font-size:12.5px;display:block\">" \
+                f"{html.escape(constructor or 'Unknown')} ({html.escape(_full_driver_name(driver))})</span>" \
+                if driver else html.escape(constructor or "Unknown")
+            value = f"{best_time_s:.3f}s" if best_time_s is not None else "—"
+            rows.append(_cv_data_row(f"S{sector}<br>{driver_bit}", value))
+        kmh = practice["top_speed_kmh"]
+        rows.append(_cv_data_row(
+            f"Top speed<br><span style=\"color:{_MUTED};font-size:12.5px\">"
+            f"{html.escape(practice['top_speed_constructor'] or 'Unknown')} "
+            f"({html.escape(_full_driver_name(practice['top_speed_driver']))})</span>",
+            f"{kmh:.0f} km/h",
+        ))
+        bubbles.append(_cv_data_bubble("".join(rows)))
+
+    if quali_insight is not None:
+        bubbles.append(_cv_bubble("And from qualifying, one thing stood out:"))
+        header = _clean(quali_insight.header)
+        body = _emphasize_numbers(_clean(_first_sentence(quali_insight.explanation_email)))
+        bubbles.append(_cv_insight_bubble("QUALIFYING", quali_insight.team, header, body))
+
+    if pace_spread is not None:
+        bubbles.append(_cv_bubble("Onto the race. Here's the race-pace picture:"))
+        fastest = html.escape(pace_spread["fastest"])
+        rows = [_cv_data_row(f"{fastest}<br><span style=\"color:{_MUTED};font-size:12.5px\">"
+                              "race pace, fastest</span>", "leader")]
+        for name, gap in pace_spread["rows"]:
+            rows.append(_cv_data_row(html.escape(name), gap))
+        bubbles.append(_cv_data_bubble("".join(rows)))
+        bubbles.append(_cv_bubble(
+            "(And by the way, those are gaps to the fastest car, per lap.)", max_width="340px"
+        ))
+
+    if insights:
+        bubbles.append(_cv_bubble(
+            "Here are the three things worth knowing from the race itself."
+        ))
+        for i, ins in enumerate(insights, start=1):
+            header = _clean(ins.header)
+            body = _emphasize_numbers(_clean(_first_sentence(ins.explanation_email)))
+            bubbles.append(_cv_insight_bubble(f"0{i}", ins.team, header, body))
+
+    bubbles.append(_cv_bubble("That's the recap. Full breakdown has more telemetry if you want it."))
+    bubbles.append(
+        '<table role="presentation" align="right" cellpadding="0" cellspacing="0" '
+        'style="margin:18px 0 8px auto">'
+        f'<tr><td style="background:{_ACCENT};border-radius:16px 16px 4px 16px;padding:11px 16px;'
+        f'max-width:300px"><a href="{html.escape(cta_url)}" style="font-family:{_FONT_SANS};'
+        f'font-size:15px;font-weight:600;color:{_CV_SENT_INK};text-decoration:none">'
+        "Read the full analysis</a></td></tr></table>"
+        # align="right" makes the table float in most renderers; clear it so the next bubble
+        # drops below instead of wrapping alongside it.
+        '<div style="clear:both"></div>'
+    )
+    bubbles.append(_cv_bubble("Yesss, love that."))
+
+    if next_race is not None:
+        days = next_race["days"]
+        when = "today" if days == 0 else ("tomorrow" if days == 1 else f"{days} days")
+        length_km = next_race.get("length_km")
+        length_bit = f" on a {length_km:.3f} km circuit" if length_km is not None else ""
+        place_bit = f" in {html.escape(next_race['place'])}" if next_race.get("place") else ""
+        bubbles.append(_cv_bubble(
+            f"Next up: the {html.escape(next_race['name'])}{place_bit}, {when} away{length_bit}."
+        ))
+
+    bubbles.append(_cv_bubble("See you after the next session!"))
+
+    footer = (
+        f'<p style="margin:30px 0 0 0;font-size:11.5px;color:{_MUTED};line-height:1.7;'
+        f'font-family:{_FONT_SANS}">Methodology inputs come from Mirco Bartolozzi '
+        "(@fdataanalysis), covering clean-air filtering, fuel correction, and the ERS "
+        "depletion signal. Timing data comes from FastF1.<br>"
+        f"&copy; {weekend.year} Tanish Misra &middot; "
+        f'<a href="{html.escape(base_url.rstrip("/"))}/unsubscribe" style="color:{_MUTED}">'
+        "Unsubscribe</a></p>"
+    )
+
+    day_chip = (
+        '<div style="text-align:center;margin:18px 0 16px 0">'
+        f'<span style="display:inline-block;background:rgba(0,0,0,0.05);color:{_MUTED};'
+        f'font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;'
+        f'letter-spacing:0.02em;font-family:{_FONT_SANS}">{now.strftime("%A").upper()}</span>'
+        "</div>"
+    )
+
+    return (
+        f'<div style="display:none;max-height:0;overflow:hidden;opacity:0">{preheader_text}</div>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+        f'style="background:{_CV_BG}"><tr><td align="center" style="padding:32px 16px">'
+        f'<div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid '
+        f'{_CV_BUBBLE_BORDER};border-radius:20px;padding:28px 20px;text-align:left">'
+        '<div style="margin:0 0 4px 0;text-align:center">'
+        '<span style="display:inline-block;border-bottom:2px solid ' + _ACCENT + ';padding-bottom:6px">'
+        '<svg width="34" height="34" viewBox="0 0 32 32" fill="none" stroke-width="3" '
+        'stroke-linecap="round" stroke-linejoin="round" '
+        'style="display:inline-block;vertical-align:middle">'
+        f'<path d="M2 16 L6 7 L10 25 L13 11 L16 20 L18 16" stroke="{_INK}"></path>'
+        f'<path d="M18 16 L30 16" stroke="{_ACCENT}"></path>'
+        "</svg>"
+        f'<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
+        f'font-family:{_FONT_DISPLAY};font-size:34px;font-weight:400;color:{_INK}">Telo'
+        f'<span style="color:{_ACCENT}">gify</span></span></span></div>'
+        f'<p style="margin:0;text-align:center;font-family:{_FONT_MONO};font-size:11px;'
+        f'letter-spacing:0.1em;text-transform:uppercase;color:{_MUTED}">{event_name}</p>'
+        + day_chip
+        + "".join(bubbles)
+        + footer
+        + "</div></td></tr></table>"
+    )
+
+
 def _load_weekend_and_insights(
     year: int, round: int, db: Session
 ) -> tuple[RaceWeekend, list[Insight]]:
@@ -637,7 +1101,7 @@ def _load_next_race(now: datetime | None = None) -> dict | None:
     if ev is None:
         return None
     days = max(0, (ev.date - now).days)
-    place = ", ".join(p for p in (ev.location, ev.country) if p)
+    place = ev.location or ""
     return {
         "round": ev.round,
         "name": ev.name,
@@ -698,7 +1162,7 @@ def _load_practice_summary(db: Session, weekend_id: int) -> dict | None:
             ),
             None,
         )
-        sectors.append((d.sector, d.constructor, driver, d.margin_s))
+        sectors.append((d.sector, d.constructor, driver, d.margin_s, d.best_time_s))
 
     speed_rows = [
         {"driver": r.driver, "session_type": s.session_type, "max_speed_kmh": r.max_speed_kmh}
@@ -737,12 +1201,44 @@ def _load_extras(db: Session, weekend: RaceWeekend) -> dict:
     }
 
 
-def render_digest_preview(year: int, round: int, db: Session) -> str:
-    """Render the digest HTML for local preview. Never touches RESEND_API_KEY."""
+_DESIGNS = ("production", "neubrutalist", "conversational")
+_RENDER_FNS = {
+    "production": render_email,
+    "neubrutalist": render_email_neubrutalist,
+    "conversational": render_email_conversational,
+}
+
+
+def _choose_digest_design(history: list[str]) -> str:
+    """history = digest_design values for weekends already sent, oldest -> newest. First-ever
+    send is always production; every run of 3 consecutive sends contains each design exactly
+    once; a design is never repeated on consecutive sends, including across a cycle boundary."""
+    if not history:
+        return "production"
+    cycle_position = len(history) % 3
+    used_this_cycle = set(history[-cycle_position:]) if cycle_position else set()
+    candidates = [d for d in _DESIGNS if d not in used_this_cycle and d != history[-1]]
+    return random.choice(candidates)
+
+
+def _load_digest_history(db: Session) -> list[str]:
+    weekends = db.exec(
+        select(RaceWeekend)
+        .where(RaceWeekend.digest_design.is_not(None))
+        .order_by(RaceWeekend.year, RaceWeekend.round)
+    ).all()
+    return [w.digest_design for w in weekends]
+
+
+def render_digest_preview(year: int, round: int, db: Session, design: str | None = None) -> str:
+    """Render the digest HTML for local preview. Never touches RESEND_API_KEY, never writes to
+    the DB -- safe to preview any design repeatedly without disturbing the real rotation
+    history. `design` overrides; otherwise reuses the weekend's already-sent design if it has
+    one, else falls back to "production"."""
     weekend, insights = _load_weekend_and_insights(year, round, db)
-    return render_email(
-        weekend, insights, settings.web_base_url, **_load_extras(db, weekend)
-    )
+    chosen = design or weekend.digest_design or "production"
+    render_fn = _RENDER_FNS[chosen]
+    return render_fn(weekend, insights, settings.web_base_url, **_load_extras(db, weekend))
 
 
 def send_digest(year: int, round: int, db: Session, recipients: list[str] | None = None) -> int:
@@ -757,11 +1253,20 @@ def send_digest(year: int, round: int, db: Session, recipients: list[str] | None
     if not recipients:
         return 0
 
+    # Pick+persist the design once, on the first real send for this weekend -- a re-send reuses
+    # whatever was already chosen rather than re-rolling.
+    if weekend.digest_design is None:
+        weekend.digest_design = _choose_digest_design(_load_digest_history(db))
+        db.add(weekend)
+        db.commit()
+        db.refresh(weekend)
+
     import resend
 
     resend.api_key = settings.resend_api_key
     extras = _load_extras(db, weekend)
-    html_body = render_email(weekend, insights, settings.web_base_url, **extras)
+    render_fn = _RENDER_FNS[weekend.digest_design]
+    html_body = render_fn(weekend, insights, settings.web_base_url, **extras)
     text_body = render_email_plaintext(weekend, insights, settings.web_base_url, **extras)
     subject = f"{weekend.event_name}: your 3 insights"
 

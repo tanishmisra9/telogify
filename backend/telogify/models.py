@@ -16,6 +16,10 @@ class RaceWeekend(SQLModel, table=True):
     circuit_name: str
     country: str
     event_name: str
+    # Which digest email design was sent for this weekend ("production"/"neubrutalist"/
+    # "conversational"), set once on first send. Doubles as the rotation history: unset means
+    # no digest has been sent yet.
+    digest_design: str | None = None
 
 
 class Session(SQLModel, table=True):

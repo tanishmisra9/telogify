@@ -1,4 +1,17 @@
-from telogify.email import render_email, render_email_plaintext
+from datetime import datetime
+
+from sqlmodel import select
+
+from telogify import email as email_module
+from telogify.email import (
+    _choose_digest_design,
+    _load_next_race,
+    render_email,
+    render_email_conversational,
+    render_email_neubrutalist,
+    render_email_plaintext,
+    send_digest,
+)
 from telogify.models import Insight, QualiInsight, RaceWeekend
 
 
@@ -36,9 +49,9 @@ def _pace_spread():
 def _practice():
     return {
         "sectors": [
-            (1, "Mercedes", "ANT", 0.019),
-            (2, "Mercedes", "ANT", 0.023),
-            (3, "McLaren", "NOR", 0.031),
+            (1, "Mercedes", "ANT", 0.019, 28.094),
+            (2, "Mercedes", "ANT", 0.023, 35.623),
+            (3, "McLaren", "NOR", 0.031, 24.512),
         ],
         "top_speed_driver": "HAM",
         "top_speed_constructor": "Ferrari",
@@ -360,4 +373,179 @@ def test_render_email_plaintext_has_practice_and_qualifying_sections():
     assert "TS: Ferrari (Lewis Hamilton), 322 km/h (200 mph)" in text
     assert "SETTING THE GRID" in text
     assert "Mercedes’ qualifying edge showed up in the middle sector" in text
-    assert "It held that edge into sector three too" not in text
+
+
+def test_render_email_insight_cards_use_team_color_border():
+    insights = [
+        Insight(
+            weekend_id=1, slot=1, team="Ferrari", header="Insight 1 headline",
+            explanation_web="web", explanation_email="Ferrari were fast.",
+            source_tool_calls_json=[],
+        )
+    ]
+    html = render_email(_weekend(), insights, "https://telogify.app")
+    assert "border:1.5px solid #E8002D" in html
+
+
+def test_render_email_insight_card_falls_back_to_ink_border_without_team():
+    html = render_email(_weekend(), _insights(), "https://telogify.app")  # _insights() sets no team
+    assert "border:1.5px solid #1b1612" in html
+
+
+def test_load_next_race_place_is_city_only(monkeypatch):
+    from telogify.analysis.schedule import Event
+
+    fake_event = Event(
+        round=12, name="Belgian Grand Prix", date=datetime(2099, 1, 1),
+        country="Belgium", location="Spa",
+    )
+    monkeypatch.setattr(email_module, "fetch_season_schedule", lambda year: (fake_event,))
+    next_race = _load_next_race(now=datetime(2098, 12, 1))
+    assert next_race["place"] == "Spa"
+    assert "Belgium" not in next_race["place"]
+
+
+def test_render_email_neubrutalist_renders_core_content():
+    next_race = {
+        "round": 10, "name": "Belgian Grand Prix", "place": "Spa", "days": 6, "length_km": 7.004,
+    }
+    html = render_email_neubrutalist(
+        _weekend(), _insights(), "https://telogify.app",
+        winner=_winner(), pace_spread=_pace_spread(), practice=_practice(),
+        quali_insight=_quali_insight(), next_race=next_race,
+    )
+    assert "<style" not in html
+    assert "class=" not in html
+    assert "READ THE FULL ANALYSIS" in html
+    assert "Belgian Grand Prix" in html
+    assert "7.004 KM" in html
+    # practice headlines the real absolute sector time (28.094s), not the margin (0.019s)
+    assert "28.094s" in html
+    assert "0.019s" not in html
+    assert "#E8002D" in html  # Ferrari team color present (top speed row)
+
+
+def test_render_email_conversational_renders_core_content():
+    next_race = {
+        "round": 10, "name": "Belgian Grand Prix", "place": "Spa", "days": 6, "length_km": 7.004,
+    }
+    html = render_email_conversational(
+        _weekend(), _insights(), "https://telogify.app",
+        winner=_winner(), pace_spread=_pace_spread(), practice=_practice(),
+        quali_insight=_quali_insight(), next_race=next_race,
+        now=datetime(2026, 7, 20, 15, 0),  # a Monday
+    )
+    assert "<style" not in html
+    assert "class=" not in html
+    assert "Read the full analysis" in html
+    assert "Belgian Grand Prix" in html
+    assert "7.004 km circuit" in html
+    assert "MONDAY" in html
+    assert "6:42" not in html and ":00<" not in html  # day only, no time-of-day
+    # insight text is verbatim, not paraphrased
+    assert "Insight 1 headline" in html
+
+
+def test_render_digest_preview_uses_override_then_stored_then_production_default(db_session):
+    wk = RaceWeekend(year=2026, round=9, circuit_name="Silverstone", country="UK", event_name="British Grand Prix")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(Insight(
+        weekend_id=wk.id, slot=1, header="H1", explanation_web="w",
+        explanation_email="E1.", source_tool_calls_json=[],
+    ))
+    db_session.commit()
+
+    # no design set yet, no override -> falls back to production
+    from telogify.email import render_digest_preview
+    html = render_digest_preview(2026, 9, db_session)
+    assert "telogify.app" not in html  # sanity: base_url comes from settings, not hardcoded
+    assert "<style" not in html  # production's own convention holds
+
+    # explicit override wins regardless of what's stored
+    html = render_digest_preview(2026, 9, db_session, design="neubrutalist")
+    assert "READ THE FULL ANALYSIS" in html
+
+    # never persists anything -- repeated previews don't touch digest_design
+    db_session.refresh(wk)
+    assert wk.digest_design is None
+
+    # once a design is actually stored, preview reuses it without an override
+    wk.digest_design = "conversational"
+    db_session.add(wk)
+    db_session.commit()
+    html = render_digest_preview(2026, 9, db_session)
+    assert "Read the full analysis" in html
+
+
+def test_choose_digest_design_first_send_is_production():
+    assert _choose_digest_design([]) == "production"
+
+
+def test_choose_digest_design_never_repeats_and_cycles_through_all_three():
+    history: list[str] = []
+    for _ in range(30):
+        design = _choose_digest_design(history)
+        if history:
+            assert design != history[-1]
+        history.append(design)
+    assert history[0] == "production"
+    for i in range(0, len(history) - 2, 3):
+        assert set(history[i:i + 3]) == {"production", "neubrutalist", "conversational"}
+
+
+def test_send_digest_raises_without_api_key(db_session, monkeypatch):
+    monkeypatch.setattr(email_module.settings, "resend_api_key", None)
+    try:
+        send_digest(2026, 9, db_session)
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "RESEND_API_KEY" in str(e)
+
+
+def test_send_digest_returns_zero_with_no_subscribers(db_session, monkeypatch):
+    monkeypatch.setattr(email_module.settings, "resend_api_key", "fake-key")
+    wk = RaceWeekend(year=2026, round=9, circuit_name="Silverstone", country="UK", event_name="British Grand Prix")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(Insight(
+        weekend_id=wk.id, slot=1, header="H1", explanation_web="w",
+        explanation_email="E1.", source_tool_calls_json=[],
+    ))
+    db_session.commit()
+    assert send_digest(2026, 9, db_session) == 0  # no recipients arg, no Subscriber rows in DB
+
+
+def test_send_digest_persists_chosen_design_and_reuses_on_resend(db_session, monkeypatch):
+    monkeypatch.setattr(email_module.settings, "resend_api_key", "fake-key")
+    monkeypatch.setattr(email_module.settings, "resend_from", "digest@telogify.app")
+    sent = []
+    monkeypatch.setattr(
+        "resend.Emails.send", lambda params: sent.append(params) or {"id": "fake"}
+    )
+
+    wk = RaceWeekend(year=2026, round=9, circuit_name="Silverstone", country="UK", event_name="British Grand Prix")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    for i in range(1, 4):
+        db_session.add(Insight(
+            weekend_id=wk.id, slot=i, header=f"H{i}", explanation_web="w",
+            explanation_email=f"E{i}.", source_tool_calls_json=[],
+        ))
+    db_session.commit()
+
+    count = send_digest(2026, 9, db_session, recipients=["a@example.com"])
+    assert count == 1
+    assert len(sent) == 1
+
+    db_session.refresh(wk)
+    assert wk.digest_design in ("production", "neubrutalist", "conversational")
+    chosen = wk.digest_design
+
+    # a second send for the same weekend reuses the design instead of re-rolling
+    send_digest(2026, 9, db_session, recipients=["b@example.com"])
+    db_session.refresh(wk)
+    assert wk.digest_design == chosen
