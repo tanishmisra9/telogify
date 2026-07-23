@@ -1086,9 +1086,16 @@ _CV_FONTS_LINK = (
     '&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">'
 )
 
-_CV_MONO = "'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, 'Courier New', monospace"
-_CV_SANS = "'Space Grotesk', 'Trebuchet MS', -apple-system, 'Segoe UI', Helvetica, sans-serif"
-_CV_DISPLAY = "'Instrument Sans', 'Space Grotesk', 'Trebuchet MS', -apple-system, 'Segoe UI', Helvetica, sans-serif"
+# Short, genuinely cross-platform-identical fallback stacks (attempt 4, same reasoning as
+# Neubrutalist's _NB_DISPLAY_FONT/_NB_MONO_FONT above): the previous chains (Trebuchet MS,
+# -apple-system, Segoe UI...) don't all exist on every platform, so desktop and iOS were
+# landing on different real fonts once the webfonts failed to load (they never do in Gmail).
+# Arial/Helvetica at weight 700 (not 600 -- Arial's weight steps don't reliably resolve
+# in-between cuts the same way on every engine) and Courier New alone for mono are the two
+# names genuinely universal across Windows/macOS/iOS/Android.
+_CV_MONO = "'JetBrains Mono', 'Courier New', Courier, monospace"
+_CV_SANS = "'Space Grotesk', Arial, Helvetica, sans-serif"
+_CV_DISPLAY = "'Instrument Sans', 'Space Grotesk', Arial, Helvetica, sans-serif"
 _CV_INK = "#1B1612"
 _CV_MUTED = "#8A837C"
 _CV_SENT = "#E10600"
@@ -1100,9 +1107,9 @@ _CV_STYLE = f"""
   *{{box-sizing:border-box;}}
   body{{ margin:0; }}
   .page{{ background:#EFEEE9; font-family:{_CV_SANS}; color:{_CV_INK}; padding:32px 12px 64px; }}
-  .thread{{ max-width:460px; margin:0 auto; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:20px; padding:32px 24px 28px; box-shadow:0 1px 2px rgba(27,22,18,0.04); }}
+  .thread{{ max-width:460px; margin:0 auto; background:#FFFFFF; border-radius:20px; padding:32px 24px 28px; box-shadow:0 1px 2px rgba(27,22,18,0.04); }}
   .masthead{{ text-align:center; padding-bottom:18px; }}
-  .masthead .wordmark{{ font-family:{_CV_DISPLAY}; font-size:44px; font-weight:600; color:{_CV_INK}; }}
+  .masthead .wordmark{{ font-family:{_CV_DISPLAY}; font-size:44px; font-weight:700; color:{_CV_INK}; }}
   .masthead .wordmark span{{color:{_CV_SENT};}}
   .contact-sub{{ margin-top:6px; font-size:12px;color:{_CV_MUTED}; }}
   .day-chip{{ text-align:center; margin:18px 0 16px; }}
@@ -1130,9 +1137,34 @@ _CV_STYLE = f"""
   .sent-row{{ text-align:right; margin:18px 0 8px; }}
   .sent-bubble{{ display:inline-block; background:{_CV_SENT}; color:#FFF6F5; border-radius:19px; border-bottom-right-radius:5px; padding:11px 16px; max-width:78%; font-size:15px; font-weight:600; }}
   .quick-replies{{ margin-top:14px; padding-left:2px; }}
-  .qr{{ display:inline-block; text-decoration:none; font-family:{_CV_SANS}; font-size:14px; font-weight:600; color:{_CV_SENT}; background:#FFF6F5; border:1.5px solid rgba(225,6,0,0.25); padding:9px 16px; border-radius:20px; margin:0 8px 8px 0; }}
+  .qr{{ display:inline-block; text-decoration:none; font-family:{_CV_SANS}; font-size:14px; font-weight:700; color:#FFF6F5; background:{_CV_SENT}; padding:11px 18px; border-radius:20px; margin:0 8px 8px 0; }}
   .meta-footer{{ margin-top:30px; font-size:11.5px; color:{_CV_MUTED}; line-height:1.7; }}
   .meta-footer a{{color:{_CV_MUTED};}}
+  @media screen and (min-width: 600px) {{
+    /* Desktop reads as a real desktop layout instead of a stretched phone screen: wider
+       thread column, the border back (removed by default above so mobile isn't boxed in),
+       and a font-size step up across the main bubble text. Standard responsive-email layout
+       media query -- a different, well-supported mechanism from the dark-mode one below;
+       layout media queries work fine in Gmail (unlike prefers-color-scheme on its apps). */
+    .thread {{ max-width: 640px; border: 1px solid #D4D1C6; padding: 40px 40px 36px; }}
+    .masthead .wordmark {{ font-size: 50px; }}
+    .bubble {{ font-size: 17px; }}
+    .data-val {{ font-size: 19px; }}
+    .data-label .sub {{ font-size: 15px; }}
+    .insight-head {{ font-size: 19px; }}
+    .insight-body {{ font-size: 16.5px; }}
+  }}
+  @media (prefers-color-scheme: dark) {{
+    /* Best-effort only (email.py:626 header note): Gmail's iOS/Android apps -- where the
+       worst dark-mode reports came from, including red reading as orange -- ignore this media
+       query entirely and run their own automatic color inversion instead, which nothing here
+       can override. This helps the clients that DO respect it (Apple Mail, Samsung Email,
+       Gmail desktop webmail): keeps the real brand red instead of letting an auto-inversion
+       algorithm guess at it. */
+    .page {{ background-color: #18181a !important; }}
+    .thread {{ background-color: #232326 !important; border-color: #38383c !important; }}
+    body {{ color: #EFEEE9; }}
+  }}
 """
 
 
@@ -1306,11 +1338,13 @@ def render_email_conversational(
             f'{when} away{length_bit}.</p></div></div>'
         )
 
-    # Inline color (not the .qr class alone): Gmail's default link-blue was winning over
-    # class-only anchor color in the attempt-2 send.
+    # Solid-fill button, not outlined/tinted (attempt-3 version tested as too visually thin
+    # to register as a real button next to the bold .sent-bubble right above it, and read as
+    # "maybe broken"). Inline color (not the .qr class alone): Gmail's default link-blue was
+    # winning over class-only anchor color in the attempt-2 send.
     bubbles.append(
         f'<div class="quick-replies"><a class="qr" href="{html.escape(cta_url)}" '
-        f'style="color:{_CV_SENT};background:#FFF6F5">Read the full analysis &rarr;</a></div>'
+        f'style="color:#FFF6F5;background:{_CV_SENT}">Read the full analysis &rarr;</a></div>'
     )
     bubbles.append('<div class="row tight" style="margin-top:14px"><div class="bubble">See you after the next session!</div></div>')
 
