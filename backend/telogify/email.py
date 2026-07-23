@@ -136,6 +136,18 @@ def _team_color_alpha(team: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
+def _team_tint(team: str, alpha: float) -> str:
+    """Opaque version of _team_color_alpha: blends the team color against white and returns a
+    solid hex, not rgba. Needed wherever a semi-transparent background would otherwise blend
+    with whatever sits directly behind it rather than the page -- e.g. Neubrutalist's
+    shadow-box panels (_nb_shadow_box), where a real rgba tint would visibly pick up the black
+    shadow layer immediately behind it instead of reading as a light tint."""
+    hex_color = _team_color(team)
+    r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+    mix = lambda channel: round(channel * alpha + 255 * (1 - alpha))
+    return f"#{mix(r):02x}{mix(g):02x}{mix(b):02x}"
+
+
 def _darken(hex_color: str, factor: float = 0.6) -> str:
     """A row's gap number used to be fixed brand red regardless of team, which visibly clashed
     with a same-row tint in a different hue (e.g. red text on McLaren's orange wash). Darkening
@@ -627,10 +639,18 @@ def render_email_plaintext(
 # collage -- torn strip, rotated stickers/tiles/cards, ransom-note headline, alternating
 # insight-card shadows via real :nth-child, real Archivo Black/Space Mono webfonts). Returns a
 # full standalone HTML document (doctype/head/style), not a body fragment like render_email --
-# real webfonts and a dot-pattern canvas need a real <head>, and this design's rotation/shadow
-# language is closer to a genuine collage than anything Outlook-safe inline HTML can carry.
-# Real email-client testing is deferred (see project notes); this prioritizes matching the
-# approved comp.
+# real webfonts and a dot-pattern canvas need a real <head>.
+#
+# Real send test (Resend -> real Gmail address) found Gmail (desktop webmail + iOS/Android,
+# the overwhelming majority of recipients) strips or ignores: transform (no rotation, any
+# platform), the left/right/top/bottom offsets a position:absolute element needs to actually
+# be positioned, display:flex/grid, box-shadow (desktop webmail), inline <svg>, and CSS custom
+# properties (var() references survive, :root declarations don't -- N/A here, Neubrutalist
+# never used them, see the Conversational design's own note below for where this bit hardest).
+# Verified against Context7's /hteumeuleu/caniemail. Grid/flex rows, the WINNER sticker, and
+# the insight number badges are now table-based / normal-flow instead of relying on those
+# properties; transform/box-shadow/clip-path stay in the stylesheet since Gmail ignores them
+# for free and Apple Mail/Samsung Email/Thunderbird still render the fuller collage effect.
 _NB_INK = "#0a0a0a"
 
 _NB_FONTS_LINK = (
@@ -638,68 +658,112 @@ _NB_FONTS_LINK = (
     '<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">'
 )
 
-_NB_STYLE = """
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
+# Short, genuinely cross-platform-identical fallback stacks (attempt 4): the previous long
+# chains ('Arial Black', Impact, 'Helvetica Neue', Roboto...) don't all exist on every
+# platform, so desktop Gmail and the Gmail iOS app were landing on *different real fonts* once
+# Archivo Black failed to load (it never does in Gmail -- no external <link> fetching), which
+# read as inconsistent/careless rather than one deliberate design. Arial Bold (weight 700, not
+# 900 -- Arial has no true black cut, so 900 either clamps inconsistently per engine or forces
+# synthetic emboldening that also distorts Archivo Black itself where it does load) exists
+# under that exact name on Windows/macOS/iOS; Android aliases it to Roboto Bold, visually close
+# enough to read as the same design everywhere. Courier New alone (dropping Roboto Mono/Menlo/
+# Consolas) is the one monospace name genuinely universal across every platform.
+_NB_DISPLAY_FONT = "'Archivo Black', Arial, Helvetica, sans-serif"
+_NB_MONO_FONT = "'Space Mono', 'Courier New', Courier, monospace"
+
+
+def _nb_shadow_box(
+    inner_html: str,
+    *,
+    bg: str = "#fff",
+    border_color: str = _NB_INK,
+    border_width: str = "4px",
+    shadow_color: str = _NB_INK,
+    offset: int = 10,
+    side: str = "right",
+    inline: bool = False,
+    box_class: str = "",
+    box_style: str = "",
+    wrapper_style: str = "",
+) -> str:
+    """Fakes a hard offset-shadow with two nested boxes instead of CSS box-shadow (dead on
+    Gmail desktop webmail, Google-Workspace-account-only on iOS/Android): an outer div painted
+    the shadow color, with the visible content box inset from it via ordinary positive margin,
+    so the shadow color peeks out as a real color discontinuity. background-color and margin
+    are both universally supported, unlike box-shadow -- this reads as actual depth instead of
+    attempt 3's thick-border version, which tested as "looks like a mistake, not a design
+    choice." `side` flips which edges the inset margin (and therefore the visible shadow) sits
+    on, for the insight cards' alternating shadow direction."""
+    display = "inline-block" if inline else "block"
+    margin = f"0 {offset}px {offset}px 0" if side == "right" else f"0 0 {offset}px {offset}px"
+    cls = f' class="{box_class}"' if box_class else ""
+    return (
+        f'<div style="display:{display};background:{shadow_color};{wrapper_style}">'
+        f'<div{cls} style="background:{bg};border:{border_width} solid {border_color};margin:{margin};{box_style}">'
+        f"{inner_html}"
+        "</div></div>"
+    )
+
+
+def _nb_stamp(text_html: str, *, bg: str = "#E10600", inline: bool = True) -> str:
+    return _nb_shadow_box(
+        text_html, bg=bg, border_width="3px", offset=6, inline=inline,
+        box_style=(
+            f"color:#fff;font-family:{_NB_DISPLAY_FONT};font-weight:700;"
+            "padding:10px 18px;font-size:15px;letter-spacing:0.02em;"
+        ),
+    )
+
+
+_NB_STYLE = f"""
+  * {{ box-sizing: border-box; }}
+  body {{ margin: 0; }}
+  .page {{
+    background: #f2f2ea radial-gradient(#00000012 1px, transparent 1px) 0 0/14px 14px;
     padding: 48px 16px 80px;
-    background: #f2f2ea;
-    background-image: radial-gradient(#00000012 1px, transparent 1px);
-    background-size: 14px 14px;
-    font-family: 'Space Mono', monospace;
+    font-family: {_NB_MONO_FONT};
     color: #0a0a0a;
-    display: flex;
-    justify-content: center;
-  }
-  .sheet { width: 100%; max-width: 700px; position: relative; background: #fdfdfb; border: 1px solid #0a0a0a1a; padding: 40px 24px; }
-  .stamp { display: inline-block; background: #E10600; color: #fff; font-family: 'Archivo Black', sans-serif; padding: 10px 18px; border: 4px solid #0a0a0a; transform: rotate(-4deg); box-shadow: 6px 6px 0 #0a0a0a; font-size: 15px; letter-spacing: 0.02em; }
-  .masthead { position: relative; margin-bottom: 46px; padding-bottom: 40px; }
-  .masthead .wordmark { font-family: 'Archivo Black', sans-serif; font-size: 52px; line-height: 0.9; margin: 18px 0 0; letter-spacing: -0.01em; }
-  .masthead .wordmark span { color: #E10600; }
-  .masthead .lockup { display: flex; align-items: center; gap: 10px; }
-  .masthead .logo-mark { display: inline-block; background: #fff; border: 3px solid #0a0a0a; box-shadow: 4px 4px 0 #0a0a0a; padding: 6px; transform: rotate(-6deg); flex-shrink: 0; }
-  .masthead .rip { position: absolute; left: -16px; right: -16px; bottom: 0; height: 26px; background: #0a0a0a; clip-path: polygon(0% 0%, 4% 100%, 9% 10%, 14% 100%, 19% 15%, 24% 100%, 29% 5%, 34% 100%, 39% 20%, 44% 100%, 49% 0%, 54% 100%, 59% 10%, 64% 100%, 69% 5%, 74% 100%, 79% 15%, 84% 100%, 89% 0%, 94% 100%, 100% 20%, 100% 100%, 0% 100%); }
-  .headline-block { position: relative; margin: 0 0 40px; background: #fff; border: 4px solid #0a0a0a; box-shadow: 8px 8px 0 #0a0a0a; padding: 28px 24px 32px; transform: rotate(-0.6deg); }
-  .headline-block .sticker { position: absolute; top: -22px; right: -14px; z-index: 3; }
-  .ransom { font-family: 'Archivo Black', sans-serif; line-height: 1.05; margin: 10px 0 0; }
-  .ransom .a { font-size: 22px; }
-  .ransom .b { font-size: 44px; color: #E10600; }
-  .ransom .c { font-size: 30px; background: #0a0a0a; color: #fff; padding: 0 6px; }
-  .ransom .d { font-size: 22px; }
-  .ransom .e { font-size: 38px; text-decoration: underline wavy #27F4D2 4px; text-underline-offset: 6px; }
-  .sub { font-size: 14px; line-height: 1.6; margin-top: 18px; max-width: 56ch; }
-  .sub b { background: #FFE500; padding: 0 3px; }
-  .section-title { font-family: 'Archivo Black', sans-serif; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; transform: rotate(1.5deg); }
-  .flat-panel { position: relative; background: #fff; border: 4px solid #0a0a0a; box-shadow: 8px 8px 0 #0a0a0a; padding: 26px 22px 30px; margin-bottom: 34px; }
-  .pace-row { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 18px; border-bottom: 2px dashed #0a0a0a55; font-size: 16px; }
-  .pace-row:last-child { border-bottom: none; }
-  .pace-row .num { font-family: 'Archivo Black', sans-serif; font-size: 28px; }
-  .swatch { display:inline-block; width:11px; height:11px; margin-right:8px; border:2px solid #0a0a0a; vertical-align:middle; }
-  .collage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 8px; position: relative; }
-  .practice-tile { background: #fff; border: 3px solid #0a0a0a; padding: 14px 14px 16px; box-shadow: 5px 5px 0 #0a0a0a; font-size: 13px; }
-  .practice-tile:nth-child(2) { transform: rotate(1.5deg); margin-top: -4px; }
-  .practice-tile:nth-child(3) { transform: rotate(-1.2deg); }
-  .practice-tile:nth-child(4) { transform: rotate(0.8deg); margin-top: -6px; }
-  .practice-tile .lbl { font-family: 'Archivo Black', sans-serif; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }
-  .practice-tile .val { font-family: 'Archivo Black', sans-serif; font-size: 20px; margin: 2px 0; }
-  .quali-block { position: relative; border: 4px solid #0a0a0a; box-shadow: 8px 8px 0 #0a0a0a; padding: 22px 22px 26px; margin: 44px 0 40px; transform: rotate(0.8deg); }
-  .quali-block .lbl { font-family: 'Archivo Black', sans-serif; font-size: 12px; background: #0a0a0a; color: #fff; display: inline-block; padding: 3px 10px; transform: rotate(-2deg); }
-  .quali-block h3 { font-family: 'Archivo Black', sans-serif; font-size: 21px; margin: 12px 0 8px; line-height: 1.15; }
-  .quali-block p { font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }
-  .insight { position: relative; background: #fff; border: 4px solid #0a0a0a; padding: 22px 20px 24px; margin-bottom: 28px; }
-  .insight:nth-child(odd) { box-shadow: 7px 7px 0 #0a0a0a; }
-  .insight:nth-child(even) { box-shadow: -7px 7px 0 #0a0a0a; transform: rotate(-0.4deg); }
-  .insight h3 { font-family: 'Archivo Black', sans-serif; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }
-  .insight p { font-size: 14px; line-height: 1.65; margin: 0; }
-  .insight .num-flag { position: absolute; top: -14px; right: -10px; font-family: 'Archivo Black', sans-serif; font-size: 30px; color: #0a0a0a; -webkit-text-stroke: 1.5px #fff; background: #FFE500; border: 3px solid #0a0a0a; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transform: rotate(8deg); }
-  .cta { display: block; text-align: center; font-family: 'Archivo Black', sans-serif; font-size: 20px; color: #fff; background: #E10600; border: 4px solid #0a0a0a; box-shadow: 8px 8px 0 #0a0a0a; padding: 18px 20px; text-decoration: none; margin: 20px 0 50px; transform: rotate(-0.5deg); }
-  .next-race { background: #fff; color: #0a0a0a; border: 4px solid #0a0a0a; box-shadow: 8px 8px 0 #0a0a0a; padding: 24px 22px; margin-bottom: 40px; position: relative; }
-  .next-race .lbl { font-family:'Archivo Black',sans-serif; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; transform: rotate(-2deg); }
-  .next-race h3 { font-family:'Archivo Black',sans-serif; font-size:24px; margin:12px 0 6px; }
-  .next-race .stats { display:flex; gap:28px; margin-top:14px; font-size:13px; }
-  .next-race .stats b { font-family:'Archivo Black',sans-serif; font-size:22px; color:#E10600; display:block; }
-  footer { font-size: 12px; line-height: 1.8; color: #0a0a0a99; border-top: 3px solid #0a0a0a; padding-top: 18px; }
-  footer a { color: #0a0a0a; }
+  }}
+  .sheet {{ width: 100%; max-width: 700px; margin: 0 auto; background: #fdfdfb; border: 1px solid #0a0a0a1a; padding: 40px 24px; }}
+  .masthead {{ margin-bottom: 46px; padding-bottom: 40px; }}
+  .masthead .wordmark {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 52px; line-height: 0.9; margin: 18px 0 0; letter-spacing: -0.01em; }}
+  .masthead .wordmark span {{ color: #E10600; }}
+  .masthead .rip {{ margin: 18px -16px 0; height: 20px; background: #0a0a0a; clip-path: polygon(0% 0%, 4% 100%, 9% 10%, 14% 100%, 19% 15%, 24% 100%, 29% 5%, 34% 100%, 39% 20%, 44% 100%, 49% 0%, 54% 100%, 59% 10%, 64% 100%, 69% 5%, 74% 100%, 79% 15%, 84% 100%, 89% 0%, 94% 100%, 100% 20%, 100% 100%, 0% 100%); }}
+  .ransom {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; line-height: 1.05; margin: 10px 0 0; }}
+  .ransom .a {{ font-size: 22px; }}
+  .ransom .b {{ font-size: 44px; color: #E10600; }}
+  .ransom .c {{ font-size: 30px; background: #0a0a0a; color: #fff; padding: 0 6px; }}
+  .ransom .d {{ font-size: 22px; }}
+  .ransom .e {{ font-size: 38px; text-decoration: underline wavy #27F4D2 4px; text-underline-offset: 6px; }}
+  .sub {{ font-size: 14px; line-height: 1.6; margin-top: 18px; max-width: 56ch; }}
+  .sub b {{ background: #FFE500; padding: 0 3px; }}
+  .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
+  .swatch {{ display:inline-block; width:11px; height:11px; margin-right:8px; border:2px solid #0a0a0a; vertical-align:middle; }}
+  .practice-tile-inner {{ font-size: 13px; }}
+  .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
+  .practice-tile-inner .val {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 20px; margin: 2px 0; }}
+  .quali-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; background: #0a0a0a; color: #fff; display: inline-block; padding: 3px 10px; }}
+  .quali-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 21px; margin: 12px 0 8px; line-height: 1.15; }}
+  .quali-inner p {{ font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }}
+  .insight-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }}
+  .insight-inner p {{ font-size: 14px; line-height: 1.65; margin: 0; }}
+  .num-flag {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; color: #0a0a0a; background: #FFE500; border: 3px solid #0a0a0a; width: 38px; height: 38px; line-height: 32px; text-align: center; border-radius: 50%; }}
+  .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
+  .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
+  .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
+  .next-race-inner .stats b {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:22px; color:#E10600; display:block; }}
+  footer {{ font-size: 12px; line-height: 1.8; color: #0a0a0a99; border-top: 3px solid #0a0a0a; padding-top: 18px; }}
+  @media (prefers-color-scheme: dark) {{
+    /* Best-effort only (email.py:626 header note): Gmail's iOS/Android apps -- where the
+       worst dark-mode reports came from -- ignore this media query outright and run their
+       own automatic color inversion instead, which nothing here can override. This helps the
+       clients that DO respect it (Apple Mail, Samsung Email, Gmail desktop webmail). Panel
+       backgrounds/borders are set inline per-instance by _nb_shadow_box, so they're left as
+       white cards floating on the darkened page rather than fought with !important overrides
+       -- a normal, legible dark-mode pattern on its own. */
+    .page {{ background-color: #16160f !important; }}
+    body {{ color: #f2f2ea; }}
+  }}
 """
 
 
@@ -767,15 +831,33 @@ def _nb_practice_html(practice: dict | None) -> str:
         practice["top_speed_constructor"] or "Unknown",
         f"{_full_driver_name(practice['top_speed_driver'])} ({mph:.0f} mph)",
     ))
-    tile_html = "".join(
-        f'<div class="practice-tile"><span class="lbl" style="background:{_darken(_team_color(constructor), 0.9)}">{html.escape(label)}</span>'
-        f'<p class="val">{html.escape(value)}</p>'
-        f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p></div>'
-        for label, value, constructor, driver_bit in tiles
+    # Table, not CSS grid (email.py:626 header note / project CLAUDE.md): Gmail (desktop,
+    # iOS, Android, non-Workspace accounts) doesn't support display:grid, which was collapsing
+    # this into one stacked column. Per-tile rotation moves onto the shadow-box's outer wrapper
+    # (rotating shadow+content as one rigid unit) since it rode on :nth-child selectors that
+    # don't match once tiles become <td>s.
+    _tile_rotations = ["", "transform:rotate(1.5deg);margin-top:-4px;", "transform:rotate(-1.2deg);", "transform:rotate(0.8deg);margin-top:-6px;"]
+    tile_divs = [
+        _nb_shadow_box(
+            f'<span class="lbl" style="background:{_darken(_team_color(constructor), 0.9)}">{html.escape(label)}</span>'
+            f'<p class="val">{html.escape(value)}</p>'
+            f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p>',
+            border_width="3px", offset=7, box_class="practice-tile-inner",
+            box_style="padding:14px 14px 16px;",
+            wrapper_style=_tile_rotations[i] if i < len(_tile_rotations) else "",
+        )
+        for i, (label, value, constructor, driver_bit) in enumerate(tiles)
+    ]
+    rows_html = "".join(
+        '<tr>'
+        f'<td width="50%" style="padding:0 9px 18px 0;vertical-align:top;">{tile_divs[r]}</td>'
+        f'<td width="50%" style="padding:0 0 18px 9px;vertical-align:top;">{tile_divs[r + 1]}</td>'
+        '</tr>'
+        for r in range(0, len(tile_divs), 2)
     )
     return (
         '<span class="section-title">FAST OUT THE GATES</span>'
-        f'<div class="collage-grid">{tile_html}</div>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows_html}</table>'
     )
 
 
@@ -784,13 +866,15 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
         return ""
     header = _clean(quali.header)
     body = _clean(_first_sentence(quali.explanation_email))
-    team_color = _team_color_alpha(quali.team, 0.18) if quali.team else "rgba(39,244,210,0.18)"
-    return (
-        f'<div class="quali-block" style="background:{team_color}">'
+    team_color = _team_tint(quali.team, 0.18) if quali.team else _team_tint("Mercedes", 0.18)
+    inner = (
         '<span class="lbl">QUALIFYING HOUR</span>'
         f'<h3>{header}</h3>'
         f'<p>{body}</p>'
-        '</div>'
+    )
+    return _nb_shadow_box(
+        inner, bg=team_color, box_class="quali-inner",
+        box_style="padding:22px 22px 26px;", wrapper_style="margin-top:44px;",
     )
 
 
@@ -798,17 +882,30 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
     if pace_spread is None:
         return ""
     fastest = html.escape(pace_spread["fastest"])
-    rows = "".join(
-        f'<div class="pace-row"><span><span class="swatch" style="background:{_team_color(name)}">'
-        f'</span>{html.escape(name)}</span><span class="num" style="color:{_team_color(name)}">'
-        f'{html.escape(gap)}</span></div>'
-        for name, gap in pace_spread["rows"]
+    pace_rows = pace_spread["rows"]
+    # Table row, not display:flex (unsupported for most real Gmail recipients) -- same
+    # <tr><td>label</td><td align=right>value</td></tr> idiom as render_email's own
+    # _pace_spread_panel (email.py, already Gmail-safe).
+    row_html = []
+    for i, (name, gap) in enumerate(pace_rows):
+        border = "" if i == len(pace_rows) - 1 else "border-bottom:2px dashed #0a0a0a55;"
+        row_html.append(
+            "<tr>"
+            f'<td style="padding:10px 8px 10px 0;{border}font-size:16px;text-align:left;">'
+            f'<span class="swatch" style="background:{_team_color(name)}"></span>{html.escape(name)}</td>'
+            f'<td style="padding:10px 0 10px 8px;{border}text-align:right;'
+            f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
+            f'font-size:28px;color:{_team_color(name)};">{html.escape(gap)}</td>'
+            "</tr>"
+        )
+    inner = (
+        f'<p style="font-size:13px;margin:0 0 16px;">{fastest} set the pace this weekend. '
+        f'Gap per lap, race pace:</p>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{"".join(row_html)}</table>'
     )
     return (
         '<span class="section-title">PACE SPREAD // CONSTRUCTORS</span>'
-        '<div class="flat-panel">'
-        f'<p style="font-size:13px;margin:0 0 16px;">{fastest} set the pace this weekend. '
-        f'Gap per lap, race pace:</p>{rows}</div>'
+        + _nb_shadow_box(inner, box_style="padding:26px 22px 30px;", wrapper_style="margin-bottom:34px;")
     )
 
 
@@ -817,23 +914,27 @@ def _nb_next_race_html(next_race: dict | None) -> str:
         return ""
     days = next_race["days"]
     if days == 0:
-        days_stat = '<div><b>TODAY</b></div>'
+        days_stat = '<td style="padding-right:28px;"><b>TODAY</b></td>'
     elif days == 1:
-        days_stat = '<div><b>TOMORROW</b></div>'
+        days_stat = '<td style="padding-right:28px;"><b>TOMORROW</b></td>'
     else:
-        days_stat = f'<div><b>{days}</b>days away</div>'
+        days_stat = f'<td style="padding-right:28px;"><b>{days}</b>days away</td>'
     length_km = next_race.get("length_km")
-    km_stat = f'<div><b>{length_km:.3f}</b>km circuit</div>' if length_km is not None else ""
+    km_stat = f'<td><b>{length_km:.3f}</b>km circuit</td>' if length_km is not None else ""
     place = (
         f'<p style="margin:0;font-size:13px;">{html.escape(next_race["place"])}</p>'
         if next_race.get("place") else ""
     )
-    return (
-        '<div class="next-race">'
+    inner = (
         f'<span class="lbl">NEXT UP &middot; ROUND {next_race["round"]}</span>'
         f'<h3>{html.escape(next_race["name"])}</h3>{place}'
-        f'<div class="stats">{days_stat}{km_stat}</div>'
-        '</div>'
+        # Table row, not display:flex+gap (unsupported for most Gmail recipients) -- was
+        # collapsing "4 days away" / "4.381 km circuit" into one run-on line with no spacing.
+        f'<table role="presentation" cellpadding="0" cellspacing="0" class="stats"><tr>{days_stat}{km_stat}</tr></table>'
+    )
+    return _nb_shadow_box(
+        inner, box_class="next-race-inner", box_style="padding:24px 22px;",
+        wrapper_style="margin-bottom:40px;",
     )
 
 
@@ -873,14 +974,55 @@ def render_email_neubrutalist(
             header = _clean(ins.header)
             body = _clean(_first_sentence(ins.explanation_email))
             color = _team_color(ins.team) if ins.team else _NB_INK
-            cards.append(
-                f'<div class="insight" style="border-color:{color}">'
-                f'<span class="num-flag" style="background:{color}">{i}</span>'
-                f'<h3>{header}</h3><p>{body}</p></div>'
+            # Alternating shadow side (odd: right, even: left) echoes the comp's alternating
+            # box-shadow direction (:nth-child(odd/even){box-shadow:±7px 7px}) computed here
+            # instead of via CSS :nth-child, matching where the per-team border-color is
+            # already computed per card.
+            side = "right" if i % 2 == 1 else "left"
+            badge_align = "right" if side == "right" else "left"
+            # Badge renders first at its normal (known, fixed ~38px) size, corner-aligned; the
+            # card box follows with a negative top margin pulling its own top edge up to tuck
+            # under the badge -- same construction as the WINNER sticker above (see its
+            # comment for the full reasoning on why fixed-size-first + box-pulls-up-after is
+            # the bounded, predictable order, not the reverse). Real fragility in the negative
+            # margin itself (Yahoo/AOL dropped support outright, Gmail's own isn't confirmed)
+            # -- verify against the real send; fall back to non-overlapping badge-above-heading
+            # placement if it doesn't hold.
+            badge_line = f'<div style="text-align:{badge_align};margin:0 10px 0 10px;"><span class="num-flag" style="background:{color}">{i}</span></div>'
+            box = _nb_shadow_box(
+                f"<h3>{header}</h3><p>{body}</p>",
+                border_color=color, box_class="insight-inner",
+                box_style="padding:22px 20px 24px;", offset=10, side=side,
+                wrapper_style="margin:-20px 0 28px;",
             )
+            cards.append(badge_line + box)
         cards_html = '<span class="section-title">THE 3 INSIGHTS</span>' + "".join(cards)
 
-    cta = f'<a href="{html.escape(cta_url)}" class="cta">READ THE FULL ANALYSIS &rarr;</a>'
+    # Inline color (not the .cta class alone): Gmail's default link-blue was winning over
+    # class-only anchor color in the attempt-2 send. Shadow-boxed like the panels; the anchor
+    # itself is the inset content box so it stays a single click target.
+    cta = _nb_shadow_box(
+        f'<a href="{html.escape(cta_url)}" style="display:block;text-align:center;'
+        f'font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:20px;color:#fff;'
+        'text-decoration:none;padding:18px 20px;">READ THE FULL ANALYSIS &rarr;</a>',
+        bg="#E10600", wrapper_style="margin:20px 0 50px;",
+    )
+
+    winner_sticker = f'<div style="text-align:right;margin:0 20px 0 0;">{_nb_stamp("WINNER", bg=html.escape(_darken(_team_color(raw_team), 0.85)) if raw_team else "#E10600")}</div>'
+    # Corner-overlap sticker, not position:absolute + z-index (email.py:626 header note --
+    # both dead in Gmail). The sticker renders first at its normal (known, fixed-height ~40px)
+    # size; the box below it pulls its own top edge up via negative margin to partially tuck
+    # under the sticker -- the box paints after in DOM order, so it covers the sticker's bottom
+    # slice while the sticker's top portion keeps peeking out above the box's raised edge.
+    # Bounded by the sticker's fixed size rather than the box's dynamic content height, so it
+    # stays predictable regardless of how long the ransom note/sub-line run. Real fragility in
+    # the negative margin itself (Yahoo/AOL dropped support outright, Gmail's own support isn't
+    # confirmed) -- verify against the real send; fall back to non-overlapping stacked
+    # placement if it doesn't hold.
+    headline_box = _nb_shadow_box(
+        _nb_ransom_html(winner, pace_spread) + sub, box_class="headline-inner",
+        box_style="padding:28px 24px 32px;", wrapper_style="margin:-22px 0 40px;",
+    )
 
     return f"""<!doctype html>
 <html lang="en">
@@ -891,27 +1033,17 @@ def render_email_neubrutalist(
 <style>{_NB_STYLE}</style>
 </head>
 <body>
+<div class="page">
 <div class="sheet">
 
   <div class="masthead">
-    <span class="stamp">{event_name}</span>
-    <div class="lockup">
-      <span class="logo-mark">
-        <svg width="34" height="34" viewBox="0 0 32 32" fill="none">
-          <path d="M2 16 L6 7 L10 25 L13 11 L16 20 L18 16" stroke="#0a0a0a" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M18 16 L30 16" stroke="#E10600" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </span>
-      <p class="wordmark">telo<span>gify</span></p>
-    </div>
+    {_nb_stamp(event_name)}
+    <p class="wordmark">telo<span>gify</span></p>
     <div class="rip"></div>
   </div>
 
-  <div class="headline-block">
-    <span class="stamp sticker" style="background:{html.escape(_darken(_team_color(raw_team), 0.85)) if raw_team else '#E10600'}">WINNER</span>
-    {_nb_ransom_html(winner, pace_spread)}
-    {sub}
-  </div>
+  {winner_sticker}
+  {headline_box}
 
   {_nb_practice_html(practice)}
   {_nb_qualifying_html(quali_insight)}
@@ -925,9 +1057,10 @@ def render_email_neubrutalist(
   <footer>
     Methodology inputs come from Mirco Bartolozzi (@fdataanalysis), covering clean-air filtering, fuel correction, and the ERS depletion signal. Timing data comes from FastF1.<br>
     See you after the next session!<br>
-    &copy; {weekend.year} Tanish Misra &middot; <a href="{html.escape(base_url.rstrip('/'))}/unsubscribe">Unsubscribe</a>
+    &copy; {weekend.year} Tanish Misra &middot; <a href="{html.escape(base_url.rstrip('/'))}/unsubscribe" style="color:#0a0a0a">Unsubscribe</a>
   </footer>
 
+</div>
 </div>
 </body>
 </html>"""
@@ -938,57 +1071,68 @@ def render_email_neubrutalist(
 # bubble grouping, a typing indicator, and v64's real two-part CTA: a decorative non-clickable
 # "sent" bubble followed later by the actual clickable link). Full standalone document for the
 # same reason as Neubrutalist: real webfonts need a real <head>.
+#
+# Gmail-safety note (see Neubrutalist's own note above for the full picture, verified via
+# Context7's /hteumeuleu/caniemail): this design was worse-hit than Neubrutalist because its
+# whole stylesheet was built on CSS custom properties (:root{--bg:...} + var(--bg) everywhere)
+# -- Gmail keeps var() *references* but drops the :root *declaration*, so every var() silently
+# resolved to nothing. All values below are literals instead. Bubble rows also relied on
+# display:flex to both lay out label/value pairs (now tables) and to shrink-wrap bubbles to
+# their content (now display:inline-block on the bubbles themselves, since a plain block .row
+# wrapper stretches its child to full width).
 _CV_FONTS_LINK = (
     '<link rel="preconnect" href="https://fonts.googleapis.com">'
     '<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700'
     '&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">'
 )
 
-_CV_STYLE = """
-  :root{
-    --bg:#EFEEE9; --bubble:#FFFFFF; --bubble-border:#D4D1C6; --sent:#E10600; --sent-ink:#FFF6F5;
-    --ink:#1B1612; --muted:#8A837C;
-    --mono:'JetBrains Mono', monospace;
-    --sans:'Space Grotesk', system-ui, -apple-system, sans-serif;
-    --display:'Instrument Sans', 'Space Grotesk', system-ui, sans-serif;
-  }
-  *{box-sizing:border-box;}
-  body{ margin:0; background:var(--bg); font-family:var(--sans); color:var(--ink); padding:32px 12px 64px; }
-  .thread{ max-width:460px; margin:0 auto; background:#FFFFFF; border:1px solid var(--bubble-border); border-radius:20px; padding:32px 24px 28px; box-shadow:0 1px 2px rgba(27,22,18,0.04); }
-  .masthead{ text-align:center; padding-bottom:18px; }
-  .masthead .lockup{ display:inline-flex; align-items:center; gap:12px; }
-  .masthead .wordmark{ font-family:var(--display); font-size:44px; font-weight:400; color:var(--ink); }
-  .masthead .wordmark span{color:var(--sent);}
-  .contact-sub{ margin-top:6px; font-size:12px;color:var(--muted); }
-  .day-chip{ text-align:center; margin:18px 0 16px; }
-  .day-chip span{ display:inline-block; background:rgba(0,0,0,0.05); color:var(--muted); font-size:11px; font-weight:600; padding:4px 12px; border-radius:20px; letter-spacing:0.02em; }
-  .row{ display:flex; margin-bottom:8px; }
-  .row.tight{margin-bottom:3px;}
-  .bubble{ background:var(--bubble); border:1px solid var(--bubble-border); border-radius:19px; border-bottom-left-radius:5px; padding:11px 15px; max-width:84%; font-size:15.5px; line-height:1.42; box-shadow:0 1px 1px rgba(27,22,18,0.03); }
-  .row.tight .bubble{border-bottom-left-radius:19px;}
-  .row.last-in-group .bubble{border-bottom-left-radius:5px;}
-  strong{font-weight:700;}
-  .num{ font-family:var(--mono); font-weight:600; color:var(--sent); }
-  .team-label{ font-weight:700; }
-  .data-bubble{ background:var(--bubble); border:1px solid var(--bubble-border); border-radius:19px; border-bottom-left-radius:5px; padding:10px 16px; max-width:97%; }
-  .data-row{ display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:2px 0; border-bottom:1px solid #F0EFEA; font-size:16px; }
-  .data-row:last-child{border-bottom:none;}
-  .data-label{color:var(--ink);}
-  .data-label .sub{color:var(--muted);font-size:13.5px;display:block;margin-top:1px;}
-  .data-val{ font-family:var(--mono); font-weight:600; font-size:17px; color:var(--ink); white-space:nowrap; padding-left:12px; }
-  .insight-bubble{ background:var(--bubble); border:1px solid var(--bubble-border); border-radius:19px; border-bottom-left-radius:5px; padding:16px 18px; max-width:97%; }
-  .insight-tag{ display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; background:transparent; padding:2px 8px; border-radius:5px; border:1.5px solid currentColor; margin-bottom:8px; }
-  .insight-head{ font-weight:700; font-size:17px; line-height:1.32; margin:0 0 5px; }
-  .insight-body{ font-size:15px; line-height:1.48; color:#4A443E; margin:0; }
-  .typing{ display:inline-flex; gap:4px; background:var(--bubble); border:1px solid var(--bubble-border); border-radius:19px; border-bottom-left-radius:5px; padding:13px 16px; align-items:center; }
-  .typing i{ width:6px;height:6px;border-radius:50%; background:#C9C4BC; display:inline-block; }
-  .timestamp{ text-align:center; font-size:11px; color:var(--muted); margin:14px 0 6px; }
-  .sent-row{ display:flex; justify-content:flex-end; margin:18px 0 8px; }
-  .sent-bubble{ background:var(--sent); color:var(--sent-ink); border-radius:19px; border-bottom-right-radius:5px; padding:11px 16px; max-width:78%; font-size:15px; font-weight:600; }
-  .quick-replies{ display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; padding-left:2px; }
-  .qr{ display:inline-block; text-decoration:none; font-family:var(--sans); font-size:14px; font-weight:600; color:var(--sent); background:var(--sent-ink); border:1.5px solid rgba(225,6,0,0.25); padding:9px 16px; border-radius:20px; }
-  .meta-footer{ margin-top:30px; font-size:11.5px; color:var(--muted); line-height:1.7; }
-  .meta-footer a{color:var(--muted);}
+_CV_MONO = "'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, 'Courier New', monospace"
+_CV_SANS = "'Space Grotesk', 'Trebuchet MS', -apple-system, 'Segoe UI', Helvetica, sans-serif"
+_CV_DISPLAY = "'Instrument Sans', 'Space Grotesk', 'Trebuchet MS', -apple-system, 'Segoe UI', Helvetica, sans-serif"
+_CV_INK = "#1B1612"
+_CV_MUTED = "#8A837C"
+_CV_SENT = "#E10600"
+
+# No :root/var() (email.py:626 header note): Gmail keeps var() *references* but drops the
+# :root declarations that define them, silently losing every color/font/spacing value this
+# stylesheet routed through custom properties. Every value below is a literal instead.
+_CV_STYLE = f"""
+  *{{box-sizing:border-box;}}
+  body{{ margin:0; }}
+  .page{{ background:#EFEEE9; font-family:{_CV_SANS}; color:{_CV_INK}; padding:32px 12px 64px; }}
+  .thread{{ max-width:460px; margin:0 auto; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:20px; padding:32px 24px 28px; box-shadow:0 1px 2px rgba(27,22,18,0.04); }}
+  .masthead{{ text-align:center; padding-bottom:18px; }}
+  .masthead .wordmark{{ font-family:{_CV_DISPLAY}; font-size:44px; font-weight:600; color:{_CV_INK}; }}
+  .masthead .wordmark span{{color:{_CV_SENT};}}
+  .contact-sub{{ margin-top:6px; font-size:12px;color:{_CV_MUTED}; }}
+  .day-chip{{ text-align:center; margin:18px 0 16px; }}
+  .day-chip span{{ display:inline-block; background:rgba(0,0,0,0.05); color:{_CV_MUTED}; font-size:11px; font-weight:600; padding:4px 12px; border-radius:20px; letter-spacing:0.02em; }}
+  .row{{ margin-bottom:8px; }}
+  .row.tight{{margin-bottom:3px;}}
+  .bubble{{ display:inline-block; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:11px 15px; max-width:84%; font-size:15.5px; line-height:1.42; box-shadow:0 1px 1px rgba(27,22,18,0.03); }}
+  .row.tight .bubble{{border-bottom-left-radius:19px;}}
+  .row.last-in-group .bubble{{border-bottom-left-radius:5px;}}
+  strong{{font-weight:700;}}
+  .num{{ font-family:{_CV_MONO}; font-weight:600; color:{_CV_SENT}; }}
+  .team-label{{ font-weight:700; }}
+  .data-bubble{{ display:inline-block; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:10px 16px; max-width:97%; }}
+  .data-label{{color:{_CV_INK};}}
+  .data-label .sub{{color:{_CV_MUTED};font-size:13.5px;display:block;margin-top:1px;}}
+  .data-val{{ font-family:{_CV_MONO}; font-weight:600; font-size:17px; color:{_CV_INK}; white-space:nowrap; padding-left:12px; }}
+  .insight-bubble{{ display:inline-block; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:16px 18px; max-width:97%; }}
+  .insight-tag{{ display:inline-block; font-family:{_CV_MONO}; font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; background:transparent; padding:2px 8px; border-radius:5px; border-width:1.5px; border-style:solid; margin-bottom:8px; }}
+  .insight-head{{ font-weight:700; font-size:17px; line-height:1.32; margin:0 0 5px; }}
+  .insight-body{{ font-size:15px; line-height:1.48; color:#4A443E; margin:0; }}
+  .typing{{ display:inline-block; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:13px 16px; }}
+  .typing i{{ width:6px;height:6px;border-radius:50%; background:#C9C4BC; display:inline-block; margin-right:4px; }}
+  .typing i:last-child{{margin-right:0;}}
+  .timestamp{{ text-align:center; font-size:11px; color:{_CV_MUTED}; margin:14px 0 6px; }}
+  .sent-row{{ text-align:right; margin:18px 0 8px; }}
+  .sent-bubble{{ display:inline-block; background:{_CV_SENT}; color:#FFF6F5; border-radius:19px; border-bottom-right-radius:5px; padding:11px 16px; max-width:78%; font-size:15px; font-weight:600; }}
+  .quick-replies{{ margin-top:14px; padding-left:2px; }}
+  .qr{{ display:inline-block; text-decoration:none; font-family:{_CV_SANS}; font-size:14px; font-weight:600; color:{_CV_SENT}; background:#FFF6F5; border:1.5px solid rgba(225,6,0,0.25); padding:9px 16px; border-radius:20px; margin:0 8px 8px 0; }}
+  .meta-footer{{ margin-top:30px; font-size:11.5px; color:{_CV_MUTED}; line-height:1.7; }}
+  .meta-footer a{{color:{_CV_MUTED};}}
 """
 
 
@@ -1019,10 +1163,20 @@ def _cv_stat_bubble(row_html: str, team: str | None, row_class: str = "") -> str
 
 
 def _cv_data_row(label_html: str, value: str, *, value_color: str | None = None) -> str:
-    value_style = f' style="color:{value_color}"' if value_color else ""
+    # Table row, not display:flex (unsupported for most real Gmail recipients) -- was
+    # collapsing label/value onto one run-on line with no spacing. Each call is the sole row
+    # inside its own stat bubble (see _cv_stat_bubble callers), so no border/last-child needed.
+    # No width="100%": the bubble already shrink-wraps to content (display:inline-block), so a
+    # forced-full-width table only risks stretching it in less careful renderers; the label/
+    # value gap comes from .data-val's own padding-left. vertical-align:top/baseline instead of
+    # the table default (middle), which was center-aligning a two-line label (name + sub-line)
+    # against the value -- the old flex row used align-items:baseline.
+    color_style = f"color:{value_color};" if value_color else ""
     return (
-        f'<div class="data-row"><div class="data-label">{label_html}</div>'
-        f'<div class="data-val num"{value_style}>{html.escape(value)}</div></div>'
+        '<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
+        f'<td class="data-label" style="vertical-align:top">{label_html}</td>'
+        f'<td class="data-val num" style="text-align:right;vertical-align:baseline;{color_style}">{html.escape(value)}</td>'
+        '</tr></table>'
     )
 
 
@@ -1031,11 +1185,12 @@ def _cv_emphasize_numbers(escaped_text: str) -> str:
 
 
 def _cv_insight_bubble(tag_text: str | None, team: str | None, header: str, body: str) -> str:
-    # the tag's border and text both ride on this color (border:1.5px solid currentColor); a
-    # raw light team color (e.g. McLaren orange, Mercedes teal) reads too faint at that weight,
-    # so darken it the same way _darken already does for pace-row gap numbers.
+    # a raw light team color (e.g. McLaren orange, Mercedes teal) reads too faint at that
+    # weight, so darken it the same way _darken already does for pace-row gap numbers. Border
+    # color is set inline explicitly (not CSS currentColor) since it's the one property most
+    # likely to get lost to a client's own default if left to inherit.
     color = _darken(_team_color(team), 0.5) if team else _MUTED
-    tag = f'<span class="insight-tag" style="color:{color}">{html.escape(tag_text)}</span>' if tag_text else ""
+    tag = f'<span class="insight-tag" style="color:{color};border-color:{color}">{html.escape(tag_text)}</span>' if tag_text else ""
     return (
         '<div class="row"><div class="insight-bubble">'
         f'{tag}'
@@ -1151,14 +1306,19 @@ def render_email_conversational(
             f'{when} away{length_bit}.</p></div></div>'
         )
 
-    bubbles.append(f'<div class="quick-replies"><a class="qr" href="{html.escape(cta_url)}">Read the full analysis &rarr;</a></div>')
+    # Inline color (not the .qr class alone): Gmail's default link-blue was winning over
+    # class-only anchor color in the attempt-2 send.
+    bubbles.append(
+        f'<div class="quick-replies"><a class="qr" href="{html.escape(cta_url)}" '
+        f'style="color:{_CV_SENT};background:#FFF6F5">Read the full analysis &rarr;</a></div>'
+    )
     bubbles.append('<div class="row tight" style="margin-top:14px"><div class="bubble">See you after the next session!</div></div>')
 
     footer = (
         'Methodology inputs come from Mirco Bartolozzi (@fdataanalysis), covering clean-air filtering, '
         'fuel correction, and the ERS depletion signal. Timing data comes from FastF1.<br><br>'
         f"&copy; {weekend.year} Tanish Misra &middot; "
-        f'<a href="{html.escape(base_url.rstrip("/"))}/unsubscribe">Unsubscribe</a>'
+        f'<a href="{html.escape(base_url.rstrip("/"))}/unsubscribe" style="color:{_CV_MUTED}">Unsubscribe</a>'
     )
 
     day_chip = f'<div class="day-chip"><span>{now.strftime("%A").upper()}</span></div>'
@@ -1173,16 +1333,11 @@ def render_email_conversational(
 <style>{_CV_STYLE}</style>
 </head>
 <body>
+<div class="page">
 <div class="thread">
 
   <div class="masthead">
-    <div class="lockup">
-      <svg width="48" height="48" viewBox="0 0 32 32" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M2 16 L6 7 L10 25 L13 11 L16 20 L18 16" stroke="#1B1612"></path>
-        <path d="M18 16 L30 16" stroke="#E10600"></path>
-      </svg>
-      <span class="wordmark">Telo<span>gify</span></span>
-    </div>
+    <span class="wordmark">Telo<span>gify</span></span>
     <div class="contact-sub">{event_name}</div>
   </div>
 
@@ -1192,6 +1347,7 @@ def render_email_conversational(
 
   <div class="meta-footer">{footer}</div>
 
+</div>
 </div>
 </body>
 </html>"""

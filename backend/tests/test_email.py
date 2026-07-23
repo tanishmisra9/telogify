@@ -432,7 +432,8 @@ def test_render_email_neubrutalist_renders_core_content():
     assert '<span class="c">WON</span>' in html
     assert '<span class="e">Mercedes</span>' in html
     # next-race panel is light (matching v59), not the dark-inverted regression
-    assert '<div class="next-race">' in html
+    assert 'class="next-race-inner"' in html
+    assert 'background:#fff' in html
 
 
 def test_render_email_conversational_renders_core_content():
@@ -462,7 +463,8 @@ def test_render_email_conversational_renders_core_content():
     assert 'class="typing"' in html and "Telogify is typing" in html
     # v64's real two-part CTA: a decorative non-clickable "sent" bubble, plus a separate real link
     assert '<div class="sent-bubble">I want to read the full analysis!</div>' in html
-    assert '<a class="qr" href="https://telogify.app/weekends/2025/11">Read the full analysis' in html
+    assert '<a class="qr" href="https://telogify.app/weekends/2025/11" style="color:#E10600' in html
+    assert "Read the full analysis" in html
     # numbers inside insight/qualifying prose get the .num highlight treatment (v64), unlike
     # Neubrutalist's plain body text
     assert '<span class="num">12 km/h</span>' in html
