@@ -1144,7 +1144,13 @@ _CV_STYLE = f"""
   .typing i:last-child{{margin-right:0;}}
   .timestamp{{ text-align:center; font-size:11px; color:{_CV_MUTED}; margin:14px 0 6px; }}
   .sent-row{{ text-align:right; margin:18px 0 8px; }}
-  .sent-bubble{{ display:inline-block; background:{_CV_SENT}; color:#FFF6F5; border-radius:19px; border-bottom-right-radius:5px; padding:11px 16px; max-width:78%; font-size:15px; font-weight:600; }}
+  /* text-align:left (attempt 5 fix): .sent-bubble had no text-align of its own, so it
+     inherited .sent-row's text-align:right -- meaning the *inline-block bubble* was
+     positioned correctly on the right, but the *text inside it* was also ragged-right
+     instead of reading naturally, which is what made it look broken on mobile. Widened
+     max-width slightly so the two-line wrap ("I want to read the full / analysis!") isn't
+     needlessly narrow. */
+  .sent-bubble{{ display:inline-block; text-align:left; background:{_CV_SENT}; color:#FFF6F5; border-radius:19px; border-bottom-right-radius:5px; padding:11px 16px; max-width:85%; font-size:15px; font-weight:600; }}
   .quick-replies{{ margin-top:14px; padding-left:2px; }}
   .qr{{ display:inline-block; text-decoration:none; font-family:{_CV_SANS}; font-size:14px; font-weight:700; color:#FFF6F5; background:{_CV_SENT}; padding:11px 18px; border-radius:20px; margin:0 8px 8px 0; }}
   .meta-footer{{ margin-top:30px; font-size:11.5px; color:{_CV_MUTED}; line-height:1.7; }}
@@ -1353,7 +1359,7 @@ def render_email_conversational(
     # winning over class-only anchor color in the attempt-2 send.
     bubbles.append(
         f'<div class="quick-replies"><a class="qr" href="{html.escape(cta_url)}" '
-        f'style="color:#FFF6F5;background:{_CV_SENT}">Read the full analysis &rarr;</a></div>'
+        f'style="color:#FFF6F5;background:{_CV_SENT}">Read the full analysis</a></div>'
     )
     bubbles.append('<div class="row tight" style="margin-top:14px"><div class="bubble">See you after the next session!</div></div>')
 
