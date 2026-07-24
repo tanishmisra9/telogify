@@ -417,7 +417,10 @@ def test_render_email_neubrutalist_renders_core_content():
     # full standalone document (real webfonts need a <head>), mirroring digest-v59.html
     assert html.lower().startswith("<!doctype html>")
     assert "<style>" in html
-    assert "fonts.googleapis.com" in html and "Archivo+Black" in html and "Space+Mono" in html
+    # attempt 5: Space Mono dropped -- body prose moved to a plain sans (never rendered in
+    # Gmail anyway; the design's character lives in the bold display headers, not mono)
+    assert "fonts.googleapis.com" in html and "Archivo+Black" in html
+    assert "Space+Mono" not in html
     assert "READ THE FULL ANALYSIS" in html
     assert "Belgian Grand Prix" in html
     # practice headlines the real absolute sector time (28.094s), not the margin (0.019s)

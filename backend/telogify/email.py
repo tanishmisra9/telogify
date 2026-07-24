@@ -655,7 +655,7 @@ _NB_INK = "#0a0a0a"
 
 _NB_FONTS_LINK = (
     '<link rel="preconnect" href="https://fonts.googleapis.com">'
-    '<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">'
+    '<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">'
 )
 
 # Short, genuinely cross-platform-identical fallback stacks (attempt 4): the previous long
@@ -666,10 +666,16 @@ _NB_FONTS_LINK = (
 # 900 -- Arial has no true black cut, so 900 either clamps inconsistently per engine or forces
 # synthetic emboldening that also distorts Archivo Black itself where it does load) exists
 # under that exact name on Windows/macOS/iOS; Android aliases it to Roboto Bold, visually close
-# enough to read as the same design everywhere. Courier New alone (dropping Roboto Mono/Menlo/
-# Consolas) is the one monospace name genuinely universal across every platform.
+# enough to read as the same design everywhere.
 _NB_DISPLAY_FONT = "'Archivo Black', Arial, Helvetica, sans-serif"
-_NB_MONO_FONT = "'Space Mono', 'Courier New', Courier, monospace"
+# Attempt 5: body prose (insight/qualifying text, the sub-line) used to inherit a monospace
+# base (Space Mono -> Courier New, since Space Mono never loads in Gmail either), which read
+# as childish/unprofessional across multi-line paragraphs. The design's zine character already
+# comes from the bold display headers, hard shadows, and yellow highlights -- not from mono --
+# so prose moves to a plain, genuinely universal sans instead. No webfont at all here on
+# purpose: it's supporting text, not part of the identity, so there's nothing to lose by
+# skipping the swap-in delay/inconsistency entirely.
+_NB_SANS_FONT = "Arial, Helvetica, sans-serif"
 
 
 def _nb_shadow_box(
@@ -721,21 +727,21 @@ _NB_STYLE = f"""
   .page {{
     background: #f2f2ea radial-gradient(#00000012 1px, transparent 1px) 0 0/14px 14px;
     padding: 48px 16px 80px;
-    font-family: {_NB_MONO_FONT};
+    font-family: {_NB_SANS_FONT};
     color: #0a0a0a;
   }}
   .sheet {{ width: 100%; max-width: 700px; margin: 0 auto; background: #fdfdfb; border: 1px solid #0a0a0a1a; padding: 40px 24px; }}
-  .masthead {{ margin-bottom: 46px; padding-bottom: 40px; }}
+  .masthead {{ text-align: center; margin-bottom: 46px; padding-bottom: 40px; }}
   .masthead .wordmark {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 52px; line-height: 0.9; margin: 18px 0 0; letter-spacing: -0.01em; }}
   .masthead .wordmark span {{ color: #E10600; }}
   .masthead .rip {{ margin: 18px -16px 0; height: 20px; background: #0a0a0a; clip-path: polygon(0% 0%, 4% 100%, 9% 10%, 14% 100%, 19% 15%, 24% 100%, 29% 5%, 34% 100%, 39% 20%, 44% 100%, 49% 0%, 54% 100%, 59% 10%, 64% 100%, 69% 5%, 74% 100%, 79% 15%, 84% 100%, 89% 0%, 94% 100%, 100% 20%, 100% 100%, 0% 100%); }}
-  .ransom {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; line-height: 1.05; margin: 10px 0 0; }}
+  .ransom {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; line-height: 1.25; margin: 4px 0 0; }}
   .ransom .a {{ font-size: 22px; }}
   .ransom .b {{ font-size: 44px; color: #E10600; }}
-  .ransom .c {{ font-size: 30px; background: #0a0a0a; color: #fff; padding: 0 6px; }}
+  .ransom .c {{ font-size: 30px; background: #0a0a0a; color: #fff; padding: 2px 6px; }}
   .ransom .d {{ font-size: 22px; }}
   .ransom .e {{ font-size: 38px; text-decoration: underline wavy #27F4D2 4px; text-underline-offset: 6px; }}
-  .sub {{ font-size: 14px; line-height: 1.6; margin-top: 18px; max-width: 56ch; }}
+  .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
   .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
   .swatch {{ display:inline-block; width:11px; height:11px; margin-right:8px; border:2px solid #0a0a0a; vertical-align:middle; }}
@@ -1004,7 +1010,7 @@ def render_email_neubrutalist(
     cta = _nb_shadow_box(
         f'<a href="{html.escape(cta_url)}" style="display:block;text-align:center;'
         f'font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:20px;color:#fff;'
-        'text-decoration:none;padding:18px 20px;">READ THE FULL ANALYSIS &rarr;</a>',
+        'text-decoration:none;padding:18px 20px;">READ THE FULL ANALYSIS</a>',
         bg="#E10600", wrapper_style="margin:20px 0 50px;",
     )
 
@@ -1019,9 +1025,12 @@ def render_email_neubrutalist(
     # the negative margin itself (Yahoo/AOL dropped support outright, Gmail's own support isn't
     # confirmed) -- verify against the real send; fall back to non-overlapping stacked
     # placement if it doesn't hold.
+    # Top padding trimmed from 28px to 18px: the WINNER sticker already occupies visual space
+    # tucked into the box's top edge (see winner_sticker's comment below), so the old 28px
+    # compounded into an oversized empty gap above the ransom headline.
     headline_box = _nb_shadow_box(
         _nb_ransom_html(winner, pace_spread) + sub, box_class="headline-inner",
-        box_style="padding:28px 24px 32px;", wrapper_style="margin:-22px 0 40px;",
+        box_style="padding:18px 24px 32px;", wrapper_style="margin:-22px 0 40px;",
     )
 
     return f"""<!doctype html>
