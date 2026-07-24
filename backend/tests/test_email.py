@@ -436,7 +436,9 @@ def test_render_email_neubrutalist_renders_core_content():
     assert '<span class="e">Mercedes</span>' in html
     # next-race panel is light (matching v59), not the dark-inverted regression
     assert 'class="next-race-inner"' in html
-    assert 'background:#fff' in html
+    # attempt 5: off-white #FEFEFE not pure #fff (dark-mode best effort -- Gmail's auto-invert
+    # is measurably less aggressive on near-white than pure white)
+    assert 'background:#FEFEFE' in html
 
 
 def test_render_email_conversational_renders_core_content():

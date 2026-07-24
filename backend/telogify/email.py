@@ -635,6 +635,18 @@ def render_email_plaintext(
     return "\n".join(lines)
 
 
+# Shared by both full-document designs' <head> (attempt 5, dark-mode best effort): declares
+# real support for both color schemes so clients that DO respect this signal (Apple Mail,
+# Outlook.com) use our own @media (prefers-color-scheme:dark) rules instead of guessing via
+# their own inversion heuristic. Doesn't help Gmail's iOS/Android apps -- verified (Context7's
+# /hteumeuleu/caniemail plus multiple 2026 sources) that they ignore this meta tag entirely and
+# run their own automatic full inversion regardless. See the real fix plan in
+# .claude/plans/gmail-dark-mode-real-fix.md for what it would actually take to control that.
+_META_COLOR_SCHEME = (
+    '<meta name="color-scheme" content="light dark">'
+    '<meta name="supported-color-schemes" content="light dark">'
+)
+
 # Neubrutalist design: near-literal port of the approved digest-v59.html comp (punk-zine
 # collage -- torn strip, rotated stickers/tiles/cards, ransom-note headline, alternating
 # insight-card shadows via real :nth-child, real Archivo Black/Space Mono webfonts). Returns a
@@ -681,7 +693,7 @@ _NB_SANS_FONT = "Arial, Helvetica, sans-serif"
 def _nb_shadow_box(
     inner_html: str,
     *,
-    bg: str = "#fff",
+    bg: str = "#FEFEFE",
     border_color: str = _NB_INK,
     border_width: str = "4px",
     shadow_color: str = _NB_INK,
@@ -760,15 +772,37 @@ _NB_STYLE = f"""
   .next-race-inner .stats b {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:22px; color:#E10600; display:block; }}
   footer {{ font-size: 12px; line-height: 1.8; color: #0a0a0a99; border-top: 3px solid #0a0a0a; padding-top: 18px; }}
   @media (prefers-color-scheme: dark) {{
-    /* Best-effort only (email.py:626 header note): Gmail's iOS/Android apps -- where the
-       worst dark-mode reports came from -- ignore this media query outright and run their
-       own automatic color inversion instead, which nothing here can override. This helps the
-       clients that DO respect it (Apple Mail, Samsung Email, Gmail desktop webmail). Panel
-       backgrounds/borders are set inline per-instance by _nb_shadow_box, so they're left as
-       white cards floating on the darkened page rather than fought with !important overrides
-       -- a normal, legible dark-mode pattern on its own. */
-    .page {{ background-color: #16160f !important; }}
+    /* Best-effort only (email.py:626 header note, .claude/plans/gmail-dark-mode-real-fix.md
+       for the real fix): Gmail's iOS/Android apps -- where the worst dark-mode reports came
+       from -- ignore this media query outright and run their own automatic color inversion
+       instead, which nothing here can override. This helps the clients that DO respect it
+       (Apple Mail, Samsung Email, Gmail desktop webmail): real dark panels with the brand red/
+       team colors preserved as-is, instead of Gmail's own guess. !important is required since
+       _nb_shadow_box sets panel background/border inline per-instance (higher specificity
+       than any stylesheet rule without it). Colorful elements (stamps, the CTA, the qualifying
+       block's team tint) are deliberately left alone -- they're already high-contrast against
+       both light and dark, and forcing them to a generic dark panel would erase the team-color
+       identity that's the point of showing them in the first place. */
+    /* .page sets its own color:#0a0a0a outside this block, which (being an explicit
+       declaration, not inherited) otherwise wins over body's dark-mode color regardless of
+       @media -- override it directly rather than relying on inheritance from body. */
+    .page {{ background-color: #16160f !important; color: #f2f2ea; }}
     body {{ color: #f2f2ea; }}
+    .sheet {{ background-color: #1e1e18 !important; border-color: #3a3a30 !important; }}
+    .headline-inner, .flat-panel-inner, .practice-tile-inner, .next-race-inner {{
+      background-color: #29291f !important; border-color: #f2f2ea !important; color: #f2f2ea;
+    }}
+    .insight-inner {{ background-color: #29291f !important; color: #f2f2ea; }}
+    /* quali-inner's background stays the light team tint (deliberately unchanged, see the
+       comment on the media block's opening) -- but its own text and heading have no color of
+       their own in the base stylesheet, so without this reset they'd inherit .page's new
+       light dark-mode color while sitting on an unchanged light background. Real bug caught
+       in the real-browser dark-mode screenshot check, not a hypothetical. */
+    .quali-inner {{ color: #0a0a0a; }}
+    .sub, .insight-inner p {{ color: #d8d8c8; }}
+    .sub b {{ color: #0a0a0a; }}
+    footer {{ color: #a8a89c; border-top-color: #3a3a30; }}
+    footer a {{ color: #d8d8c8 !important; }}
   }}
 """
 
@@ -911,7 +945,10 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
     )
     return (
         '<span class="section-title">PACE SPREAD // CONSTRUCTORS</span>'
-        + _nb_shadow_box(inner, box_style="padding:26px 22px 30px;", wrapper_style="margin-bottom:34px;")
+        + _nb_shadow_box(
+            inner, box_class="flat-panel-inner",
+            box_style="padding:26px 22px 30px;", wrapper_style="margin-bottom:34px;",
+        )
     )
 
 
@@ -1037,6 +1074,7 @@ def render_email_neubrutalist(
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+{_META_COLOR_SCHEME}
 <title>Telogify &mdash; {event_name}</title>
 {_NB_FONTS_LINK}
 <style>{_NB_STYLE}</style>
@@ -1108,6 +1146,12 @@ _CV_DISPLAY = "'Instrument Sans', 'Space Grotesk', Arial, Helvetica, sans-serif"
 _CV_INK = "#1B1612"
 _CV_MUTED = "#8A837C"
 _CV_SENT = "#E10600"
+# Off-white, not pure #FFFFFF (attempt 5, dark-mode best effort): Gmail's automatic dark-mode
+# inversion on iOS/Android swaps pure white/black "in almost all instances" but is measurably
+# less aggressive on near-white -- doesn't guarantee the bubbles survive un-inverted, but it's
+# the one concrete lever available against a client that ignores every CSS/meta override (see
+# the @media (prefers-color-scheme:dark) block below for the rest of the story).
+_CV_BUBBLE = "#FEFEFE"
 
 # No :root/var() (email.py:626 header note): Gmail keeps var() *references* but drops the
 # :root declarations that define them, silently losing every color/font/spacing value this
@@ -1116,7 +1160,7 @@ _CV_STYLE = f"""
   *{{box-sizing:border-box;}}
   body{{ margin:0; }}
   .page{{ background:#EFEEE9; font-family:{_CV_SANS}; color:{_CV_INK}; padding:32px 12px 64px; }}
-  .thread{{ max-width:460px; margin:0 auto; background:#FFFFFF; border-radius:20px; padding:32px 24px 28px; box-shadow:0 1px 2px rgba(27,22,18,0.04); }}
+  .thread{{ max-width:460px; margin:0 auto; background:{_CV_BUBBLE}; border-radius:20px; padding:32px 24px 28px; box-shadow:0 1px 2px rgba(27,22,18,0.04); }}
   .masthead{{ text-align:center; padding-bottom:18px; }}
   .masthead .wordmark{{ font-family:{_CV_DISPLAY}; font-size:44px; font-weight:700; color:{_CV_INK}; }}
   .masthead .wordmark span{{color:{_CV_SENT};}}
@@ -1125,21 +1169,21 @@ _CV_STYLE = f"""
   .day-chip span{{ display:inline-block; background:rgba(0,0,0,0.05); color:{_CV_MUTED}; font-size:11px; font-weight:600; padding:4px 12px; border-radius:20px; letter-spacing:0.02em; }}
   .row{{ margin-bottom:8px; }}
   .row.tight{{margin-bottom:3px;}}
-  .bubble{{ display:inline-block; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:11px 15px; max-width:84%; font-size:15.5px; line-height:1.42; box-shadow:0 1px 1px rgba(27,22,18,0.03); }}
+  .bubble{{ display:inline-block; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:11px 15px; max-width:84%; font-size:15.5px; line-height:1.42; box-shadow:0 1px 1px rgba(27,22,18,0.03); }}
   .row.tight .bubble{{border-bottom-left-radius:19px;}}
   .row.last-in-group .bubble{{border-bottom-left-radius:5px;}}
   strong{{font-weight:700;}}
   .num{{ font-family:{_CV_MONO}; font-weight:600; color:{_CV_SENT}; }}
   .team-label{{ font-weight:700; }}
-  .data-bubble{{ display:inline-block; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:10px 16px; max-width:97%; }}
+  .data-bubble{{ display:inline-block; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:10px 16px; max-width:97%; }}
   .data-label{{color:{_CV_INK};}}
   .data-label .sub{{color:{_CV_MUTED};font-size:13.5px;display:block;margin-top:1px;}}
   .data-val{{ font-family:{_CV_MONO}; font-weight:600; font-size:17px; color:{_CV_INK}; white-space:nowrap; padding-left:12px; }}
-  .insight-bubble{{ display:inline-block; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:16px 18px; max-width:97%; }}
+  .insight-bubble{{ display:inline-block; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:16px 18px; max-width:97%; }}
   .insight-tag{{ display:inline-block; font-family:{_CV_MONO}; font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; background:transparent; padding:2px 8px; border-radius:5px; border-width:1.5px; border-style:solid; margin-bottom:8px; }}
   .insight-head{{ font-weight:700; font-size:17px; line-height:1.32; margin:0 0 5px; }}
   .insight-body{{ font-size:15px; line-height:1.48; color:#4A443E; margin:0; }}
-  .typing{{ display:inline-block; background:#FFFFFF; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:13px 16px; }}
+  .typing{{ display:inline-block; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:13px 16px; }}
   .typing i{{ width:6px;height:6px;border-radius:50%; background:#C9C4BC; display:inline-block; margin-right:4px; }}
   .typing i:last-child{{margin-right:0;}}
   .timestamp{{ text-align:center; font-size:11px; color:{_CV_MUTED}; margin:14px 0 6px; }}
@@ -1170,15 +1214,36 @@ _CV_STYLE = f"""
     .insight-body {{ font-size: 16.5px; }}
   }}
   @media (prefers-color-scheme: dark) {{
-    /* Best-effort only (email.py:626 header note): Gmail's iOS/Android apps -- where the
-       worst dark-mode reports came from, including red reading as orange -- ignore this media
-       query entirely and run their own automatic color inversion instead, which nothing here
-       can override. This helps the clients that DO respect it (Apple Mail, Samsung Email,
-       Gmail desktop webmail): keeps the real brand red instead of letting an auto-inversion
-       algorithm guess at it. */
-    .page {{ background-color: #18181a !important; }}
+    /* Best-effort only (email.py:626 header note, .claude/plans/gmail-dark-mode-real-fix.md
+       for the real fix): Gmail's iOS/Android apps -- where the worst dark-mode reports came
+       from, including red reading as orange -- ignore this media query entirely and run their
+       own automatic color inversion instead, which nothing here can override. This helps the
+       clients that DO respect it (Apple Mail, Samsung Email, Gmail desktop webmail): keeps the
+       real brand red instead of letting an auto-inversion algorithm guess at it. !important is
+       required against _cv_row/_cv_stat_bubble's inline per-instance styles. Team-colored
+       *backgrounds* (the light wash on stat/insight bubbles) are forced to the same uniform
+       dark panel as everything else here rather than left alone like Neubrutalist's colorful
+       elements -- a light team-color wash floating on a dark page looks like a rendering bug,
+       not an accent, so team identity in dark mode lives in text/border color only. */
+    /* .page and the wordmark/.data-label both set their own explicit color:{_CV_INK} outside
+       this block, which (being explicit, not inherited) otherwise wins over body's dark-mode
+       color regardless of @media -- caught in the real-browser dark-mode screenshot check,
+       where the wordmark was reading as barely-visible dark-on-dark. */
+    .page {{ background-color: #18181a !important; color: #EFEEE9; }}
     .thread {{ background-color: #232326 !important; border-color: #38383c !important; }}
     body {{ color: #EFEEE9; }}
+    .masthead .wordmark, .data-label {{ color: #EFEEE9; }}
+    .bubble, .data-bubble, .insight-bubble, .typing {{
+      background-color: #232326 !important; border-color: #3a3a3e !important; color: #EFEEE9;
+    }}
+    /* .data-val/.num deliberately not overridden here: they carry the brand-red accent
+       (color:{_CV_SENT} from .num), which is exactly what should survive in dark mode instead
+       of being flattened to plain text -- same "keep the real brand color" goal as the page
+       background/thread overrides above. */
+    .insight-head {{ color: #EFEEE9; }}
+    .insight-body {{ color: #B8B4AE; }}
+    .data-label .sub {{ color: #8A8680; }}
+    .day-chip span {{ background: rgba(255,255,255,0.08); }}
   }}
 """
 
@@ -1376,6 +1441,7 @@ def render_email_conversational(
 <html lang="en">
 <head>
 <meta charset="utf-8">
+{_META_COLOR_SCHEME}
 <title>Telogify &mdash; {event_name} recap</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 {_CV_FONTS_LINK}
