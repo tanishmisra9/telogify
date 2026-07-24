@@ -136,52 +136,56 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         <div className="hidden md:block">
           <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Fuel-corrected lap time vs tyre age">
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-              {yTicks.map((t) => (
-                <g key={t}>
-                  <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
-                  <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
-                    {t.toFixed(1)}s
-                  </text>
-                </g>
-              ))}
-              {xTicks.map((t) => (
-                <text key={t} x={x(t)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
-                  {t}
-                </text>
-              ))}
-              <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
-                Tyre age (laps)
-              </text>
-
-              {/* Raw laps sit as a faint texture; the labeled fit line is the actual finding.
-                  Crossfaded per compound (not morphed): dot i in one compound is an unrelated
-                  lap in the next, so moving dots would draw a false correspondence — the old
-                  field fades out where it was while the new one fades in. */}
+              {/* Two coexisting techniques, split by what the element is. The gridline ROWS are
+                  positionally fixed across compounds (yTicks always span [yMin,yMax] -> the 5 rows
+                  sit at 0/25/50/75/100% every compound; only the label NUMBERS change), so the axes,
+                  labels, and raw dots crossfade in place — the numbers cross-dissolve rather than
+                  snap. Raw dots stay a crossfade on purpose: dot i in one compound is an unrelated
+                  lap in the next, so moving them would draw a false correspondence, and there are
+                  many. The aggregate fit lines (one per team) are the exception below: they morph. */}
               <AnimatePresence initial={false}>
                 <m.g
                   key={compound}
                   initial={reduce ? false : { opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={reduce ? { duration: 0 } : { duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                  transition={reduce ? { duration: 0 } : { duration: 0.5, ease: [0.65, 0, 0.35, 1] }}
                 >
+                  {yTicks.map((t) => (
+                    <g key={t}>
+                      <line x1={0} x2={INNER_W} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeDasharray="4 4" />
+                      <text x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={textPx(13)}>
+                        {t.toFixed(1)}s
+                      </text>
+                    </g>
+                  ))}
+                  {xTicks.map((t) => (
+                    <text key={t} x={x(t)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
+                      {t}
+                    </text>
+                  ))}
+
+                  {/* Raw laps sit as a faint texture; the labeled fit line is the actual finding. */}
                   {visiblePoints.map((p, i) => (
                     <circle key={i} cx={x(p.tyre_age)} cy={y(p.lap_time_s)} r={1.5} fill={teamColorWithAlpha(p.constructor, 0.16)} />
                   ))}
                 </m.g>
               </AnimatePresence>
 
+              {/* Fit lines: a persistent per-team layer ON TOP of the dissolving grid. Same key
+                  across a compound switch (a team that ran both compounds keeps its line mounted),
+                  so x1/y1/x2/y2 in `animate` morph its endpoints into the new compound's fit against
+                  the stable gridline rows instead of snapping. A team that only ran one compound
+                  isn't in visibleFits for the other, so it just exits/enters via AnimatePresence.
+                  This is also the within-compound isolate control: isolating changes visibleFits, so
+                  a re-added line draws in (pathLength) and a removed one fades out. Duration/curve
+                  match the grid crossfade above so both move on one clock. */}
               <AnimatePresence>
                 {visibleFits.map((f) => {
                   const range = ageRangeByConstructor[f.constructor]
                   if (!range) return null
                   const [lo, hi] = range
                   const stroke = resolveTeamColor(f.constructor)
-                  // Same key across a compound switch (a team present in both compounds keeps its
-                  // line mounted), so x1/y1/x2/y2 in `animate` morph smoothly into the new
-                  // compound's fit instead of snapping. A team missing from the newly-selected
-                  // compound isn't in visibleFits at all, so it just exits/re-enters via
-                  // AnimatePresence as before — no morph attempted when there's nothing to morph to.
                   const coords = { x1: x(lo), y1: y(f.slope_s_per_lap * lo + f.intercept_s), x2: x(hi), y2: y(f.slope_s_per_lap * hi + f.intercept_s) }
                   return (
                     <m.line
@@ -196,6 +200,10 @@ export function DegradationChart({ data }: { data: DegradationData }) {
                   )
                 })}
               </AnimatePresence>
+
+              <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
+                Tyre age (laps)
+              </text>
             </g>
           </svg>
         </div>
