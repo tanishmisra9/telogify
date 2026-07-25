@@ -5,7 +5,7 @@ consumer that wants to color-code or group by team had to guess from prose. Mirr
 quali_insight.team exactly.
 
 Revision ID: n5o6p7q8r9s0
-Revises: m3n4o5p6q7r8
+Revises: 3df6990e5b55
 Create Date: 2026-07-20 00:00:00.000000
 
 """
@@ -17,7 +17,7 @@ import sqlmodel
 
 
 revision: str = "n5o6p7q8r9s0"
-down_revision: Union[str, Sequence[str], None] = "m3n4o5p6q7r8"
+down_revision: Union[str, Sequence[str], None] = "3df6990e5b55"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
