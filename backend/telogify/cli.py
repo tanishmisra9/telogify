@@ -457,11 +457,6 @@ def preview_digest(
     year: int,
     round: int,
     out: str = typer.Option("digest-preview.html", "--out", help="Path to write the rendered HTML."),
-    design: str = typer.Option(
-        None, "--design",
-        help="Which design to render: production, neubrutalist, or conversational. "
-        "Defaults to the weekend's already-sent design, or production if none yet.",
-    ),
 ) -> None:
     """Render the email digest to a local HTML file for browser preview. No send, no API key."""
     from pathlib import Path
@@ -472,21 +467,9 @@ def preview_digest(
     from telogify.email import render_digest_preview
 
     with Session(engine) as db:
-        html_body = render_digest_preview(year, round, db, design=design)
-    # Neubrutalist/Conversational already render a full standalone document (real Google Fonts
-    # need a <head>); wrapping that in another <html><body> would double-nest it. Production
-    # stays a bare fragment and still needs the wrapper shell for browser preview (without a
-    # doctype, browsers render file:// fragments in quirks mode, which breaks the box model and
-    # causes horizontal overflow that doesn't happen in an inbox).
-    if html_body.lstrip().lower().startswith("<!doctype"):
-        page = html_body
-    else:
-        page = (
-            "<!doctype html><html><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width, initial-scale=1'></head>"
-            f"<body style='margin:0'>{html_body}</body></html>"
-        )
-    Path(out).write_text(page)
+        html_body = render_digest_preview(year, round, db)
+    # Already a full standalone document (real Google Fonts need a <head>).
+    Path(out).write_text(html_body)
     console.print(f"[green]Wrote preview to[/green] [cyan]{escape(out)}[/cyan]")
 
 
