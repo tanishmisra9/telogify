@@ -67,6 +67,22 @@ function rankValue(row: SeasonConstructorRow, metric: Metric): number {
   return sorted.length > 0 ? sorted[sorted.length - 1].value : Infinity
 }
 
+// Team order for the animated paths. Filtered on data presence only, no sort -- exported so a
+// test can pin the regression this guards against: this order must be identical across metrics
+// for the same team set, or AnimatePresence sees a moved child and restarts its draw-in instead
+// of morphing (see the `series` comment below for the mechanism).
+export function seriesTeamOrder(rows: SeasonConstructorRow[], metric: Metric): string[] {
+  return rows.filter((r) => r.trend[metric].length > 0).map((r) => r.constructor)
+}
+
+// Team order for the legend only: ranked by the selected metric, independent of `seriesTeamOrder`.
+export function legendTeamOrder(rows: SeasonConstructorRow[], metric: Metric): string[] {
+  return [...rows]
+    .sort((a, b) => rankValue(a, metric) - rankValue(b, metric))
+    .filter((r) => r.trend[metric].length > 0)
+    .map((r) => r.constructor)
+}
+
 // One line per constructor: gap to the round's fastest team, round by round. Lower is
 // better and the y-axis is inverted (0 at top), so a line hugging the top is a season-long
 // front-runner and a line dropping away is a team losing ground. Copies DegradationChart's scaffold.
@@ -111,15 +127,22 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
 
   // Filtered on the team's original (pre-resample) point count, so a team with zero real data
   // for this metric still doesn't render a fabricated flat line — resampling only fills gaps
-  // for teams that have some data. Ranked by the selected metric (lower is better, matching this
-  // chart's own convention -- see the caption below) so the legend order actually reflects the
-  // current tab instead of staying frozen at the overall-rank order regardless of which metric
-  // is selected.
-  const series = [...rows]
-    .sort((a, b) => rankValue(a, metric) - rankValue(b, metric))
-    .filter((r) => r.trend[metric].length > 0)
-    .map((r) => ({ team: r.constructor, values: resampleToRounds(r.trend[metric], roundNums) }))
+  // for teams that have some data. Order must NOT depend on `metric`: these become the
+  // AnimatePresence-tracked <m.path> children below, and Framer restarts a moved child's
+  // `initial` (pathLength 0) -> `animate` (pathLength 1) draw-in instead of just morphing `d`,
+  // which is what broke the cross-metric morph before (reordering here to match legend rank).
+  const rowByTeam = new Map(rows.map((r) => [r.constructor, r]))
+  const series = seriesTeamOrder(rows, metric).map((team) => ({
+    team,
+    values: resampleToRounds(rowByTeam.get(team)!.trend[metric], roundNums),
+  }))
   const values = series.flatMap((s) => s.values)
+
+  // Ranked by the selected metric (lower is better, matching this chart's own convention -- see
+  // the caption below) so the legend order actually reflects the current tab instead of staying
+  // frozen at the overall-rank order regardless of which metric is selected. Kept separate from
+  // `series` above: the legend can reorder freely, the animated paths cannot.
+  const legendRows = legendTeamOrder(rows, metric).map((team) => ({ team }))
 
   if (series.length === 0 || values.length === 0) {
     return <p className="text-sm text-muted">No trend data yet.</p>
@@ -222,7 +245,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
 
       <div className="mt-6 border-t border-border pt-5">
         <TeamSelectLegend
-          rows={series.map((s) => ({ team: s.team }))}
+          rows={legendRows}
           selected={selected}
           onToggle={toggleTeam}
           isFiltering={isFiltering}
