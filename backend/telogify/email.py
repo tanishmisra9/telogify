@@ -159,6 +159,31 @@ def _darken(hex_color: str, factor: float = 0.6) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+# Only 8 colored hearts actually exist as emoji, so several teams necessarily share one --
+# nearest-RGB-distance match against the team's real brand hex, not an arbitrary assignment.
+_HEART_COLORS = {
+    "\U0001F49B": "#FFD500",  # yellow
+    "\U0001F9E1": "#FF8000",  # orange
+    "❤️": "#E8002D",  # red
+    "\U0001F49C": "#8B00FF",  # purple
+    "\U0001F499": "#3671C6",  # blue
+    "\U0001F49A": "#27F4D2",  # green (closest of the 8 to teal)
+    "\U0001F5A4": "#1A1A1A",  # black
+    "\U0001F90D": "#F5F5F5",  # white
+}
+
+
+def _team_heart_emoji(team: str) -> str:
+    hex_color = _team_color(team)
+    r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+
+    def distance(heart_hex: str) -> int:
+        hr, hg, hb = int(heart_hex[1:3], 16), int(heart_hex[3:5], 16), int(heart_hex[5:7], 16)
+        return (r - hr) ** 2 + (g - hg) ** 2 + (b - hb) ** 2
+
+    return min(_HEART_COLORS, key=lambda emoji: distance(_HEART_COLORS[emoji]))
+
+
 def _emphasize_numbers(escaped_text: str) -> str:
     return _NUM_RE.sub(
         lambda m: f'<span style="font-family:{_FONT_MONO};color:{_ACCENT}">{m.group(0)}</span>',
@@ -1175,12 +1200,13 @@ _CV_STYLE = f"""
   strong{{font-weight:700;}}
   .num{{ font-family:{_CV_MONO}; font-weight:600; color:{_CV_SENT}; }}
   .team-label{{ font-weight:700; }}
-  .data-bubble{{ display:inline-block; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:10px 16px; max-width:97%; }}
+  .data-bubble{{ display:inline-block; width:250px; box-sizing:border-box; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:10px 16px; max-width:97%; }}
+  .data-bubble table{{width:100%;}}
   .data-label{{color:{_CV_INK};}}
   .data-label .sub{{color:{_CV_MUTED};font-size:13.5px;display:block;margin-top:1px;}}
   .data-val{{ font-family:{_CV_MONO}; font-weight:600; font-size:17px; color:{_CV_INK}; white-space:nowrap; padding-left:12px; }}
   .insight-bubble{{ display:inline-block; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:16px 18px; max-width:97%; }}
-  .insight-tag{{ display:inline-block; font-family:{_CV_MONO}; font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; background:transparent; padding:2px 8px; border-radius:5px; border-width:1.5px; border-style:solid; margin-bottom:8px; }}
+  .insight-tag{{ display:inline-block; font-family:{_CV_MONO}; font-size:12.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; background:transparent; padding:2px 8px; border-radius:5px; border-width:1.5px; border-style:solid; margin-bottom:8px; }}
   .insight-head{{ font-weight:700; font-size:17px; line-height:1.32; margin:0 0 5px; }}
   .insight-body{{ font-size:15px; line-height:1.48; color:#4A443E; margin:0; }}
   .typing{{ display:inline-block; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:13px 16px; }}
@@ -1196,7 +1222,7 @@ _CV_STYLE = f"""
      needlessly narrow. */
   .sent-bubble{{ display:inline-block; text-align:left; background:{_CV_SENT}; color:#FFF6F5; border-radius:19px; border-bottom-right-radius:5px; padding:11px 16px; max-width:85%; font-size:15px; font-weight:600; }}
   .quick-replies{{ margin-top:14px; padding-left:2px; }}
-  .qr{{ display:inline-block; text-decoration:none; font-family:{_CV_SANS}; font-size:14px; font-weight:700; color:#FFF6F5; background:{_CV_SENT}; padding:11px 18px; border-radius:20px; margin:0 8px 8px 0; }}
+  .qr{{ display:inline-block; text-decoration:none; font-family:{_CV_SANS}; font-size:14px; font-weight:700; color:#FFF6F5; background:{_CV_SENT}; padding:11px 18px; border-radius:19px; border-bottom-left-radius:5px; margin:0 8px 8px 0; }}
   .meta-footer{{ margin-top:30px; font-size:11.5px; color:{_CV_MUTED}; line-height:1.7; }}
   .meta-footer a{{color:{_CV_MUTED};}}
   @media screen and (min-width: 600px) {{
@@ -1208,6 +1234,7 @@ _CV_STYLE = f"""
     .thread {{ max-width: 640px; border: 1px solid #D4D1C6; padding: 40px 40px 36px; }}
     .masthead .wordmark {{ font-size: 50px; }}
     .bubble {{ font-size: 17px; }}
+    .data-bubble {{ width: 280px; }}
     .data-val {{ font-size: 19px; }}
     .data-label .sub {{ font-size: 15px; }}
     .insight-head {{ font-size: 19px; }}
@@ -1331,9 +1358,13 @@ def render_email_conversational(
     driver = _full_driver_name(winner["driver"]) if winner else None
     team = winner["constructor"] if winner and winner.get("constructor") else None
 
-    bubbles = [_cv_row("Hey, the race is done! Results are in.", "tight")]
+    bubbles = [_cv_row("Hey, the weekend's over! Here's your recap.", "tight")]
     if driver and team:
-        bubbles.append(_cv_row(f"<strong>{html.escape(driver)} won it for {html.escape(team)}.</strong>", "last-in-group"))
+        heart = _team_heart_emoji(team)
+        suffix = random.choice([f" {heart}", f" {heart}{heart}", " \U0001F3CE️\U0001F4A8"])
+        bubbles.append(_cv_row(
+            f"<strong>{html.escape(driver)} won it for {html.escape(team)}!</strong>{suffix}", "last-in-group",
+        ))
     else:
         bubbles.append(_cv_row(preheader_text, "last-in-group"))
 
