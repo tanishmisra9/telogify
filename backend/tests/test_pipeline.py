@@ -261,8 +261,14 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
         assert s["weekend_id"] == 1
         return {"quali_insight_count": len(runner(s["year"], s["round"]))}
 
+    def fake_season_deployment(s):
+        calls.append("season_deployment")
+        assert s["weekend_id"] == 1
+        return {}
+
     monkeypatch.setattr(pipeline, "_insights", fake_insights)
     monkeypatch.setattr(pipeline, "_quali_insights", fake_quali_insights)
+    monkeypatch.setattr(pipeline, "_season_deployment", fake_season_deployment)
 
     # agent_runners return fake "messages"; pipeline never calls Anthropic here.
     state = pipeline.run_weekend(
@@ -272,7 +278,7 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
         quali_agent_runner=lambda y, r: ["m1", "m2"],
     )
 
-    assert calls == ["ingest", "analyze", "candidates", "insights", "quali_insights"]
+    assert calls == ["ingest", "analyze", "candidates", "insights", "quali_insights", "season_deployment"]
     assert state["insight_count"] == 3
     assert state["quali_insight_count"] == 2
 
@@ -319,6 +325,64 @@ def test_candidates_skips_without_quali_or_race(monkeypatch):
 
     assert result == {}
     assert called == []
+
+
+def test_season_deployment_persists_when_verdicts_present(db_session, monkeypatch):
+    calls = []
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    monkeypatch.setattr(pipeline, "build_season_accel_scatter", lambda year, db: {"scatter": year})
+    monkeypatch.setattr(
+        pipeline,
+        "generate_season_deployment_verdicts",
+        lambda scatter: (calls.append(("generate", scatter)) or [{"pu": "Mercedes"}], [{"rank": 1}]),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "persist_season_deployment",
+        lambda year, verdicts, metrics, db: calls.append(("persist", year, verdicts, metrics)),
+    )
+
+    result = pipeline._season_deployment({"year": 2025, "round": 11})
+
+    assert result == {}
+    assert calls == [
+        ("generate", {"scatter": 2025}),
+        ("persist", 2025, [{"pu": "Mercedes"}], [{"rank": 1}]),
+    ]
+
+
+def test_season_deployment_skips_persist_when_no_verdicts(db_session, monkeypatch):
+    persisted = []
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    monkeypatch.setattr(pipeline, "build_season_accel_scatter", lambda year, db: {})
+    monkeypatch.setattr(pipeline, "generate_season_deployment_verdicts", lambda scatter: ([], []))
+    monkeypatch.setattr(
+        pipeline, "persist_season_deployment", lambda *a, **k: persisted.append(a)
+    )
+
+    result = pipeline._season_deployment({"year": 2025, "round": 11})
+
+    assert result == {}
+    assert persisted == []
+
+
+def test_pipeline_skips_season_deployment_without_race(monkeypatch):
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": 1, "session_types": ["FP1", "Q"]},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: {})
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: {"insight_count": 3})
+    monkeypatch.setattr(pipeline, "_quali_insights", lambda s, r: {"quali_insight_count": 2})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_season_deployment", lambda s: calls.append("season_deployment") or {})
+
+    pipeline.run_weekend(2025, 23, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: [])
+
+    assert calls == []
 
 
 def test_pipeline_skips_race_insights_when_race_not_ready(monkeypatch):

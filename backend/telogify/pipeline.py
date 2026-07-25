@@ -28,6 +28,10 @@ from telogify.agent.insights import (
     persist_insights,
 )
 from telogify.agent.prompts import PROMPT_VERSION, QUALI_SYSTEM_PROMPT
+from telogify.agent.season_deployment import (
+    generate_season_deployment_verdicts,
+    persist_season_deployment,
+)
 from telogify.config import configured_llm_label
 from telogify.agent.validation import validate_insights
 from telogify.analysis.attribution import store_attributions
@@ -35,6 +39,7 @@ from telogify.analysis.candidates import compute_candidates
 from telogify.analysis.constructor_index import build_constructor_index
 from telogify.analysis.fingerprints import store_fingerprints
 from telogify.analysis.schedule import completed_rounds, fetch_season_schedule
+from telogify.analysis.season import build_season_accel_scatter
 from telogify.db import engine
 from telogify.ingest.accel_samples import store_accel_samples
 from telogify.ingest.loader import load_weekend
@@ -218,6 +223,21 @@ def _quali_insights(state: PipelineState, agent_runner) -> dict:
     )
 
 
+def _season_deployment(state: PipelineState) -> dict:
+    """Regenerate the season deployment section's LLM verdicts once this weekend's race has been
+    ingested, same trigger as `_insights` ("R" in session_types) since both need the race session's
+    data (accel samples). Mirrors `run-season-deployment`'s CLI body; failure raises (same
+    hard-gate philosophy as `_insights` and `generate_season_deployment_verdicts` itself), so a bad
+    weekend run surfaces immediately instead of leaving stale season verdicts silently in place."""
+    with Session(engine) as db:
+        scatter = build_season_accel_scatter(state["year"], db)
+        verdicts, metrics = generate_season_deployment_verdicts(scatter)
+        if not verdicts:
+            return {}
+        persist_season_deployment(state["year"], verdicts, metrics, db)
+    return {}
+
+
 def _default_agent_runner(year: int, round: int, feedback: str | None = None) -> list:
     agent = build_agent(year, round)
     task = f"Write the 3 insights for {year} round {round}."
@@ -255,12 +275,17 @@ def build_pipeline(agent_runner, quali_agent_runner):
         "quali_insights",
         lambda s: _quali_insights(s, quali_agent_runner) if "Q" in s.get("session_types", ()) else {},
     )
+    g.add_node(
+        "season_deployment",
+        lambda s: _season_deployment(s) if "R" in s.get("session_types", ()) else {},
+    )
     g.add_edge(START, "ingest")
     g.add_edge("ingest", "analyze")
     g.add_edge("analyze", "candidates")
     g.add_edge("candidates", "insights")
     g.add_edge("insights", "quali_insights")
-    g.add_edge("quali_insights", END)
+    g.add_edge("quali_insights", "season_deployment")
+    g.add_edge("season_deployment", END)
     return g.compile(checkpointer=MemorySaver())
 
 
