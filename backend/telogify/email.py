@@ -1391,7 +1391,6 @@ def render_email_conversational(
             row = _cv_data_row(f'<span class="team-label" style="color:{darkened}">{short}</span>', gap, value_color=darkened)
             row_class = "tight" if i < len(pace_rows) - 1 else "last-in-group"
             bubbles.append(_cv_stat_bubble(row, name, row_class))
-        bubbles.append(_cv_row(f"(And by the way, those are gaps to {fastest}, per lap.)", "last-in-group"))
 
     if insights:
         surname = driver.split()[-1] if driver else None
