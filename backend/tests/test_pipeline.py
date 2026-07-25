@@ -11,7 +11,7 @@ def _fake_messages(insights: list[dict]) -> list:
 
 
 _GOOD_INSIGHTS = [
-    {"header": f"H{i}", "explanation_web": f"W{i}", "explanation_email": f"E{i}"}
+    {"team": f"Team{i}", "header": f"H{i}", "explanation_web": f"W{i}", "explanation_email": f"E{i}"}
     for i in range(1, 4)
 ]
 _GOOD_QUALI_INSIGHTS = [
@@ -19,9 +19,9 @@ _GOOD_QUALI_INSIGHTS = [
     for i in range(1, 3)
 ]
 _BAD_INSIGHTS = [
-    {"header": "Maiden win for Antonelli", "explanation_web": "W1", "explanation_email": "E1"},
-    {"header": "H2", "explanation_web": "W2", "explanation_email": "E2"},
-    {"header": "H3", "explanation_web": "W3", "explanation_email": "E3"},
+    {"team": "Team1", "header": "Maiden win for Antonelli", "explanation_web": "W1", "explanation_email": "E1"},
+    {"team": "Team2", "header": "H2", "explanation_web": "W2", "explanation_email": "E2"},
+    {"team": "Team3", "header": "H3", "explanation_web": "W3", "explanation_email": "E3"},
 ]
 
 
@@ -77,12 +77,13 @@ def test_insights_retries_then_succeeds(db_session, monkeypatch):
 
 _SECOND_ROW_INSIGHTS = [
     {
+        "team": "Team1",
         "header": "Ferrari lost ground from the second row",
         "explanation_web": "W1",
         "explanation_email": "E1",
     },
-    {"header": "H2", "explanation_web": "W2", "explanation_email": "E2"},
-    {"header": "H3", "explanation_web": "W3", "explanation_email": "E3"},
+    {"team": "Team2", "header": "H2", "explanation_web": "W2", "explanation_email": "E2"},
+    {"team": "Team3", "header": "H3", "explanation_web": "W3", "explanation_email": "E3"},
 ]
 
 
