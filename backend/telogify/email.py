@@ -746,7 +746,7 @@ _NB_STYLE = f"""
   .masthead {{ text-align: center; margin-bottom: 46px; padding-bottom: 40px; }}
   .masthead .wordmark {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 52px; line-height: 0.9; margin: 18px 0 0; letter-spacing: -0.01em; }}
   .masthead .wordmark span {{ color: #E10600; }}
-  .masthead .rip {{ margin: 18px -16px 0; height: 20px; background: #0a0a0a; clip-path: polygon(0% 0%, 4% 100%, 9% 10%, 14% 100%, 19% 15%, 24% 100%, 29% 5%, 34% 100%, 39% 20%, 44% 100%, 49% 0%, 54% 100%, 59% 10%, 64% 100%, 69% 5%, 74% 100%, 79% 15%, 84% 100%, 89% 0%, 94% 100%, 100% 20%, 100% 100%, 0% 100%); }}
+  .masthead .rip {{ margin: 18px -16px 0; height: 4px; background: #0a0a0a; clip-path: polygon(0% 0%, 4% 100%, 9% 10%, 14% 100%, 19% 15%, 24% 100%, 29% 5%, 34% 100%, 39% 20%, 44% 100%, 49% 0%, 54% 100%, 59% 10%, 64% 100%, 69% 5%, 74% 100%, 79% 15%, 84% 100%, 89% 0%, 94% 100%, 100% 20%, 100% 100%, 0% 100%); }}
   .ransom {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; line-height: 1.25; margin: 4px 0 0; }}
   .ransom .a {{ font-size: 22px; }}
   .ransom .b {{ font-size: 44px; color: #E10600; }}
