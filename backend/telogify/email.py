@@ -771,7 +771,6 @@ _NB_STYLE = f"""
   .masthead {{ text-align: center; margin-bottom: 46px; padding-bottom: 40px; }}
   .masthead .wordmark {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 52px; line-height: 0.9; margin: 18px 0 0; letter-spacing: -0.01em; }}
   .masthead .wordmark span {{ color: #E10600; }}
-  .masthead .rip {{ margin: 18px -16px 0; height: 4px; background: #0a0a0a; clip-path: polygon(0% 0%, 4% 100%, 9% 10%, 14% 100%, 19% 15%, 24% 100%, 29% 5%, 34% 100%, 39% 20%, 44% 100%, 49% 0%, 54% 100%, 59% 10%, 64% 100%, 69% 5%, 74% 100%, 79% 15%, 84% 100%, 89% 0%, 94% 100%, 100% 20%, 100% 100%, 0% 100%); }}
   .ransom {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; line-height: 1.25; margin: 4px 0 0; }}
   .ransom .a {{ font-size: 22px; }}
   .ransom .b {{ font-size: 44px; color: #E10600; }}
@@ -781,7 +780,7 @@ _NB_STYLE = f"""
   .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
   .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
-  .swatch {{ display:inline-block; width:11px; height:11px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
+  .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
   .practice-tile-inner {{ font-size: 13px; }}
   .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
   .practice-tile-inner .val {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 20px; margin: 2px 0; }}
@@ -790,7 +789,7 @@ _NB_STYLE = f"""
   .quali-inner p {{ font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }}
   .insight-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }}
   .insight-inner p {{ font-size: 14px; line-height: 1.65; margin: 0; }}
-  .num-flag {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; color: #0a0a0a; background: #FFE500; border: 1.5px solid #0a0a0a; width: 38px; height: 38px; line-height: 32px; text-align: center; border-radius: 50%; }}
+  .nb-num {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; color: #fff; padding: 4px 9px; border-radius: 3px; margin-bottom: 10px; }}
   .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
   .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
@@ -956,7 +955,7 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
         border = "" if i == len(pace_rows) - 1 else "border-bottom:1px dashed #0a0a0a55;"
         row_html.append(
             "<tr>"
-            f'<td style="padding:10px 8px 10px 0;{border}font-size:16px;text-align:left;">'
+            f'<td style="padding:10px 28px 10px 0;{border}font-size:18px;text-align:left;">'
             f'<span class="swatch" style="background:{_team_color(name)}"></span>{html.escape(name)}</td>'
             f'<td style="padding:10px 0 10px 8px;{border}text-align:right;'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
@@ -964,9 +963,9 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
             "</tr>"
         )
     inner = (
-        f'<p style="font-size:13px;margin:0 0 16px;">{fastest} set the pace this weekend. '
+        f'<p style="font-size:15px;margin:0 0 16px;">{fastest} set the pace this weekend. '
         f'Gap per lap, race pace:</p>'
-        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{"".join(row_html)}</table>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0">{"".join(row_html)}</table>'
     )
     return (
         '<span class="section-title">PACE SPREAD // CONSTRUCTORS</span>'
@@ -1042,28 +1041,19 @@ def render_email_neubrutalist(
             header = _clean(ins.header)
             body = _clean(_first_sentence(ins.explanation_email))
             color = _team_color(ins.team) if ins.team else _NB_INK
-            # Alternating shadow side (odd: right, even: left) echoes the comp's alternating
-            # box-shadow direction (:nth-child(odd/even){box-shadow:±7px 7px}) computed here
-            # instead of via CSS :nth-child, matching where the per-team border-color is
-            # already computed per card.
-            side = "right" if i % 2 == 1 else "left"
-            badge_align = "right" if side == "right" else "left"
-            # Badge renders first at its normal (known, fixed ~38px) size, corner-aligned; the
-            # card box follows with a negative top margin pulling its own top edge up to tuck
-            # under the badge -- same construction as the WINNER sticker above (see its
-            # comment for the full reasoning on why fixed-size-first + box-pulls-up-after is
-            # the bounded, predictable order, not the reverse). Real fragility in the negative
-            # margin itself (Yahoo/AOL dropped support outright, Gmail's own isn't confirmed)
-            # -- verify against the real send; fall back to non-overlapping badge-above-heading
-            # placement if it doesn't hold.
-            badge_line = f'<div style="text-align:{badge_align};margin:0 10px 0 10px;"><span class="num-flag" style="background:{color}">{i}</span></div>'
+            # The number used to be a circular badge overlapping the card's corner (a fixed-
+            # size sticker rendered before the card, which pulled itself up via negative
+            # margin -- see the WINNER sticker's comment for that construction). Folded inside
+            # the card instead, as a small team-colored tag ahead of the heading: one less
+            # moving part, and it reads as a section marker rather than a stuck-on sticker.
+            num_tag = f'<span class="nb-num" style="background:{color}">{i:02d}</span>'
             box = _nb_shadow_box(
-                f"<h3>{header}</h3><p>{body}</p>",
-                border_color=color, box_class="insight-inner",
-                box_style="padding:22px 20px 24px;", offset=5, side=side,
-                wrapper_style="margin:-20px 0 28px;",
+                f"{num_tag}<h3>{header}</h3><p>{body}</p>",
+                border_color=color, border_width="3px", box_class="insight-inner",
+                box_style="padding:22px 20px 24px;", offset=0,
+                wrapper_style="margin:0 0 20px;",
             )
-            cards.append(badge_line + box)
+            cards.append(box)
         cards_html = '<span class="section-title">THE 3 INSIGHTS</span>' + "".join(cards)
 
     # Inline color (not the .cta class alone): Gmail's default link-blue was winning over
@@ -1111,7 +1101,6 @@ def render_email_neubrutalist(
   <div class="masthead">
     {_nb_stamp(event_name)}
     <p class="wordmark">telo<span>gify</span></p>
-    <div class="rip"></div>
   </div>
 
   {winner_sticker}
@@ -1199,10 +1188,10 @@ _CV_STYLE = f"""
   .row.last-in-group .bubble{{border-bottom-left-radius:5px;}}
   strong{{font-weight:700;}}
   .num{{ font-family:{_CV_MONO}; font-weight:600; color:{_CV_SENT}; }}
-  .team-label{{ font-weight:700; }}
-  .data-bubble{{ display:inline-block; width:250px; box-sizing:border-box; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:10px 16px; max-width:97%; }}
+  .team-label{{ font-weight:700; font-family:{_CV_SANS}; }}
+  .data-bubble{{ display:inline-block; width:200px; box-sizing:border-box; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:10px 16px; max-width:97%; }}
   .data-bubble table{{width:100%;}}
-  .data-label{{color:{_CV_INK};}}
+  .data-label{{color:{_CV_INK};font-family:{_CV_SANS};}}
   .data-label .sub{{color:{_CV_MUTED};font-size:13.5px;display:block;margin-top:1px;}}
   .data-val{{ font-family:{_CV_MONO}; font-weight:600; font-size:17px; color:{_CV_INK}; white-space:nowrap; padding-left:12px; }}
   .insight-bubble{{ display:inline-block; background:{_CV_BUBBLE}; border:1px solid #D4D1C6; border-radius:19px; border-bottom-left-radius:5px; padding:16px 18px; max-width:97%; }}
@@ -1234,7 +1223,7 @@ _CV_STYLE = f"""
     .thread {{ max-width: 640px; border: 1px solid #D4D1C6; padding: 40px 40px 36px; }}
     .masthead .wordmark {{ font-size: 50px; }}
     .bubble {{ font-size: 17px; }}
-    .data-bubble {{ width: 280px; }}
+    .data-bubble {{ width: 220px; }}
     .data-val {{ font-size: 19px; }}
     .data-label .sub {{ font-size: 15px; }}
     .insight-head {{ font-size: 19px; }}
