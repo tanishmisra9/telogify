@@ -720,9 +720,9 @@ def _nb_shadow_box(
     *,
     bg: str = "#FEFEFE",
     border_color: str = _NB_INK,
-    border_width: str = "4px",
+    border_width: str = "2px",
     shadow_color: str = _NB_INK,
-    offset: int = 10,
+    offset: float = 5,
     side: str = "right",
     inline: bool = False,
     box_class: str = "",
@@ -750,7 +750,7 @@ def _nb_shadow_box(
 
 def _nb_stamp(text_html: str, *, bg: str = "#E10600", inline: bool = True) -> str:
     return _nb_shadow_box(
-        text_html, bg=bg, border_width="3px", offset=6, inline=inline,
+        text_html, bg=bg, border_width="1.5px", offset=3, inline=inline,
         box_style=(
             f"color:#fff;font-family:{_NB_DISPLAY_FONT};font-weight:700;"
             "padding:10px 18px;font-size:15px;letter-spacing:0.02em;"
@@ -781,7 +781,7 @@ _NB_STYLE = f"""
   .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
   .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
-  .swatch {{ display:inline-block; width:11px; height:11px; margin-right:8px; border:2px solid #0a0a0a; vertical-align:middle; }}
+  .swatch {{ display:inline-block; width:11px; height:11px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
   .practice-tile-inner {{ font-size: 13px; }}
   .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
   .practice-tile-inner .val {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 20px; margin: 2px 0; }}
@@ -790,12 +790,12 @@ _NB_STYLE = f"""
   .quali-inner p {{ font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }}
   .insight-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }}
   .insight-inner p {{ font-size: 14px; line-height: 1.65; margin: 0; }}
-  .num-flag {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; color: #0a0a0a; background: #FFE500; border: 3px solid #0a0a0a; width: 38px; height: 38px; line-height: 32px; text-align: center; border-radius: 50%; }}
+  .num-flag {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; color: #0a0a0a; background: #FFE500; border: 1.5px solid #0a0a0a; width: 38px; height: 38px; line-height: 32px; text-align: center; border-radius: 50%; }}
   .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
   .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
   .next-race-inner .stats b {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:22px; color:#E10600; display:block; }}
-  footer {{ font-size: 12px; line-height: 1.8; color: #0a0a0a99; border-top: 3px solid #0a0a0a; padding-top: 18px; }}
+  footer {{ font-size: 12px; line-height: 1.8; color: #0a0a0a99; border-top: 1.5px solid #0a0a0a; padding-top: 18px; }}
   @media (prefers-color-scheme: dark) {{
     /* Best-effort only (email.py:626 header note, .claude/plans/gmail-dark-mode-real-fix.md
        for the real fix): Gmail's iOS/Android apps -- where the worst dark-mode reports came
@@ -907,7 +907,7 @@ def _nb_practice_html(practice: dict | None) -> str:
             f'<span class="lbl" style="background:{_darken(_team_color(constructor), 0.9)}">{html.escape(label)}</span>'
             f'<p class="val">{html.escape(value)}</p>'
             f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p>',
-            border_width="3px", offset=7, box_class="practice-tile-inner",
+            border_width="1.5px", offset=3.5, box_class="practice-tile-inner",
             box_style="padding:14px 14px 16px;",
             wrapper_style=_tile_rotations[i] if i < len(_tile_rotations) else "",
         )
@@ -953,7 +953,7 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
     # _pace_spread_panel (email.py, already Gmail-safe).
     row_html = []
     for i, (name, gap) in enumerate(pace_rows):
-        border = "" if i == len(pace_rows) - 1 else "border-bottom:2px dashed #0a0a0a55;"
+        border = "" if i == len(pace_rows) - 1 else "border-bottom:1px dashed #0a0a0a55;"
         row_html.append(
             "<tr>"
             f'<td style="padding:10px 8px 10px 0;{border}font-size:16px;text-align:left;">'
@@ -1060,7 +1060,7 @@ def render_email_neubrutalist(
             box = _nb_shadow_box(
                 f"<h3>{header}</h3><p>{body}</p>",
                 border_color=color, box_class="insight-inner",
-                box_style="padding:22px 20px 24px;", offset=10, side=side,
+                box_style="padding:22px 20px 24px;", offset=5, side=side,
                 wrapper_style="margin:-20px 0 28px;",
             )
             cards.append(badge_line + box)
