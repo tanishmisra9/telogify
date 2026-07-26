@@ -28,7 +28,7 @@ from telogify.config import settings
 from telogify.models import Insight, QualiInsight, RaceWeekend
 from telogify.models import Session as SessionRow
 from telogify.models import SectorBest, SessionResult, StraightSegment, Subscriber
-from telogify.serialize import strip_em_dashes
+from telogify.serialize import format_lap_times, strip_em_dashes
 
 # Same practice/sprint-quali session set the site's own /sectors and /topspeeds endpoints treat
 # as "indicative" (api/routes.py's INDICATIVE_SESSIONS) -- conditions vary run to run, so these
@@ -124,7 +124,9 @@ def _darken(hex_color: str, factor: float = 0.6) -> str:
 
 
 def _clean(text: str) -> str:
-    return html.escape(strip_em_dashes(text) or "")
+    # format_lap_times at render, not on persist: it fixes the already-persisted insights too,
+    # which a persist-time hook could only do by re-running the paid pipeline.
+    return html.escape(format_lap_times(strip_em_dashes(text)) or "")
 
 
 def _first_sentence(text: str) -> str:
@@ -203,8 +205,8 @@ def render_email_plaintext(
     if quali_insight is not None:
         lines.append("SETTING THE GRID")
         lines.append("")
-        header = strip_em_dashes(quali_insight.header) or ""
-        body = strip_em_dashes(_first_sentence(quali_insight.explanation_email)) or ""
+        header = format_lap_times(strip_em_dashes(quali_insight.header)) or ""
+        body = format_lap_times(strip_em_dashes(_first_sentence(quali_insight.explanation_email))) or ""
         lines.append(header)
         lines.append(body)
         lines.append("")
@@ -212,8 +214,8 @@ def render_email_plaintext(
     lines.append("HERE'S YOUR THREE INSIGHTS")
     lines.append("")
     for i, ins in enumerate(insights, start=1):
-        header = strip_em_dashes(ins.header) or ""
-        body = strip_em_dashes(_first_sentence(ins.explanation_email)) or ""
+        header = format_lap_times(strip_em_dashes(ins.header)) or ""
+        body = format_lap_times(strip_em_dashes(_first_sentence(ins.explanation_email))) or ""
         lines.append(f"{i:02d}. {header}")
         lines.append(body)
         lines.append("")
@@ -367,7 +369,10 @@ _NB_STYLE = f"""
     color: #0a0a0a;
   }}
   .sheet {{ width: 100%; max-width: 700px; margin: 0 auto; background: #fdfdfb; border: 1px solid #0a0a0a1a; padding: 40px 24px; }}
-  .masthead {{ text-align: center; margin-bottom: 46px; padding-bottom: 40px; }}
+  /* padding-bottom used to reserve room for the torn-strip underline; that's gone, so it was
+     pure dead space stacking on top of margin-bottom (86px total) and holding the reader off
+     the content. */
+  .masthead {{ text-align: center; margin-bottom: 30px; }}
   .masthead .wordmark {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 52px; line-height: 0.9; margin: 18px 0 0; letter-spacing: -0.01em; }}
   .masthead .wordmark span {{ color: #E10600; }}
   .ransom {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; line-height: 1.25; margin: 4px 0 0; }}
@@ -402,10 +407,11 @@ _NB_STYLE = f"""
        (Apple Mail, Samsung Email, Gmail desktop webmail): real dark panels with the brand red/
        team colors preserved as-is, instead of Gmail's own guess. !important is required since
        _nb_shadow_box sets panel background/border inline per-instance (higher specificity
-       than any stylesheet rule without it). Colorful elements (stamps, the CTA, the qualifying
-       block's team tint) are deliberately left alone -- they're already high-contrast against
-       both light and dark, and forcing them to a generic dark panel would erase the team-color
-       identity that's the point of showing them in the first place. */
+       than any stylesheet rule without it). Solid-fill colorful elements (stamps, the
+       qualifying block's team tint) are deliberately left alone -- they're already
+       high-contrast against both light and dark, and forcing them to a generic dark panel
+       would erase the team-color identity that's the point of showing them in the first
+       place. */
     /* .page sets its own color:#0a0a0a outside this block, which (being an explicit
        declaration, not inherited) otherwise wins over body's dark-mode color regardless of
        @media -- override it directly rather than relying on inheritance from body. */
@@ -416,6 +422,12 @@ _NB_STYLE = f"""
       background-color: #29291f !important; border-color: #f2f2ea !important; color: #f2f2ea;
     }}
     .insight-inner {{ background-color: #29291f !important; color: #f2f2ea; }}
+    /* The CTA is an outlined box now, not a solid red fill, so unlike the stamps it can't be
+       left alone here: its off-white background would sit on the dark page as a glaring white
+       slab. Dark panel instead, with the brand red brightened for both border and label --
+       #E10600 straight onto #29291f only reaches ~2.9:1, under the 3:1 large-text floor. */
+    .cta-inner {{ background-color: #29291f !important; border-color: #ff6b5e !important; }}
+    .cta-inner a {{ color: #ff6b5e !important; }}
     /* quali-inner's background stays the light team tint (deliberately unchanged, see the
        comment on the media block's opening) -- but its own text and heading have no color of
        their own in the base stylesheet, so without this reset they'd inherit .page's new
@@ -548,20 +560,24 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
     pace_rows = pace_spread["rows"]
     # Table row, not display:flex (unsupported for most real Gmail recipients) -- the
     # <tr><td>label</td><td align=right>value</td></tr> idiom is already Gmail-safe.
+    # Whitespace-only compression: the panel read as physically massive for three lines of
+    # content, so the box padding, intro-line margin, and per-row padding all come down hard
+    # (~45% less dead space, ~25% shorter overall). The type sizes themselves stay put -- they
+    # were deliberately bumped up so the team names and gaps carry the panel.
     row_html = []
     for i, (name, gap) in enumerate(pace_rows):
         border = "" if i == len(pace_rows) - 1 else "border-bottom:1px dashed #0a0a0a55;"
         row_html.append(
             "<tr>"
-            f'<td style="padding:10px 28px 10px 0;{border}font-size:18px;text-align:left;">'
+            f'<td style="padding:5px 28px 5px 0;{border}font-size:18px;text-align:left;">'
             f'<span class="swatch" style="background:{_team_color(name)}"></span>{html.escape(name)}</td>'
-            f'<td style="padding:10px 0 10px 8px;{border}text-align:right;'
+            f'<td style="padding:5px 0 5px 8px;{border}text-align:right;'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
             f'font-size:28px;color:{_team_color(name)};">{html.escape(gap)}</td>'
             "</tr>"
         )
     inner = (
-        f'<p style="font-size:15px;margin:0 0 16px;">{fastest} set the pace this weekend. '
+        f'<p style="font-size:15px;margin:0 0 10px;">{fastest} set the pace this weekend. '
         f'Gap per lap, race pace:</p>'
         f'<table role="presentation" cellpadding="0" cellspacing="0">{"".join(row_html)}</table>'
     )
@@ -569,7 +585,7 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
         '<span class="section-title">PACE SPREAD // CONSTRUCTORS</span>'
         + _nb_shadow_box(
             inner, box_class="flat-panel-inner",
-            box_style="padding:26px 22px 30px;", wrapper_style="margin-bottom:34px;",
+            box_style="padding:14px 22px 16px;", wrapper_style="margin-bottom:34px;",
         )
     )
 
@@ -657,11 +673,16 @@ def render_email_neubrutalist(
     # Inline color (not the .cta class alone): Gmail's default link-blue was winning over
     # class-only anchor color in the attempt-2 send. Shadow-boxed like the panels; the anchor
     # itself is the inset content box so it stays a single click target.
+    # Outlined + shrink-wrapped (inline=True), not a full-width solid red slab: as a solid bar
+    # it was the single loudest element on the page and pulled focus off the data, which is the
+    # actual product. Red border + red text on the off-white panel bg keeps it unmistakably the
+    # action without out-shouting the insight cards.
     cta = _nb_shadow_box(
         f'<a href="{html.escape(cta_url)}" style="display:block;text-align:center;'
-        f'font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:20px;color:#fff;'
-        'text-decoration:none;padding:18px 20px;">READ THE FULL ANALYSIS</a>',
-        bg="#E10600", wrapper_style="margin:20px 0 50px;",
+        f'font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:15px;color:#E10600;'
+        'text-decoration:none;padding:11px 18px;">READ THE FULL ANALYSIS</a>',
+        border_color="#E10600", inline=True, box_class="cta-inner",
+        wrapper_style="margin:20px 0 50px;",
     )
 
     winner_sticker = f'<div style="text-align:right;margin:0 20px 0 0;">{_nb_stamp("WINNER", bg=html.escape(_darken(_team_color(raw_team), 0.85)) if raw_team else "#E10600")}</div>'
