@@ -8,23 +8,13 @@ export function Countdown() {
   const { data } = useApi<NextRace>('/next-race')
   if (!data) return null
 
-  const place = [data.location, data.country].filter(Boolean).join(', ')
-  const raceDate = new Date(data.date_utc).toLocaleDateString(undefined, {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
+  const place = data.location
 
   return (
     <section className="mt-24 sm:mt-32">
       <CountdownPanel
         kicker={`Next race · Round ${data.round}`}
-        subtitle={
-          <>
-            <span className="block">{raceDate}</span>
-            {place && <span className="block">{place}</span>}
-          </>
-        }
+        subtitle={place && <span className="block">{place}</span>}
         title={data.event_name}
         targetIso={data.date_utc}
       />
