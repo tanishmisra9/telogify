@@ -9,6 +9,7 @@ import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
 import { SectionTitle } from '@/components/SectionTitle'
+import { SkeletonCard } from '@/components/Skeleton'
 import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
 import { heatBg, rankAsc } from '@/lib/heat'
@@ -164,7 +165,9 @@ function SeasonView({ year }: { year: number }) {
 
       <section id="ranking" className="mt-16 scroll-mt-24">
         <SectionTitle>Ranking</SectionTitle>
-        {season.loading && <p className="text-sm text-muted">Loading...</p>}
+        {/* Reserves the table's footprint while it loads, so the real content blurs in in
+            place instead of the page suddenly growing underneath a one-line "Loading…" string. */}
+        {season.loading && <SkeletonCard className="min-h-[600px]" />}
         {season.error && <p className="text-sm text-muted">No season data for {year}.</p>}
         {rows.length > 0 && (
           <BlurFade>
@@ -182,69 +185,86 @@ function SeasonView({ year }: { year: number }) {
         )}
       </section>
 
-      {rows.length > 0 && (
+      {/* Always rendered (not gated on rows.length): keeps the same skeleton-then-content
+          swap as the Ranking table above, instead of these sections popping into existence
+          all at once the moment the season fetch resolves and shoving the footer down. */}
+      {(season.loading || rows.length > 0) && (
         <>
           <section id="gap-by-round" className="mt-20 scroll-mt-24">
             <SectionTitle>Gap by round</SectionTitle>
-            <BlurFade>
-              <SeasonTrendChart rows={rows} rounds={season.data!.rounds} />
-            </BlurFade>
+            {season.loading ? (
+              <SkeletonCard className="min-h-[580px]" />
+            ) : (
+              <BlurFade>
+                <SeasonTrendChart rows={rows} rounds={season.data!.rounds} />
+              </BlurFade>
+            )}
           </section>
 
-          {hasDeployment && (
+          {(deployment.loading || hasDeployment) && (
             <section id="deployment" className="mt-20 scroll-mt-24">
               <SectionTitle>Deployment</SectionTitle>
-              {deploymentPanelItems.length > 0 && (
-                // Full section width (matching the Ranking table above), not the narrower
-                // max-w-5xl WeekendPage uses for its 3-insight hero column: on this denser,
-                // multi-section page a narrower block just left-aligns with dead space beside
-                // it. showSlot stays on: the rank digit is the panels' own ordering (1 = best
-                // package this season), which the kicker's manufacturer name doesn't convey.
-                <div className="mb-8">
-                  <div className="grid gap-4">
-                    {deploymentPanelItems.map((item, i) => {
-                      // ponytail: Mercedes' cyan (#27F4D2) reads as too bright/light for text
-                      // at full strength here; every other team's color was confirmed fine as
-                      // is, so this is a one-off calibration knob, not a general formula.
-                      const teamColor =
-                        item.works_team === 'Mercedes'
-                          ? `color-mix(in oklch, ${resolveTeamColor(item.works_team)} 92%, var(--color-ink) 8%)`
-                          : resolveTeamColor(item.works_team)
-                      return (
-                      <BlurFade key={item.pu} delay={0.06 * i}>
-                        <Insight
-                          item={item}
-                          collapsible
-                          defaultOpen={!isMobile}
-                          // Two-tone: the manufacturer name carries the full team color, same
-                          // as the rank number (can't be a uniform accent-red once panels are
-                          // team-tinted); the customer-team list stays neutral rather than
-                          // picking one of several team colors. block sm:inline on the customer
-                          // span: forces its own line on mobile (crammed onto one line with a
-                          // longer manufacturer name otherwise), stays inline at sm+ as before.
-                          // Comma-separated, no bullets -- the color/weight contrast between
-                          // the bold manufacturer name and this muted list is separator enough.
-                          kicker={
-                            <span className="font-semibold" style={{ color: teamColor }}>{item.pu} power</span>
-                          }
-                          contextLabel={`${year} season deployment`}
-                          // Stronger than the 0.09 row-wash precedent (Ranking table, legends):
-                          // those are dense stacks of many small rows where a strong tint would
-                          // overwhelm; these are five spacious hero panels where the team color
-                          // is the whole point, so it can carry more of the surface. The big
-                          // rank number in full-strength team color is the second, bolder signal.
-                          tintColor={teamColorWithAlpha(item.works_team, 0.09)}
-                          accentColor={teamColor}
-                        />
-                      </BlurFade>
-                      )
-                    })}
-                  </div>
+              {deployment.loading ? (
+                <div className="mb-8 grid gap-4">
+                  {[0, 1, 2].map((i) => (
+                    <SkeletonCard key={i} className="min-h-[180px]" />
+                  ))}
                 </div>
+              ) : (
+                <>
+                  {deploymentPanelItems.length > 0 && (
+                    // Full section width (matching the Ranking table above), not the narrower
+                    // max-w-5xl WeekendPage uses for its 3-insight hero column: on this denser,
+                    // multi-section page a narrower block just left-aligns with dead space beside
+                    // it. showSlot stays on: the rank digit is the panels' own ordering (1 = best
+                    // package this season), which the kicker's manufacturer name doesn't convey.
+                    <div className="mb-8">
+                      <div className="grid gap-4">
+                        {deploymentPanelItems.map((item, i) => {
+                          // ponytail: Mercedes' cyan (#27F4D2) reads as too bright/light for text
+                          // at full strength here; every other team's color was confirmed fine as
+                          // is, so this is a one-off calibration knob, not a general formula.
+                          const teamColor =
+                            item.works_team === 'Mercedes'
+                              ? `color-mix(in oklch, ${resolveTeamColor(item.works_team)} 92%, var(--color-ink) 8%)`
+                              : resolveTeamColor(item.works_team)
+                          return (
+                          <BlurFade key={item.pu} delay={0.06 * i}>
+                            <Insight
+                              item={item}
+                              collapsible
+                              defaultOpen={!isMobile}
+                              // Two-tone: the manufacturer name carries the full team color, same
+                              // as the rank number (can't be a uniform accent-red once panels are
+                              // team-tinted); the customer-team list stays neutral rather than
+                              // picking one of several team colors. block sm:inline on the customer
+                              // span: forces its own line on mobile (crammed onto one line with a
+                              // longer manufacturer name otherwise), stays inline at sm+ as before.
+                              // Comma-separated, no bullets -- the color/weight contrast between
+                              // the bold manufacturer name and this muted list is separator enough.
+                              kicker={
+                                <span className="font-semibold" style={{ color: teamColor }}>{item.pu} power</span>
+                              }
+                              contextLabel={`${year} season deployment`}
+                              // Stronger than the 0.09 row-wash precedent (Ranking table, legends):
+                              // those are dense stacks of many small rows where a strong tint would
+                              // overwhelm; these are five spacious hero panels where the team color
+                              // is the whole point, so it can carry more of the surface. The big
+                              // rank number in full-strength team color is the second, bolder signal.
+                              tintColor={teamColorWithAlpha(item.works_team, 0.09)}
+                              accentColor={teamColor}
+                            />
+                          </BlurFade>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <BlurFade delay={0.06 * deploymentPanelItems.length}>
+                    <SeasonDeploymentChart scatter={deployment.data!.scatter} puGroups={deployment.data!.pu_groups} />
+                  </BlurFade>
+                </>
               )}
-              <BlurFade delay={0.06 * deploymentPanelItems.length}>
-                <SeasonDeploymentChart scatter={deployment.data!.scatter} puGroups={deployment.data!.pu_groups} />
-              </BlurFade>
             </section>
           )}
         </>
