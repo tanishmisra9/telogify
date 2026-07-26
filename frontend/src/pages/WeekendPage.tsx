@@ -248,7 +248,12 @@ function SessionGate({
     if (target?.status === 'unavailable') {
       return <Upcoming>There was an issue with this session.</Upcoming>
     }
-    if (target?.date_utc) {
+    // CountdownPanel has no "expired" state of its own (it clamps at 00:00:00:00 and just
+    // sits there), so only render it while the target is genuinely still in the future. Once
+    // a session's scheduled start has passed but it isn't ingested yet (and isn't stale enough
+    // to be "unavailable"), that's the same situation as noData below -- the session ran, the
+    // data just isn't in yet -- so reuse that copy instead of a dead countdown.
+    if (target?.date_utc && new Date(target.date_utc).getTime() > Date.now()) {
       return (
         <CountdownPanel
           kicker="Coming up"
@@ -258,6 +263,7 @@ function SessionGate({
         />
       )
     }
+    if (target?.date_utc) return <Upcoming>No data yet.</Upcoming>
     return <Upcoming>{label} hasn&apos;t happened yet.</Upcoming>
   }
   if (noData) return <Upcoming>No data yet.</Upcoming>

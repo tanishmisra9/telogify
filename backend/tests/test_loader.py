@@ -57,12 +57,12 @@ def test_list_weekend_sessions_skips_empty():
 def test_completed_weekend_sessions_respects_buffer():
     # A session isn't eligible at its scheduled start -- only once scheduled end (start +
     # nominal duration) + data lag has passed. FP1 starts at +1h; ready at +1h + 1h (duration)
-    # + 1h (lag) = +3h. Race starts at +2h; ready at +2h + 2h30 (duration) + 1h (lag) = +5h30.
+    # + 1h (lag) = +3h. Race starts at +2h; ready at +2h + 2h (duration) + 1h (lag) = +5h.
     event = _dated_event(s1="Practice 1", s2="Race")
     fp1_start = BASE - timedelta(days=1) + timedelta(hours=1)
     fp1_ready = fp1_start + timedelta(hours=2)
     race_start = BASE - timedelta(days=1) + timedelta(hours=2)
-    race_ready = race_start + timedelta(hours=3, minutes=30)
+    race_ready = race_start + timedelta(hours=3)
 
     assert loader.completed_weekend_sessions(event, fp1_ready - timedelta(minutes=1)) == []
     assert loader.completed_weekend_sessions(event, fp1_ready) == [("FP1", "Practice 1")]
@@ -77,7 +77,7 @@ def test_completed_weekend_sessions_respects_buffer():
 
 def test_completed_weekend_sessions_per_type_duration():
     # Each session type's buffer reflects its own nominal duration: SQ/SPRINT (45min) become
-    # ready sooner after their start than Q (1h), which becomes ready sooner than R (2h30).
+    # ready sooner after their start than Q (1h), which becomes ready sooner than R (2h).
     event = _dated_event(s1="Sprint Qualifying", s2="Qualifying", s3="Race")
     sq_start = BASE - timedelta(days=1) + timedelta(hours=1)
     q_start = BASE - timedelta(days=1) + timedelta(hours=2)
@@ -85,7 +85,7 @@ def test_completed_weekend_sessions_per_type_duration():
 
     sq_ready = sq_start + timedelta(minutes=45) + timedelta(hours=1)
     q_ready = q_start + timedelta(hours=1) + timedelta(hours=1)
-    r_ready = r_start + timedelta(hours=2, minutes=30) + timedelta(hours=1)
+    r_ready = r_start + timedelta(hours=2) + timedelta(hours=1)
 
     assert loader.completed_weekend_sessions(event, sq_ready) == [("SQ", "Sprint Qualifying")]
     assert loader.completed_weekend_sessions(event, q_ready) == [

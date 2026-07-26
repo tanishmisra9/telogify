@@ -28,8 +28,7 @@ _NAME_TO_TYPE = {
 }
 
 # Tuning knob: how long a session runs, used to derive a scheduled end since FastF1's schedule
-# exposes only start times. Practice/quali ~1h; sprint sessions ~45min; race gets 2h30 (2h race
-# plus red-flag headroom, since regulations cap wall-clock at 3h).
+# exposes only start times. Practice/quali ~1h; sprint sessions ~45min; race ~2h.
 _NOMINAL_DURATION: dict[str, timedelta] = {
     "FP1": timedelta(hours=1),
     "FP2": timedelta(hours=1),
@@ -37,7 +36,7 @@ _NOMINAL_DURATION: dict[str, timedelta] = {
     "Q": timedelta(hours=1),
     "SQ": timedelta(minutes=45),
     "SPRINT": timedelta(minutes=45),
-    "R": timedelta(hours=2, minutes=30),
+    "R": timedelta(hours=2),
 }
 _DEFAULT_DURATION = timedelta(hours=1)  # fallback for an unmapped/unknown code
 
