@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react'
 import { LazyMotion, domAnimation } from 'framer-motion'
 import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
@@ -49,6 +50,7 @@ export default function App() {
           </div>
           <Footer />
         </div>
+        <Analytics />
       </BrowserRouter>
     </LazyMotion>
   )
