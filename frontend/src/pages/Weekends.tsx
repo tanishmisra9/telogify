@@ -1,7 +1,12 @@
 import { Link } from 'react-router-dom'
 import { BackHomeButton } from '@/components/BackHomeButton'
 import { BlurFade } from '@/components/BlurFade'
+import { ScrollReveal } from '@/components/ScrollReveal'
 import { useApi, type WeekendSummary } from '@/lib/api'
+
+// Only the first screenful cascades on load; rows reached by scrolling fade in one at a time as
+// they enter the viewport, so the scroll itself is the stagger and no per-row delay is needed.
+const STAGGERED_ROWS = 6
 
 export function Weekends() {
   const { data, loading, error } = useApi<WeekendSummary[]>('/weekends')
@@ -30,7 +35,7 @@ export function Weekends() {
 
       <ul>
         {weekends.map((w, i) => (
-          <BlurFade key={w.id} delay={0.04 * i}>
+          <ScrollReveal key={w.id} delay={i < STAGGERED_ROWS ? 0.04 * i : 0}>
             <li>
               <Link
                 to={`/weekends/${w.year}/${w.round}`}
@@ -60,7 +65,7 @@ export function Weekends() {
                 </span>
               </Link>
             </li>
-          </BlurFade>
+          </ScrollReveal>
         ))}
       </ul>
     </main>

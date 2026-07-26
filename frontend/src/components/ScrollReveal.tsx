@@ -19,7 +19,7 @@ export function ScrollReveal({
       className={className}
       initial={reduce ? false : blurFadeIn.initial}
       whileInView={blurFadeIn.animate}
-      viewport={{ once: true, margin: '-80px' }}
+      viewport={{ once: true, margin: '0px' }}
       transition={{ ...spring, delay: reduce ? 0 : delay }}
     >
       {children}
