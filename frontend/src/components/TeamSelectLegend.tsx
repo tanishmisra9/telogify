@@ -92,7 +92,7 @@ export function TeamSelectLegend({
 
   return (
     <div>
-      <div className="grid grid-cols-2 gap-x-4">
+      <div className="grid grid-cols-2">
         <ol>
           {col1.map((r, i) => (
             <Row key={r.team} row={r} rank={i + 1} selected={selected} isFiltering={isFiltering} onToggle={onToggle} />
