@@ -16,6 +16,10 @@ CORNER_HALF_WINDOW_M = 75.0
 class Corner:
     number: int
     distance: float
+    # FastF1 gives chicane/hairpin sub-apexes the same Number with a distinguishing Letter
+    # (e.g. "1" and "1A"); carried through only for display labeling, not for the numeric
+    # grouping `number` already drives (corner_windows, attribution).
+    letter: str = ""
 
 
 def is_clean_lap(
@@ -87,7 +91,10 @@ def get_corners(session) -> list[Corner]:
         info = _circuit_info_resilient(session)
     if info is None or getattr(info, "corners", None) is None or len(info.corners) == 0:
         return []
-    return [Corner(int(r["Number"]), float(r["Distance"])) for _, r in info.corners.iterrows()]
+    return [
+        Corner(int(r["Number"]), float(r["Distance"]), str(r.get("Letter", "") or ""))
+        for _, r in info.corners.iterrows()
+    ]
 
 
 def _circuit_info_resilient(session):

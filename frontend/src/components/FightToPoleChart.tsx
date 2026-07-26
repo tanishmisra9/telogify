@@ -5,7 +5,7 @@ import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teammateShade } from '@/lib/teamColors'
 import { drawTransition } from '@/lib/motion'
 import { useSvgTextScale } from '@/lib/useSvgTextScale'
-import type { QualiTraceData, QualiTraceDriver } from '@/lib/api'
+import type { QualiTraceCorner, QualiTraceData, QualiTraceDriver } from '@/lib/api'
 
 const WIDTH = 1100
 const PANEL_H = 150
@@ -101,12 +101,17 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   // corners within a few meters of each other) -- skip a label when it would land within 16px of
   // the last one shown. The dotted line still marks every corner; only the number thins out.
   const MIN_LABEL_GAP_PX = 16
-  const labeledCorners = new Set<number>()
+  // Keyed by number+letter, not number alone: chicane/hairpin sub-apexes share a number (e.g.
+  // "1" and "1A"), and a number-only key made every corner with that number render whichever
+  // label first passed the gap check, duplicating it at each corner's own position.
+  // `?? ''`: rows ingested before `letter` was added to corners_json won't have the key.
+  const cornerLabel = (c: QualiTraceCorner) => `${c.number}${c.letter ?? ''}`
+  const labeledCorners = new Set<string>()
   let lastLabelX = -Infinity
   for (const c of data.corners) {
     const cx = x(c.distance_m)
     if (cx - lastLabelX >= MIN_LABEL_GAP_PX) {
-      labeledCorners.add(c.number)
+      labeledCorners.add(cornerLabel(c))
       lastLabelX = cx
     }
   }
@@ -176,7 +181,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
                 />
               )}
               {data.corners.map((c) => (
-                <g key={c.number}>
+                <g key={cornerLabel(c)}>
                   <line
                     x1={x(c.distance_m)}
                     x2={x(c.distance_m)}
@@ -185,9 +190,9 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
                     stroke="var(--color-border)"
                     strokeDasharray="2 3"
                   />
-                  {panel.key === 'speed' && labeledCorners.has(c.number) && (
+                  {panel.key === 'speed' && labeledCorners.has(cornerLabel(c)) && (
                     <text x={x(c.distance_m)} y={-8} textAnchor="middle" fontSize={textPx(10)} fill="var(--color-muted)">
-                      {c.number}
+                      {cornerLabel(c)}
                     </text>
                   )}
                 </g>

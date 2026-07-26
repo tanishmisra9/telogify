@@ -105,7 +105,7 @@ def store_quali_traces(data: WeekendData, db: DBSession) -> None:
         traces, grid = extract_quali_traces(session)
         if not traces:
             continue
-        corners = [{"number": c.number, "distance_m": c.distance} for c in get_corners(session)]
+        corners = [{"number": c.number, "distance_m": c.distance, "letter": c.letter} for c in get_corners(session)]
         for driver, d in traces.items():
             db.add(
                 QualiTrace(

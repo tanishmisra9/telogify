@@ -167,6 +167,8 @@ export interface QualiTraceDriver {
 export interface QualiTraceCorner {
   number: number
   distance_m: number
+  // Distinguishes chicane/hairpin sub-apexes that share a number (e.g. "1" and "1A").
+  letter: string
 }
 
 export interface QualiTraceData {

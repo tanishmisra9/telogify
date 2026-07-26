@@ -186,7 +186,7 @@ class QualiTrace(SQLModel, table=True):
     lap_time_s: float | None = None
     is_pole: bool = False
     grid_m: list = Field(default_factory=list, sa_column=Column(JSON))
-    corners_json: list = Field(default_factory=list, sa_column=Column(JSON))  # [{number, distance_m}]
+    corners_json: list = Field(default_factory=list, sa_column=Column(JSON))  # [{number, distance_m, letter}]
     # speed_kmh/throttle_pct/delta_s: resampled onto grid_m BY LAP FRACTION, so every point is a
     # driver's real telemetry at that fraction of their own lap (see analysis/quali_trace.py).
     # delta_s is 0.0 throughout for the pole row; the final point is each lap's finish line, so a
