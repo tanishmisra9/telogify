@@ -237,6 +237,7 @@ function SessionGate({
   happened,
   noData,
   children,
+  delay,
 }: {
   sessionsLoaded: boolean
   loading: React.ReactNode
@@ -245,6 +246,9 @@ function SessionGate({
   happened: boolean
   noData: boolean
   children: React.ReactNode
+  // Matched to this section's own SectionTitle delay, so its loading placeholder blur-fades in
+  // alongside its heading instead of popping in crisp while the heading is still mid-reveal.
+  delay: number
 }) {
   const resolved = (() => {
     if (!happened) {
@@ -274,7 +278,7 @@ function SessionGate({
   })()
 
   return (
-    <LoadingSwap loading={!sessionsLoaded} placeholder={loading}>
+    <LoadingSwap loading={!sessionsLoaded} delay={delay} placeholder={loading}>
       {resolved}
     </LoadingSwap>
   )
@@ -434,6 +438,7 @@ export function WeekendPage() {
         <SectionTitle delay={0.08}>Your three insights</SectionTitle>
         <LoadingSwap
           loading={!topReady}
+          delay={0.08}
           placeholder={
             // Measured, not estimated. These panels have no `defaultOpen` override (unlike the
             // Season page's Deployment panels) so they're always open, on every viewport -- the
@@ -482,6 +487,7 @@ export function WeekendPage() {
         <SectionTitle delay={0.16}>Practice</SectionTitle>
         <SessionGate
           sessionsLoaded={sessionsLoaded}
+          delay={0.16}
           loading={<PracticeSkeleton />}
           target={nextSessionTarget(['FP1'])}
           label="Practice"
@@ -512,6 +518,7 @@ export function WeekendPage() {
           <SectionTitle delay={0.24}>Sprint</SectionTitle>
           <SessionGate
             sessionsLoaded={sessionsLoaded}
+            delay={0.24}
             loading={<SkeletonCard label="Pace spread" className="min-h-[600px]" />}
             target={nextSessionTarget(['SQ', 'SPRINT'])}
             label="Sprint"
@@ -533,6 +540,7 @@ export function WeekendPage() {
         <SectionTitle delay={0.32}>Qualifying</SectionTitle>
         <SessionGate
           sessionsLoaded={sessionsLoaded}
+          delay={0.32}
           loading={
             <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
               <SkeletonCard label="Car character" className="min-h-[520px]" />
@@ -571,6 +579,7 @@ export function WeekendPage() {
         <SectionTitle delay={0.4}>Race</SectionTitle>
         <SessionGate
           sessionsLoaded={sessionsLoaded}
+          delay={0.4}
           loading={
             <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
               <SkeletonCard label="Pace spread" className="min-h-[600px]" />

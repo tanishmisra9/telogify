@@ -170,7 +170,11 @@ function SeasonView({ year }: { year: number }) {
             skeleton into the resolved content in place, instead of the page suddenly growing
             underneath a one-line "Loading…" string. Heights measured from the real rendered
             panel (693px desktop / 773px mobile at an 11-constructor field), not estimated. */}
-        <LoadingSwap loading={season.loading} placeholder={<SkeletonCard className="min-h-[780px] md:min-h-[700px]" />}>
+        <LoadingSwap
+          loading={season.loading}
+          delay={0.08}
+          placeholder={<SkeletonCard className="min-h-[780px] md:min-h-[700px]" />}
+        >
           {season.error ? (
             <p className="text-sm text-muted">No season data for {year}.</p>
           ) : rows.length > 0 ? (
@@ -196,7 +200,11 @@ function SeasonView({ year }: { year: number }) {
           <section id="gap-by-round" className="mt-20 scroll-mt-24">
             <SectionTitle delay={0.16}>Gap by round</SectionTitle>
             {/* Measured 927px desktop / 947px mobile -- close enough to use one value. */}
-            <LoadingSwap loading={season.loading} placeholder={<SkeletonCard className="min-h-[950px]" />}>
+            <LoadingSwap
+              loading={season.loading}
+              delay={0.16}
+              placeholder={<SkeletonCard className="min-h-[950px]" />}
+            >
               <SeasonTrendChart rows={rows} rounds={season.data?.rounds ?? []} />
             </LoadingSwap>
           </section>
@@ -206,6 +214,7 @@ function SeasonView({ year }: { year: number }) {
               <SectionTitle delay={0.24}>Deployment</SectionTitle>
               <LoadingSwap
                 loading={deployment.loading}
+                delay={0.24}
                 placeholder={
                   <>
                     {/* 5 placeholders, one per PU_GROUPS entry (backend/telogify/analysis/
