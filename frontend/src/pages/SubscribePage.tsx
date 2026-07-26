@@ -11,7 +11,9 @@ export function SubscribePage() {
         <div className="mb-6">
           <BackHomeButton />
         </div>
-        <h1 className="select-none font-display text-7xl leading-[1.05] tracking-tight sm:text-8xl">
+        {/* 0.9x text-7xl/text-8xl -- the same scale factor applied to the Weekends/Season
+            headings, so this stays one ramp step above them exactly as it did before. */}
+        <h1 className="select-none font-display text-[4.05rem] leading-[1.05] tracking-tight sm:text-[5.4rem]">
           Telo<span className="text-accent">gify</span> your weekend
         </h1>
         <p className="mt-4 text-lg text-muted">

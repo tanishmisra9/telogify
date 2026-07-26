@@ -25,7 +25,10 @@ export function Weekends() {
           <BackHomeButton />
         </div>
         <div className="flex flex-col gap-3 border-b-2 border-ink pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          <h1 className="font-display text-6xl leading-[0.95] tracking-tight sm:text-7xl">
+          {/* 0.9x text-6xl/text-7xl. Same scale factor the other display headings already use
+              (WeekendPage's text-[3.375rem]/text-[5.4rem], Insight's text-[2.025rem]/[2.7rem]),
+              so this stays on the existing type ramp rather than introducing a new size. */}
+          <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[4.05rem]">
             Race weekends
           </h1>
           {/* Withheld while loading rather than rendering "0 logged", which is a real (wrong)
