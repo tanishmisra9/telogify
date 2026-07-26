@@ -62,13 +62,17 @@ class PipelineState(TypedDict, total=False):
     round: int
     weekend_id: int
     session_types: list[str]
+    new_session_types: list[str]
+    force: bool
     insight_count: int
     quali_insight_count: int
 
 
 def _ingest(state: PipelineState) -> dict:
     with Session(engine) as db:
-        data = load_weekend(state["year"], state["round"], db)
+        data = load_weekend(
+            state["year"], state["round"], db, force=state.get("force", False)
+        )
         store_straights(data, db)
         store_stints(data, db)
         store_results(data, db)
@@ -79,7 +83,16 @@ def _ingest(state: PipelineState) -> dict:
         store_race_control(data, db)
         store_deployment(data, db)
         store_accel_samples(data, db)
-        return {"weekend_id": data.weekend.id, "session_types": sorted(data.sessions)}
+        # session_types is the full current DB state (sessions can now be skipped as
+        # already-ingested, so data.sessions alone no longer reflects "everything ingested so
+        # far"); new_session_types is just what THIS call actually (re)loaded, needed only to
+        # gate season-deployment regeneration on "a race was newly ingested this run".
+        session_types = _ingested_session_types(db, data.weekend.id)
+        return {
+            "weekend_id": data.weekend.id,
+            "session_types": sorted(session_types),
+            "new_session_types": sorted(data.sessions),
+        }
 
 
 def _has_quali_or_race(state: PipelineState) -> bool:
@@ -107,6 +120,10 @@ def _candidates(state: PipelineState) -> dict:
 def _ingested_session_types(db: Session, weekend_id: int) -> set[str]:
     rows = db.exec(select(SessionModel).where(SessionModel.weekend_id == weekend_id)).all()
     return {r.session_type for r in rows}
+
+
+def _has_existing(db: Session, weekend_id: int, model: type) -> bool:
+    return db.exec(select(model).where(model.weekend_id == weekend_id)).first() is not None
 
 
 _MAX_INSIGHT_ATTEMPTS = 3
@@ -262,6 +279,16 @@ def _default_quali_agent_runner(year: int, round: int, feedback: str | None = No
     return result["messages"]
 
 
+def _needs_generation(state: PipelineState, model: type) -> bool:
+    """Whether an insight batch should (re)generate: forced, or none persisted yet. Without this,
+    a recurring caller (e.g. a cron) would re-spend an LLM call every tick for a round that's
+    already fully done."""
+    if state.get("force"):
+        return True
+    with Session(engine) as db:
+        return not _has_existing(db, state["weekend_id"], model)
+
+
 def build_pipeline(agent_runner, quali_agent_runner):
     g = StateGraph(PipelineState)
     g.add_node("ingest", _ingest)
@@ -269,15 +296,26 @@ def build_pipeline(agent_runner, quali_agent_runner):
     g.add_node("candidates", _candidates)
     g.add_node(
         "insights",
-        lambda s: _insights(s, agent_runner) if "R" in s.get("session_types", ()) else {},
+        lambda s: (
+            _insights(s, agent_runner)
+            if "R" in s.get("session_types", ()) and _needs_generation(s, Insight)
+            else {}
+        ),
     )
     g.add_node(
         "quali_insights",
-        lambda s: _quali_insights(s, quali_agent_runner) if "Q" in s.get("session_types", ()) else {},
+        lambda s: (
+            _quali_insights(s, quali_agent_runner)
+            if "Q" in s.get("session_types", ()) and _needs_generation(s, QualiInsight)
+            else {}
+        ),
     )
     g.add_node(
         "season_deployment",
-        lambda s: _season_deployment(s) if "R" in s.get("session_types", ()) else {},
+        # Gated on the race being newly ingested THIS run (or force), not just "R" ever having
+        # been ingested -- otherwise this would regenerate the season-wide verdicts on every
+        # repeat tick for an already-fully-ingested round, with nothing new to reflect.
+        lambda s: _season_deployment(s) if s.get("force") or "R" in s.get("new_session_types", ()) else {},
     )
     g.add_edge(START, "ingest")
     g.add_edge("ingest", "analyze")
@@ -289,13 +327,18 @@ def build_pipeline(agent_runner, quali_agent_runner):
     return g.compile(checkpointer=MemorySaver())
 
 
-def run_weekend(year: int, round: int, agent_runner=None, quali_agent_runner=None) -> PipelineState:
+def run_weekend(
+    year: int, round: int, agent_runner=None, quali_agent_runner=None, force: bool = False
+) -> PipelineState:
+    """`force` bypasses every skip guard: already-ingested sessions are re-fetched and re-run,
+    and already-persisted insight batches / season-deployment verdicts regenerate regardless.
+    Default (force=False) is cron-safe: repeat calls for an unchanged round do nothing."""
     pipeline = build_pipeline(
         agent_runner or _default_agent_runner,
         quali_agent_runner or _default_quali_agent_runner,
     )
     return pipeline.invoke(
-        {"year": year, "round": round},
+        {"year": year, "round": round, "force": force},
         config={"configurable": {"thread_id": f"weekend-{year}-{round}"}},
     )
 
@@ -304,8 +347,10 @@ def run_ingest(year: int, round: int) -> PipelineState:
     """Ingest-only entry point: re-run the FastF1 ingest node for one weekend, with no
     analysis, no candidates, and no LLM call (zero API spend). Every extractor is idempotent
     (delete + reinsert per session) and FastF1's disk cache makes re-runs CPU-bound, so this
-    is the cheap path after an ingest extractor changes."""
-    state: PipelineState = {"year": year, "round": round}
+    is the cheap path after an ingest extractor changes. Always forces a full re-ingest (unlike
+    run_weekend's default) -- that's the whole point of this command, re-running deliberately
+    after an extractor changed, not something a cron would call repeatedly."""
+    state: PipelineState = {"year": year, "round": round, "force": True}
     return {**state, **_ingest(state)}
 
 
@@ -338,6 +383,7 @@ def run_season(
     quali_agent_runner=None,
     now: datetime | None = None,
     continue_on_error: bool = True,
+    force: bool = False,
     on_round_start: Callable[[int, int, int], None] | None = None,
     on_round_complete: Callable[[RoundResult, int, int], None] | None = None,
 ) -> SeasonRunResult:
@@ -349,7 +395,9 @@ def run_season(
         if on_round_start:
             on_round_start(rnd, i, total)
         try:
-            state = run_weekend(year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner)
+            state = run_weekend(
+                year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner, force=force
+            )
             result = RoundResult(
                 round=rnd,
                 ok=True,
@@ -374,6 +422,7 @@ def run_insights_season(
     now: datetime | None = None,
     continue_on_error: bool = True,
     max_workers: int = 4,
+    force: bool = False,
     on_round_start: Callable[[int, int, int], None] | None = None,
     on_round_complete: Callable[[RoundResult, int, int], None] | None = None,
 ) -> SeasonRunResult:
@@ -394,7 +443,9 @@ def run_insights_season(
         if on_round_start:
             on_round_start(rnd, index, total)
         try:
-            state = regen_insights(year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner)
+            state = regen_insights(
+                year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner, force=force
+            )
             return RoundResult(
                 round=rnd,
                 ok=True,
@@ -422,7 +473,9 @@ def run_insights_season(
     return outcome
 
 
-def regen_insights(year: int, round: int, agent_runner=None, quali_agent_runner=None) -> dict:
+def regen_insights(
+    year: int, round: int, agent_runner=None, quali_agent_runner=None, force: bool = False
+) -> dict:
     """Regenerate whichever of the 3 race insights / 2 qualifying insights the ingested data
     supports, from already-ingested data: recompute candidates (so a scoring change shows) and
     re-run the relevant agent(s). Skips FastF1 ingest and analysis, whose inputs haven't
@@ -433,7 +486,11 @@ def regen_insights(year: int, round: int, agent_runner=None, quali_agent_runner=
     is ingested, there is nothing to regenerate and this raises loud rather than silently doing
     nothing. If the qualifying insights fail their guardrail/validation gate, the RuntimeError
     propagates even though the race insights already persisted this run: each insight batch is
-    its own hard gate, same "never ship a fabricated claim" rule."""
+    its own hard gate, same "never ship a fabricated claim" rule.
+
+    Each batch also skips regenerating (no LLM call at all) if it's already persisted, unless
+    `force` -- same cron-safety reasoning as run_weekend's default: a recurring caller shouldn't
+    re-spend an LLM call every tick for a round that hasn't changed since it was last generated."""
     runner = agent_runner or _default_agent_runner
     quali_runner = quali_agent_runner or _default_quali_agent_runner
     with Session(engine) as db:
@@ -450,10 +507,12 @@ def regen_insights(year: int, round: int, agent_runner=None, quali_agent_runner=
                 "completed."
             )
         compute_candidates(weekend_id, db)
+        needs_race = force or not _has_existing(db, weekend_id, Insight)
+        needs_quali = force or not _has_existing(db, weekend_id, QualiInsight)
     state: PipelineState = {"year": year, "round": round, "weekend_id": weekend_id}
     result: dict = {"session_types": sorted(session_types)}
-    if "R" in session_types:
+    if "R" in session_types and needs_race:
         result.update(_insights(state, runner))
-    if "Q" in session_types:
+    if "Q" in session_types and needs_quali:
         result.update(_quali_insights(state, quali_runner))
     return result

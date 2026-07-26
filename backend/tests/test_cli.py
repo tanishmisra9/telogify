@@ -63,7 +63,7 @@ def test_ingest_no_completed_rounds(monkeypatch):
 def test_run_weekend_single_round_reports_counts(monkeypatch):
     monkeypatch.setattr(
         "telogify.pipeline.run_weekend",
-        lambda year, round: {"insight_count": 3, "quali_insight_count": 2},
+        lambda year, round, force=False: {"insight_count": 3, "quali_insight_count": 2},
     )
     result = runner.invoke(cli.app, ["run-weekend", "2026", "8"])
     assert result.exit_code == 0
@@ -71,11 +71,45 @@ def test_run_weekend_single_round_reports_counts(monkeypatch):
     assert "Done" in out and "3" in out and "2" in out
 
 
+def test_run_weekend_single_round_passes_force_flag(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round, force=False: calls.append(force) or {"insight_count": 3, "quali_insight_count": 2},
+    )
+    result = runner.invoke(cli.app, ["run-weekend", "2026", "8", "--force"])
+    assert result.exit_code == 0
+    assert calls == [True]
+
+
+def test_run_weekend_single_round_defaults_force_false(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round, force=False: calls.append(force) or {"insight_count": 3, "quali_insight_count": 2},
+    )
+    result = runner.invoke(cli.app, ["run-weekend", "2026", "8"])
+    assert result.exit_code == 0
+    assert calls == [False]
+
+
+def test_run_insights_single_round_passes_force_flag(monkeypatch):
+    monkeypatch.setattr("telogify.config.configured_llm_label", lambda: "openai / gpt-5.5")
+    calls = []
+    monkeypatch.setattr(
+        "telogify.pipeline.regen_insights",
+        lambda year, round, force=False: calls.append(force) or {"insight_count": 3, "quali_insight_count": 2},
+    )
+    result = runner.invoke(cli.app, ["run-insights", "2026", "8", "--force"])
+    assert result.exit_code == 0
+    assert calls == [True]
+
+
 def test_run_insights_single_round_reports_counts(monkeypatch):
     monkeypatch.setattr("telogify.config.configured_llm_label", lambda: "openai / gpt-5.5")
     monkeypatch.setattr(
         "telogify.pipeline.regen_insights",
-        lambda year, round: {"insight_count": 3, "quali_insight_count": 2},
+        lambda year, round, force=False: {"insight_count": 3, "quali_insight_count": 2},
     )
     result = runner.invoke(cli.app, ["run-insights", "2026", "8"])
     assert result.exit_code == 0
@@ -95,7 +129,7 @@ def test_ingest_single_round_done(monkeypatch):
 
 
 def _fake_run_season(rounds, results):
-    def fake(year, agent_runner=None, quali_agent_runner=None, max_workers=4, on_round_start=None, on_round_complete=None):
+    def fake(year, agent_runner=None, quali_agent_runner=None, max_workers=4, force=False, on_round_start=None, on_round_complete=None):
         from telogify.pipeline import RoundResult, SeasonRunResult
 
         for i, (rnd, result) in enumerate(zip(rounds, results), start=1):

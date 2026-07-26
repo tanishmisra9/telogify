@@ -143,13 +143,13 @@ def _report_insights_done(state: dict, elapsed: str) -> None:
         )
 
 
-def _run_insights_one(year: int, round: int) -> None:
+def _run_insights_one(year: int, round: int, force: bool = False) -> None:
     from telogify.pipeline import regen_insights
 
     _echo_llm_model()
     started = time.monotonic()
     with console.status(f"[bold cyan]Regenerating insights for {year} round {round}...[/bold cyan]"):
-        state = regen_insights(year, round)
+        state = regen_insights(year, round, force=force)
     elapsed = _format_elapsed(time.monotonic() - started)
     _report_insights_done(state, elapsed)
 
@@ -163,6 +163,13 @@ def run_weekend_cmd(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="List completed rounds only; do not run the pipeline."
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-ingest already-ingested sessions and regenerate already-persisted insights. "
+        "Without this, a session/insight batch that's already there is left untouched -- safe "
+        "to call repeatedly (e.g. from a cron) without redoing work or re-spending LLM credits.",
+    ),
 ) -> None:
     """Ingest a weekend (or full season), compute substrate, generate and persist 3 insights.
 
@@ -174,7 +181,7 @@ def run_weekend_cmd(
 
         started = time.monotonic()
         with console.status(f"[bold cyan]Running weekend {year} round {round}...[/bold cyan]"):
-            state = run(year, round)
+            state = run(year, round, force=force)
         elapsed = _format_elapsed(time.monotonic() - started)
         _report_insights_done(state, elapsed)
         return
@@ -193,6 +200,7 @@ def run_weekend_cmd(
     console.print(f"[bold]Running season {year}[/bold]: {len(rounds)} completed round(s)...")
     summary = run_season(
         year,
+        force=force,
         on_round_start=_on_round_start,
         on_round_complete=_on_round_complete,
     )
@@ -211,6 +219,13 @@ def run_insights_cmd(
     workers: int = typer.Option(
         4, "--workers", help="Rounds to regenerate in parallel. Lower if you hit LLM rate limits."
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Regenerate an insight batch even if it's already persisted. Without this, a round "
+        "whose insights are already generated is left untouched -- safe to call repeatedly "
+        "without re-spending LLM credits.",
+    ),
 ) -> None:
     """Regenerate only the 3 insights from already-ingested data (LLM only, no FastF1 ingest).
 
@@ -218,7 +233,7 @@ def run_insights_cmd(
     the schedule (rounds run in parallel across --workers threads). Use --dry-run to preview
     without API spend. Requires prior ingest via run-weekend."""
     if round is not None:
-        _run_insights_one(year, round)
+        _run_insights_one(year, round, force=force)
         return
 
     from telogify.pipeline import run_insights_season, season_rounds
@@ -241,6 +256,7 @@ def run_insights_cmd(
     summary = run_insights_season(
         year,
         max_workers=workers,
+        force=force,
         on_round_start=_on_round_start_line,
         on_round_complete=_on_round_complete,
     )

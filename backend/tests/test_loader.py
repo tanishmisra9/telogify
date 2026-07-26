@@ -155,3 +155,57 @@ def test_load_weekend_only_ingests_completed_sessions(db_session, monkeypatch):
     types_present = {s.session_type for s in db_session.exec(select(Session)).all()}
     assert types_present == {"FP1", "FP2"}
     assert set(data.sessions) == {"FP1", "FP2"}
+
+
+def test_load_weekend_skips_already_ingested_sessions(db_session, monkeypatch):
+    event = _dated_event(
+        s1="Practice 1", s2="Practice 2", s3="Practice 3", s4="Qualifying", s5="Race"
+    )
+    event["EventName"] = "Austrian Grand Prix"
+    event["Country"] = "Austria"
+    event["Location"] = "Spielberg"
+    monkeypatch.setattr("telogify.ingest.fastf1_cache.enable_cache", lambda: None)
+    monkeypatch.setattr(fastf1, "get_event", lambda y, r: event)
+    fetched: list[str] = []
+    monkeypatch.setattr(
+        fastf1,
+        "get_session",
+        lambda y, r, name: fetched.append(name) or types.SimpleNamespace(load=lambda *a, **k: None),
+    )
+
+    # First call: only Practice 1/2 have started.
+    early = BASE - timedelta(days=1) + timedelta(hours=2, minutes=30)
+    loader.load_weekend(2025, 11, db_session, now=early)
+    assert fetched == ["Practice 1", "Practice 2"]
+
+    # Second call, later: everything has started, but FP1/FP2 are already ingested -- only the
+    # newly-completed sessions should be (re)fetched.
+    fetched.clear()
+    data = loader.load_weekend(2025, 11, db_session, now=BASE)
+    assert fetched == ["Practice 3", "Qualifying", "Race"]
+    assert set(data.sessions) == {"FP3", "Q", "R"}
+    types_present = {s.session_type for s in db_session.exec(select(Session)).all()}
+    assert types_present == {"FP1", "FP2", "FP3", "Q", "R"}
+
+
+def test_load_weekend_force_reingests_everything(db_session, monkeypatch):
+    event = _dated_event(s1="Practice 1", s2="Practice 2")
+    event["EventName"] = "Austrian Grand Prix"
+    event["Country"] = "Austria"
+    event["Location"] = "Spielberg"
+    monkeypatch.setattr("telogify.ingest.fastf1_cache.enable_cache", lambda: None)
+    monkeypatch.setattr(fastf1, "get_event", lambda y, r: event)
+    fetched: list[str] = []
+    monkeypatch.setattr(
+        fastf1,
+        "get_session",
+        lambda y, r, name: fetched.append(name) or types.SimpleNamespace(load=lambda *a, **k: None),
+    )
+
+    loader.load_weekend(2025, 11, db_session, now=BASE)
+    assert fetched == ["Practice 1", "Practice 2"]
+
+    fetched.clear()
+    data = loader.load_weekend(2025, 11, db_session, now=BASE, force=True)
+    assert fetched == ["Practice 1", "Practice 2"]
+    assert set(data.sessions) == {"FP1", "FP2"}

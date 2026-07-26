@@ -131,16 +131,32 @@ def _upsert_session(db: DBSession, weekend_id: int, code: str, status: str) -> N
     db.add(row)
 
 
-def load_weekend(year: int, round: int, db: DBSession, now: datetime | None = None) -> WeekendData:
+def _existing_session_types(db: DBSession, weekend_id: int) -> set[str]:
+    rows = db.exec(select(Session).where(Session.weekend_id == weekend_id)).all()
+    return {r.session_type for r in rows}
+
+
+def load_weekend(
+    year: int, round: int, db: DBSession, now: datetime | None = None, force: bool = False
+) -> WeekendData:
     """Load every session that has started for (year, round), persist weekend + session rows.
     A session not yet run (mid-weekend, e.g. only practice has happened) is simply skipped, so
-    this is safe to call at any point during a race weekend."""
+    this is safe to call at any point during a race weekend.
+
+    A session already ingested by a prior call is skipped too (no re-fetch, no re-run of the
+    extractors) unless `force`, so re-running this on a recurring schedule (e.g. a cron) doesn't
+    redo already-done work every tick. Safe because every ingest extractor deletes-and-reinserts
+    scoped to the session_ids present in the returned WeekendData.sessions, not the whole
+    weekend -- a skipped session's existing rows are simply never touched, not left stale."""
     enable_cache()
     event = fastf1.get_event(year, round)
     weekend = _upsert_weekend(db, year, round, event)
+    already = set() if force else _existing_session_types(db, weekend.id)
 
     sessions: dict[str, fastf1.core.Session] = {}
     for code, name in completed_weekend_sessions(event, now or datetime.utcnow()):
+        if code in already:
+            continue
         ses = fastf1.get_session(year, round, name)
         ses.load()
         _upsert_session(db, weekend.id, code, status="loaded")

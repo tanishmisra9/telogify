@@ -168,6 +168,72 @@ def test_regen_insights_recomputes_candidates_and_skips_ingest(db_session, monke
     assert called == [wk.id]  # candidates recomputed, ingest/analyze skipped
 
 
+def test_regen_insights_skips_when_already_persisted(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import Insight, QualiInsight, RaceWeekend
+    from telogify.models import Session as SessionModel
+
+    wk = RaceWeekend(year=2025, round=15, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="Q", status="loaded"))
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="R", status="loaded"))
+    db_session.add(Insight(weekend_id=wk.id, slot=1, header="H", explanation_web="W", explanation_email="E"))
+    db_session.add(QualiInsight(weekend_id=wk.id, slot=1, team="T", header="QH", explanation_web="QW", explanation_email="QE"))
+    db_session.commit()
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: [])
+
+    race_calls = []
+    quali_calls = []
+    state = pipeline.regen_insights(
+        2025,
+        15,
+        agent_runner=lambda y, r, feedback=None: race_calls.append(1) or _fake_messages(_GOOD_INSIGHTS),
+        quali_agent_runner=lambda y, r, feedback=None: quali_calls.append(1) or _fake_messages(_GOOD_QUALI_INSIGHTS),
+    )
+
+    assert race_calls == []
+    assert quali_calls == []
+    assert "insight_count" not in state
+    assert "quali_insight_count" not in state
+    assert state["session_types"] == ["Q", "R"]
+
+
+def test_regen_insights_force_regenerates_already_persisted(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import Insight, QualiInsight, RaceWeekend
+    from telogify.models import Session as SessionModel
+
+    wk = RaceWeekend(year=2025, round=16, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="Q", status="loaded"))
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="R", status="loaded"))
+    db_session.add(Insight(weekend_id=wk.id, slot=1, header="H", explanation_web="W", explanation_email="E"))
+    db_session.add(QualiInsight(weekend_id=wk.id, slot=1, team="T", header="QH", explanation_web="QW", explanation_email="QE"))
+    db_session.commit()
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: [])
+
+    race_calls = []
+    quali_calls = []
+    state = pipeline.regen_insights(
+        2025,
+        16,
+        agent_runner=lambda y, r, feedback=None: race_calls.append(1) or _fake_messages(_GOOD_INSIGHTS),
+        quali_agent_runner=lambda y, r, feedback=None: quali_calls.append(1) or _fake_messages(_GOOD_QUALI_INSIGHTS),
+        force=True,
+    )
+
+    assert race_calls == [1]
+    assert quali_calls == [1]
+    assert state["insight_count"] == 3
+    assert state["quali_insight_count"] == 2
+
+
 def test_regen_insights_errors_without_ingested_weekend(db_session, monkeypatch):
     monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
     monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
@@ -247,7 +313,7 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
     monkeypatch.setattr(
         pipeline,
         "_ingest",
-        lambda s: calls.append("ingest") or {"weekend_id": 1, "session_types": ["Q", "R"]},
+        lambda s: calls.append("ingest") or {"weekend_id": 1, "session_types": ["Q", "R"], "force": True},
     )
     monkeypatch.setattr(pipeline, "_analyze", lambda s: calls.append("analyze") or {})
     monkeypatch.setattr(pipeline, "_candidates", lambda s: calls.append("candidates") or {})
@@ -285,17 +351,25 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
 
 
 def test_ingest_returns_session_types(db_session, monkeypatch):
+    from telogify.models import RaceWeekend
+    from telogify.models import Session as SessionModel
+
     monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
     monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
 
-    class _FakeWeekend:
-        id = 42
+    wk = RaceWeekend(year=2025, round=20, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    for code in ("FP1", "FP2", "Q"):
+        db_session.add(SessionModel(weekend_id=wk.id, session_type=code, status="loaded"))
+    db_session.commit()
 
     class _FakeData:
-        weekend = _FakeWeekend()
+        weekend = wk
         sessions = {"FP2": object(), "FP1": object(), "Q": object()}
 
-    monkeypatch.setattr(pipeline, "load_weekend", lambda year, round, db: _FakeData())
+    monkeypatch.setattr(pipeline, "load_weekend", lambda year, round, db, force=False: _FakeData())
     for name in (
         "store_straights", "store_stints", "store_results", "store_fingerprints",
         "store_sector_bests", "store_quali_character", "store_quali_traces",
@@ -304,7 +378,11 @@ def test_ingest_returns_session_types(db_session, monkeypatch):
         monkeypatch.setattr(pipeline, name, lambda data, db: None)
 
     result = pipeline._ingest({"year": 2025, "round": 20})
-    assert result == {"weekend_id": 42, "session_types": ["FP1", "FP2", "Q"]}
+    assert result == {
+        "weekend_id": wk.id,
+        "session_types": ["FP1", "FP2", "Q"],
+        "new_session_types": ["FP1", "FP2", "Q"],
+    }
 
 
 def test_analyze_skips_without_quali_or_race(monkeypatch):
@@ -386,6 +464,166 @@ def test_pipeline_skips_season_deployment_without_race(monkeypatch):
     assert calls == []
 
 
+def test_pipeline_season_deployment_fires_when_race_newly_ingested(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import RaceWeekend
+
+    wk = RaceWeekend(year=2025, round=50, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": wk.id, "session_types": ["Q", "R"], "new_session_types": ["R"]},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: {})
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: {"insight_count": 3})
+    monkeypatch.setattr(pipeline, "_quali_insights", lambda s, r: {"quali_insight_count": 2})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_season_deployment", lambda s: calls.append("season_deployment") or {})
+
+    pipeline.run_weekend(2025, 50, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: [])
+
+    assert calls == ["season_deployment"]
+
+
+def test_pipeline_season_deployment_skips_when_race_not_newly_ingested(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import RaceWeekend
+
+    wk = RaceWeekend(year=2025, round=51, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    # Race is ingested overall (session_types has "R"), but nothing new happened this call
+    # (new_session_types is empty) -- e.g. a repeat cron tick for an already-fully-ingested round.
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": wk.id, "session_types": ["Q", "R"], "new_session_types": []},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: {})
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: {"insight_count": 3})
+    monkeypatch.setattr(pipeline, "_quali_insights", lambda s, r: {"quali_insight_count": 2})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_season_deployment", lambda s: calls.append("season_deployment") or {})
+
+    pipeline.run_weekend(2025, 51, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: [])
+
+    assert calls == []
+
+
+def test_pipeline_season_deployment_force_fires_even_when_not_new(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import RaceWeekend
+
+    wk = RaceWeekend(year=2025, round=52, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": wk.id, "session_types": ["Q", "R"], "new_session_types": []},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: {})
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: {"insight_count": 3})
+    monkeypatch.setattr(pipeline, "_quali_insights", lambda s, r: {"quali_insight_count": 2})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_season_deployment", lambda s: calls.append("season_deployment") or {})
+
+    pipeline.run_weekend(
+        2025, 52, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: [], force=True
+    )
+
+    assert calls == ["season_deployment"]
+
+
+def test_pipeline_insights_skip_when_already_generated(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import Insight, QualiInsight, RaceWeekend
+
+    wk = RaceWeekend(year=2025, round=53, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(Insight(weekend_id=wk.id, slot=1, header="H", explanation_web="W", explanation_email="E"))
+    db_session.add(QualiInsight(weekend_id=wk.id, slot=1, team="T", header="QH", explanation_web="QW", explanation_email="QE"))
+    db_session.commit()
+
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": wk.id, "session_types": ["Q", "R"], "new_session_types": []},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: {})
+    monkeypatch.setattr(pipeline, "_season_deployment", lambda s: {})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: calls.append("insights") or {"insight_count": 3})
+    monkeypatch.setattr(
+        pipeline, "_quali_insights", lambda s, r: calls.append("quali_insights") or {"quali_insight_count": 2}
+    )
+
+    state = pipeline.run_weekend(2025, 53, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: [])
+
+    assert calls == []
+    assert "insight_count" not in state
+    assert "quali_insight_count" not in state
+
+
+def test_pipeline_insights_force_regenerates_even_if_already_generated(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import Insight, QualiInsight, RaceWeekend
+
+    wk = RaceWeekend(year=2025, round=54, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(Insight(weekend_id=wk.id, slot=1, header="H", explanation_web="W", explanation_email="E"))
+    db_session.add(QualiInsight(weekend_id=wk.id, slot=1, team="T", header="QH", explanation_web="QW", explanation_email="QE"))
+    db_session.commit()
+
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": wk.id, "session_types": ["Q", "R"], "new_session_types": []},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: {})
+    monkeypatch.setattr(pipeline, "_season_deployment", lambda s: {})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: calls.append("insights") or {"insight_count": 3})
+    monkeypatch.setattr(
+        pipeline, "_quali_insights", lambda s, r: calls.append("quali_insights") or {"quali_insight_count": 2}
+    )
+
+    state = pipeline.run_weekend(
+        2025, 54, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: [], force=True
+    )
+
+    assert calls == ["insights", "quali_insights"]
+    assert state["insight_count"] == 3
+    assert state["quali_insight_count"] == 2
+
+
 def test_pipeline_skips_race_insights_when_race_not_ready(monkeypatch):
     # Only practice + qualifying ingested: quali insights should run, race insights should not.
     monkeypatch.setattr(
@@ -439,7 +677,7 @@ def test_run_season_runs_each_planned_round(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     calls = []
 
-    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False):
         calls.append(round)
         return {"insight_count": 3, "quali_insight_count": 2}
 
@@ -455,7 +693,7 @@ def test_run_season_runs_each_planned_round(monkeypatch):
 def test_run_season_continues_after_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False):
         if round == 2:
             raise RuntimeError("guardrail failure")
         return {"insight_count": 3, "quali_insight_count": 2}
@@ -486,7 +724,7 @@ def test_run_insights_season_calls_regen_not_full_pipeline(monkeypatch):
     regen_calls = []
     ingest_calls = []
 
-    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False):
         regen_calls.append(round)
         return {"insight_count": 3, "quali_insight_count": 2}
 
@@ -504,7 +742,7 @@ def test_run_insights_season_calls_regen_not_full_pipeline(monkeypatch):
 def test_run_insights_season_continues_after_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False):
         if round == 2:
             raise RuntimeError("guardrail failure")
         return {"insight_count": 3, "quali_insight_count": 2}
@@ -534,7 +772,7 @@ def test_run_season_progress_callbacks_fire_in_order(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     events = []
 
-    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False):
         events.append(("work", round))
         return {"insight_count": 3, "quali_insight_count": 2}
 
@@ -667,7 +905,7 @@ def test_default_quali_agent_runner_invokes_build_agent(monkeypatch):
 def test_run_ingest_returns_merged_state(monkeypatch):
     monkeypatch.setattr(pipeline, "_ingest", lambda s: {"weekend_id": 5, "session_types": ["R"]})
     result = pipeline.run_ingest(2025, 11)
-    assert result == {"year": 2025, "round": 11, "weekend_id": 5, "session_types": ["R"]}
+    assert result == {"year": 2025, "round": 11, "force": True, "weekend_id": 5, "session_types": ["R"]}
 
 
 def test_season_rounds_uses_fetched_schedule(monkeypatch):
@@ -687,7 +925,7 @@ def test_season_rounds_uses_fetched_schedule(monkeypatch):
 def test_run_season_stops_on_first_failure_when_continue_on_error_false(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False):
         if round == 1:
             raise RuntimeError("boom")
         return {"insight_count": 3, "quali_insight_count": 2}
@@ -702,7 +940,7 @@ def test_run_season_stops_on_first_failure_when_continue_on_error_false(monkeypa
 def test_run_insights_season_stops_on_first_failure_when_continue_on_error_false(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False):
         if round == 1:
             raise RuntimeError("boom")
         # slow down the other rounds so round 1's failure has a chance to cancel them
@@ -721,7 +959,7 @@ def test_run_insights_season_progress_callbacks_on_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     events = []
 
-    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False):
         if round == 2:
             raise RuntimeError("guardrail failure")
         return {"insight_count": 3, "quali_insight_count": 2}
