@@ -318,7 +318,9 @@ function SeasonRedirect() {
         </p>
       </BlurFade>
 
-      {weekends.loading && <p className="mt-8 text-muted">Loading...</p>}
+      {/* This route only ever redirects to /season/<latest year> once /weekends resolves, so its
+          loading state is a brief flash before navigating away -- render nothing rather than a
+          bare "Loading..." that pops in and is immediately replaced by a different page. */}
       {weekends.error && <p className="mt-8 text-muted">API offline.</p>}
       {weekends.data && years.length === 0 && <p className="mt-8 text-muted">No seasons ingested yet.</p>}
     </main>
