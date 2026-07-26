@@ -44,8 +44,19 @@ export function Footer() {
 
   return (
     <BlurFade>
-    <footer className="mt-24 border-t-[1.5px] border-ink pb-10">
-      <div className="mx-auto max-w-[1312px] px-6 pt-8">
+    {/* Closing accent rule mirrors the ink rule above: same 1.5px weight, same edge-to-edge run
+        (the footer element is full-bleed; only its inner container is max-w capped). Gives the
+        page a deliberate bottom edge now that the waveform that used to close it out is gone.
+        Deepened off --color-accent rather than hardcoding a red, so it still tracks the palette;
+        mixed toward --color-shadow specifically because that token is dark in BOTH themes (ink
+        is near-white at night, so mixing with it would lighten this at night, not darken it).
+        80/20 is a deliberate landing point: full accent read too bright against the ink rule
+        above it, 62% went muddy. */}
+    {/* py-10 on the footer itself rather than pt-8 on the inner container + pb-10 here: the text
+        was sitting 32px below the ink rule but 40px above the accent rule, so it read as
+        bottom-heavy between the two. One symmetric value centres it. */}
+    <footer className="mt-24 mb-10 border-t-[1.5px] border-b-[1.5px] border-t-ink border-b-[color-mix(in_oklch,var(--color-accent)_80%,var(--color-shadow)_20%)] py-10">
+      <div className="mx-auto max-w-[1312px] px-6">
         {/* Two stacks with one shared gap so the vertical rhythm is even on both sides: the
             copyright sits directly under the FastF1 line, and on mobile (DOM order) it still
             reads as the footer's actual final line. */}
