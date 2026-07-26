@@ -260,29 +260,31 @@ function SeasonView({ year }: { year: number }) {
 
 function SeasonRedirect() {
   const weekends = useApi<WeekendSummary[]>('/weekends')
-  if (weekends.loading) {
-    return (
-      <main className="py-16">
-        <div className="mx-auto max-w-5xl px-6 text-sm text-muted">Loading...</div>
-      </main>
-    )
-  }
-  if (weekends.error) {
-    return (
-      <main className="py-16">
-        <div className="mx-auto max-w-5xl px-6 text-sm text-muted">API offline.</div>
-      </main>
-    )
-  }
   const years = (weekends.data ?? []).map((w) => w.year)
-  if (years.length === 0) {
-    return (
-      <main className="py-16">
-        <div className="mx-auto max-w-5xl px-6 text-sm text-muted">No seasons ingested yet.</div>
-      </main>
-    )
+
+  if (weekends.data && years.length > 0) {
+    return <Navigate to={`/season/${Math.max(...years)}`} replace />
   }
-  return <Navigate to={`/season/${Math.max(...years)}`} replace />
+
+  return (
+    <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
+      <BlurFade>
+        <div className="mb-6">
+          <BackHomeButton />
+        </div>
+        <div className="flex flex-col gap-3 border-b-2 border-ink pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+          <h1 className="font-display text-6xl leading-[0.95] tracking-tight sm:text-7xl">Season at a glance</h1>
+        </div>
+        <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
+          Every team's season so far, rolled up from the weekend pages.
+        </p>
+      </BlurFade>
+
+      {weekends.loading && <p className="mt-8 text-muted">Loading...</p>}
+      {weekends.error && <p className="mt-8 text-muted">API offline.</p>}
+      {weekends.data && years.length === 0 && <p className="mt-8 text-muted">No seasons ingested yet.</p>}
+    </main>
+  )
 }
 
 export function SeasonPage() {
