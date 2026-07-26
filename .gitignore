@@ -39,3 +39,6 @@ brag-output/
 
 # Impeccable skill output (frontend critiques, local-only)
 .impeccable/
+
+# playwright-cli tool artifacts (repo root and frontend/), never product source
+.playwright-cli/
