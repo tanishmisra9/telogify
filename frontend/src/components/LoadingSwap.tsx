@@ -8,6 +8,13 @@ import { blurFadeIn, blurFadeOut, spring } from '@/lib/motion'
 // (sync) AnimatePresence mode keeps both mounted while the exiting one animates out, which is what
 // makes the overlap possible; `initial={false}` only suppresses the very first mount's entrance
 // (the placeholder), not the content's entrance once it replaces it.
+//
+// `min-w-0` on the grid children is load-bearing, not decorative: a CSS grid item's default
+// `min-width` is `auto`, which resolves to its content's min-content size rather than 0 -- so
+// wide content placed inside this wrapper (e.g. Ranking's table, `min-w-[480px]`) was forcing
+// the grid track, and with it the whole page, to grow wide enough to fit it instead of staying
+// within the viewport and scrolling internally via its own `overflow-x-auto`. That surfaced as
+// the entire page scrolling horizontally when a user tried to scroll just the table.
 export function LoadingSwap({
   loading,
   placeholder,
@@ -19,7 +26,7 @@ export function LoadingSwap({
 }) {
   const reduce = useReducedMotion()
   return (
-    <div className="grid [&>*]:col-start-1 [&>*]:row-start-1">
+    <div className="grid [&>*]:col-start-1 [&>*]:row-start-1 [&>*]:min-w-0">
       <AnimatePresence initial={false}>
         {loading ? (
           <m.div key="placeholder" exit={reduce ? undefined : blurFadeOut} transition={spring}>
