@@ -225,10 +225,7 @@ function SeasonView({ year }: { year: number }) {
                           // Comma-separated, no bullets -- the color/weight contrast between
                           // the bold manufacturer name and this muted list is separator enough.
                           kicker={
-                            <>
-                              <span className="font-semibold" style={{ color: teamColor }}>{item.pu} power</span>
-                              <span className="block text-muted sm:inline"> {item.teams.join(', ')}</span>
-                            </>
+                            <span className="font-semibold" style={{ color: teamColor }}>{item.pu} power</span>
                           }
                           contextLabel={`${year} season deployment`}
                           // Stronger than the 0.09 row-wash precedent (Ranking table, legends):
