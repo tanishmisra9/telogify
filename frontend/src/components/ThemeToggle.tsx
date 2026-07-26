@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Tooltip } from '@/components/Tooltip'
 
 type Theme = 'light' | 'dark'
@@ -8,18 +8,27 @@ type Theme = 'light' | 'dark'
 // pre-paint script's dark value in index.html so both agree.
 const THEME_COLOR: Record<Theme, string> = { light: '#fffdd0', dark: '#181310' }
 
-// Replaces the theme-color meta node outright rather than mutating the existing one's `content`.
-// Mutating in place does update the DOM (verified), but Safari doesn't reliably repaint the
-// browser chrome / iOS status-bar strip off an attribute change -- the strip kept the old theme's
-// colour until a reload, which is exactly the reported symptom. Removing and re-appending forces
-// it to re-read. Removes *all* matches, not just the first, so repeated toggles can't accumulate
-// stale duplicates that a later querySelector might pick up instead.
+// Kept for Safari 15-18.6 and Chrome/Android, which do honour theme-color. It is NOT what tints
+// the bar on Safari 26+: that version still parses the tag and then discards the value entirely,
+// deriving its toolbar colour from CSS instead -- the background-color of a fixed/sticky element
+// at the viewport edge (here Nav's `sticky top-0` <header>), falling back to <body>. So do not
+// add complexity here trying to fix the iOS strip; a previous attempt to force a repaint by
+// replacing this node outright changed nothing on-device, because the value is never read.
 function applyThemeColor(theme: Theme) {
-  document.querySelectorAll('meta[name="theme-color"]').forEach((el) => el.remove())
-  const meta = document.createElement('meta')
-  meta.setAttribute('name', 'theme-color')
-  meta.setAttribute('content', THEME_COLOR[theme])
-  document.head.appendChild(meta)
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
+}
+
+// Safari 26 derives its toolbar tint from the sticky header's background but samples it at paint
+// time, so flipping `data-theme` (which only changes the custom property the header resolves) does
+// not re-tint the strip -- it keeps the previous theme's colour until a reload, which is exactly
+// the reported symptom. Because the header is translucent (`bg-glass` + `backdrop-blur-md`), what
+// Safari samples is a blend of the bar and whatever is scrolled under it, so it must re-sample as
+// content moves; nudging the scroll position by a single pixel for one frame is the cheapest way
+// to trigger that without touching the design. Imperceptible, and restores the exact offset.
+function nudgeSafariToolbarResample() {
+  const y = window.scrollY
+  window.scrollBy(0, 1)
+  requestAnimationFrame(() => window.scrollTo(0, y))
 }
 
 function initialTheme(): Theme {
@@ -28,10 +37,18 @@ function initialTheme(): Theme {
 
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(initialTheme)
+  const isFirstRun = useRef(true)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     applyThemeColor(theme)
+    // Skip on mount: the strip is already correct from the pre-paint script in index.html, and
+    // scrolling the page on first load would fight ScrollToTop and any deep link.
+    if (isFirstRun.current) {
+      isFirstRun.current = false
+    } else {
+      nudgeSafariToolbarResample()
+    }
     try {
       localStorage.setItem('theme', theme)
     } catch {
