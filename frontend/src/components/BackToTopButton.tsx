@@ -1,8 +1,15 @@
 import { Tooltip } from '@/components/Tooltip'
+import { useAppSettled } from '@/lib/api'
 
 // Icon-only, same hover treatment as BackHomeButton/CopyButton (-m-3 + p-3 for a real 40px
 // target, accent tint on hover) so all of these icon-only controls read as one family.
+// SeasonPage/WeekendPage render this unconditionally at the bottom of the page, so it needs its
+// own gate -- otherwise it sits directly under the loading skeletons instead of appearing once
+// the page has actually settled, same as the Footer.
 export function BackToTopButton() {
+  const settled = useAppSettled()
+  if (!settled) return null
+
   return (
     <div className="mt-16 flex justify-center">
       <Tooltip label="Back to top">

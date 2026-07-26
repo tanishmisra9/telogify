@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { Footer } from '@/components/Footer'
 import { Nav } from '@/components/Nav'
+import { usePendingWhileMounted } from '@/lib/api'
 import { Landing } from '@/pages/Landing'
 
 // Landing stays eager (the primary route needs instant first paint); every other page,
@@ -24,6 +25,17 @@ function ScrollToTop() {
   return null
 }
 
+// Suspense fallback for the lazy route chunks below. Renders nothing (chunks are tiny and
+// same-origin, so a visible placeholder would only flash) but counts as pending for as long as
+// it's mounted, via the same counter useApi's fetches use. Without this, a page's data can
+// finish loading (useAppSettled() flips true) while its route chunk is still downloading behind
+// a `fallback={null}`, letting the footer/back-to-top settle in before the page itself has even
+// painted.
+function RouteChunkGate() {
+  usePendingWhileMounted()
+  return null
+}
+
 // LazyMotion + the slim `m` components load only the DOM animation feature set
 // (~4.6kb vs ~34kb for full `motion`); we use no layout/drag animations.
 export default function App() {
@@ -35,8 +47,7 @@ export default function App() {
         <div className="flex min-h-dvh flex-col">
           <Nav />
           <div className="flex-1">
-            {/* Chunks are tiny and same-origin; a fallback would only flash, so null. */}
-            <Suspense fallback={null}>
+            <Suspense fallback={<RouteChunkGate />}>
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/weekends" element={<Weekends />} />

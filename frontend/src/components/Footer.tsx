@@ -1,7 +1,7 @@
 import { BlurFade } from '@/components/BlurFade'
 import { LogoWaveform } from '@/components/Logo'
 import { Tooltip } from '@/components/Tooltip'
-import { useAnyRequestPending, useApi, type WeekendSummary } from '@/lib/api'
+import { useAppSettled, useApi, type WeekendSummary } from '@/lib/api'
 
 // Hand-rolled to match the codebase's icon convention (no lucide-react dependency installed).
 function InstagramIcon() {
@@ -37,12 +37,13 @@ export function Footer() {
   const years = (weekends ?? []).map((w) => w.year)
   const year = years.length > 0 ? Math.max(...years) : null
 
-  // Hidden entirely while any page fetch (this one included) is still in flight, so it can't
-  // sit mid-page during a slow load and then jump to the bottom once the real content lands --
-  // it only ever appears once, already at its final position. Reveals with the same blur-fade
-  // as everything else rather than popping in.
-  const pending = useAnyRequestPending()
-  if (pending) return null
+  // Hidden entirely until the app has settled (see useAppSettled: debounced, not a raw pending
+  // count, so it survives a page's fetches landing in separate waves without flickering visible
+  // in the gaps between them). Can't sit mid-page during a slow load and then jump to the bottom
+  // once the real content lands -- it only ever appears once, already at its final position.
+  // Reveals with the same blur-fade as everything else rather than popping in.
+  const settled = useAppSettled()
+  if (!settled) return null
 
   return (
     <BlurFade>

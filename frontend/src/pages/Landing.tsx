@@ -4,7 +4,7 @@ import { Countdown } from '@/components/Countdown'
 import { Insight } from '@/components/Insight'
 import { SeasonStats } from '@/components/SeasonStats'
 import { Tooltip } from '@/components/Tooltip'
-import { useApi, type LatestInsight } from '@/lib/api'
+import { useAppSettled, useApi, type LatestInsight } from '@/lib/api'
 import { useIsMobile } from '@/lib/useIsMobile'
 
 // Key phrases bolded in ink so each muted paragraph carries one scannable claim.
@@ -69,38 +69,53 @@ function CTAs() {
 
 // The proof: the strongest insight from the most recent weekend, in the exact component and
 // voice the weekend page uses. Renders nothing until it has real data, so it never ships broken.
+//
+// Fetches immediately on mount regardless of `settled` (this request is one of the ones
+// useAppSettled() itself waits on); the reveal waits for settled so this doesn't pop in crisp
+// ahead of -- or independently of -- Countdown above it. (Previously had no BlurFade at all, on
+// the theory that BlurFade's mount reveal "doesn't fire reliably" for content gated behind an
+// async fetch -- disproved by LoadingSwap successfully doing exactly that; the real cause was a
+// BlurFade mounted *before* the gate, animating to completion while its child rendered null.
+// Mounting BlurFade only once both `data` and `settled` are true avoids that shape entirely.)
 function LiveInsight() {
   const { data, loading } = useApi<LatestInsight>('/insights/latest')
   const isMobile = useIsMobile()
-  if (loading || !data) return null
-  // No BlurFade here: this content mounts only after the fetch resolves, and BlurFade's
-  // mount reveal is unreliable for content that appears after an async gate (it can stay at
-  // opacity 0). The data-load itself is the reveal.
+  const settled = useAppSettled()
+  if (loading || !data || !settled) return null
   return (
-    <section className="mt-24 sm:mt-32">
-      <Insight
-        item={data}
-        showSlot={false}
-        collapsible
-        defaultOpen={!isMobile}
-        contextLabel={data.event_name}
-        kicker={
-          // Two lines, not one "Latest verdict · Event Name" string: showSlot={false} puts the
-          // copy/collapse buttons in an absolutely-positioned top-right corner overlay (see
-          // Insight.tsx), and a long combined line ran wide enough to pass underneath them.
-          <>
-            <span className="block">Latest verdict</span>
-            <span className="block text-muted">{data.event_name}</span>
-          </>
-        }
-        href={`/weekends/${data.year}/${data.round}`}
-      />
-      <p className="mt-3 text-xs text-muted">Every figure traced to official timing data. Nothing estimated.</p>
-    </section>
+    <BlurFade delay={0.06}>
+      <section className="mt-24 sm:mt-32">
+        <Insight
+          item={data}
+          showSlot={false}
+          collapsible
+          defaultOpen={!isMobile}
+          contextLabel={data.event_name}
+          kicker={
+            // Two lines, not one "Latest verdict · Event Name" string: showSlot={false} puts the
+            // copy/collapse buttons in an absolutely-positioned top-right corner overlay (see
+            // Insight.tsx), and a long combined line ran wide enough to pass underneath them.
+            <>
+              <span className="block">Latest verdict</span>
+              <span className="block text-muted">{data.event_name}</span>
+            </>
+          }
+          href={`/weekends/${data.year}/${data.round}`}
+        />
+        <p className="mt-3 text-xs text-muted">Every figure traced to official timing data. Nothing estimated.</p>
+      </section>
+    </BlurFade>
   )
 }
 
 export function Landing() {
+  // How it works has no data dependency of its own, but previously revealed at delay={0} --
+  // simultaneously with the hero -- despite sitting below three async panels that could still be
+  // mid-load. Gating it on the same `settled` signal as those panels (rather than giving it its
+  // own independent on-mount delay) puts it in the same cascade as Countdown/LiveInsight/
+  // SeasonStats above it, so it never fades in while the page above it is still settling.
+  const settled = useAppSettled()
+
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-20 sm:py-28">
       <section>
@@ -131,31 +146,33 @@ export function Landing() {
 
       <SeasonStats />
 
-      <section className="mt-28 sm:mt-40">
-        <BlurFade>
-          <div className="border-b-2 border-ink pb-3">
-            <h2 className="font-display text-5xl leading-none tracking-tight sm:text-7xl">
-              How it works
-            </h2>
-          </div>
-        </BlurFade>
+      {settled && (
+        <section className="mt-28 sm:mt-40">
+          <BlurFade delay={0.18}>
+            <div className="border-b-2 border-ink pb-3">
+              <h2 className="font-display text-5xl leading-none tracking-tight sm:text-7xl">
+                How it works
+              </h2>
+            </div>
+          </BlurFade>
 
-        <div className="mt-12 grid gap-6 sm:grid-cols-3 sm:gap-8">
-          {STEPS.map((step, i) => (
-            <BlurFade key={step.title} delay={0.06 * i}>
-              <div className="glass h-full rounded-[--radius-panel] p-7">
-                <div className="flex items-baseline gap-3">
-                  <span className="font-display text-6xl leading-none text-accent">
-                    {String(i + 1).padStart(2, '0')}
-                  </span>
-                  <h3 className="font-display text-4xl tracking-tight">{step.title}</h3>
+          <div className="mt-12 grid gap-6 sm:grid-cols-3 sm:gap-8">
+            {STEPS.map((step, i) => (
+              <BlurFade key={step.title} delay={0.24 + 0.06 * i}>
+                <div className="glass h-full rounded-[--radius-panel] p-7">
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-display text-6xl leading-none text-accent">
+                      {String(i + 1).padStart(2, '0')}
+                    </span>
+                    <h3 className="font-display text-4xl tracking-tight">{step.title}</h3>
+                  </div>
+                  <p className="mt-3 leading-relaxed text-muted">{step.body}</p>
                 </div>
-                <p className="mt-3 leading-relaxed text-muted">{step.body}</p>
-              </div>
-            </BlurFade>
-          ))}
-        </div>
-      </section>
+              </BlurFade>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   )
 }

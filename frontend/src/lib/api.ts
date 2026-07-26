@@ -271,24 +271,81 @@ export async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// Global in-flight count across every useApi call, so the Footer (lib/api.ts is the one choke
-// point every page's fetches already go through) can hide itself while anything on the page is
-// still loading, without each page having to opt in individually. Failed requests still
-// decrement (the existing .finally below runs on the error path too), so this can't get stuck.
+// Global in-flight count across every useApi call, so the Footer/BackToTopButton (lib/api.ts is
+// the one choke point every page's fetches already go through) can hide themselves while
+// anything on the page is still loading, without each page having to opt in individually.
+// Failed requests still decrement (the existing .finally below runs on the error path too), so
+// this can't get stuck.
 let pendingRequests = 0
-const pendingListeners = new Set<() => void>()
-function notifyPending() {
-  for (const listener of pendingListeners) listener()
+
+// "Settled" is a debounced latch derived from pendingRequests, not the raw count -- a plain
+// `pendingRequests > 0` boolean starts at `false` before any effect has run (so the footer paints
+// visible on first frame, then hides once fetches start), and a page's fetches often land in
+// separate waves (e.g. `/weekends` resolving while a route's own data is still loading), each gap
+// between waves re-showing it. `settled` instead starts false and only flips true once
+// pendingRequests has read 0 continuously for SETTLE_DEBOUNCE_MS, collapsing those waves into one
+// transition; it flips back to false the instant a new request starts.
+const SETTLE_DEBOUNCE_MS = 200
+let settled = false
+let settleTimer: ReturnType<typeof setTimeout> | null = null
+let settleKicked = false
+const settledListeners = new Set<() => void>()
+
+function notifySettled() {
+  for (const listener of settledListeners) listener()
 }
 
-export function useAnyRequestPending(): boolean {
+function scheduleSettleCheck() {
+  if (settleTimer) {
+    clearTimeout(settleTimer)
+    settleTimer = null
+  }
+  if (pendingRequests > 0) {
+    if (settled) {
+      settled = false
+      notifySettled()
+    }
+    return
+  }
+  settleTimer = setTimeout(() => {
+    settleTimer = null
+    if (!settled) {
+      settled = true
+      notifySettled()
+    }
+  }, SETTLE_DEBOUNCE_MS)
+}
+
+export function useAppSettled(): boolean {
   return useSyncExternalStore(
     (listener) => {
-      pendingListeners.add(listener)
-      return () => pendingListeners.delete(listener)
+      settledListeners.add(listener)
+      // A route with zero fetches of its own (e.g. /subscribe) never triggers the
+      // increment/decrement path below, so nothing would ever start the debounce timer for it.
+      // Kick it once, on the very first subscriber the app ever gets, so that case still settles
+      // after SETTLE_DEBOUNCE_MS instead of hanging at `false` forever.
+      if (!settleKicked) {
+        settleKicked = true
+        scheduleSettleCheck()
+      }
+      return () => settledListeners.delete(listener)
     },
-    () => pendingRequests > 0,
+    () => settled,
   )
+}
+
+// Registers a manual pending contribution for the lifetime of the calling component, for
+// anything that should count toward useAppSettled() but isn't a useApi fetch -- e.g. a
+// React.lazy route chunk still downloading (see App.tsx's RouteChunkGate).
+export function usePendingWhileMounted(): void {
+  useEffect(() => {
+    pendingRequests++
+    scheduleSettleCheck()
+    return () => {
+      pendingRequests--
+      scheduleSettleCheck()
+    }
+  }, [])
 }
 
 // path may be null to defer fetching (e.g. until a route param or another fetch resolves
@@ -306,13 +363,13 @@ export function useApi<T>(path: string | null) {
     let alive = true
     setLoading(true)
     pendingRequests++
-    notifyPending()
+    scheduleSettleCheck()
     apiGet<T>(path)
       .then((d) => alive && (setData(d), setError(null)))
       .catch((e) => alive && setError(String(e)))
       .finally(() => {
         pendingRequests--
-        notifyPending()
+        scheduleSettleCheck()
         alive && setLoading(false)
       })
     return () => {
