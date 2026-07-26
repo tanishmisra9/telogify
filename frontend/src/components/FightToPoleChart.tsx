@@ -9,10 +9,11 @@ import type { QualiTraceCorner, QualiTraceData, QualiTraceDriver } from '@/lib/a
 
 const WIDTH = 1100
 const PANEL_H = 150
-const PANEL_GAP = 28
-const MARGIN = { top: 38, right: 20, bottom: 28, left: 56 }
+const GAP_AFTER_SPEED = 68
+const GAP_AFTER_DELTA = 40
+const MARGIN = { top: 50, right: 56, bottom: 28, left: 56 }
 const INNER_W = WIDTH - MARGIN.left - MARGIN.right
-const PANELS_H = PANEL_H * 3 + PANEL_GAP * 2
+const PANELS_H = PANEL_H * 3 + GAP_AFTER_SPEED + GAP_AFTER_DELTA
 const HEIGHT = MARGIN.top + PANELS_H + MARGIN.bottom
 
 // ponytail: locked to P1 vs P2 -- data.drivers is already ordered fastest-first by the API, so
@@ -30,7 +31,11 @@ function linePath(xs: number[], ys: number[]): string {
   return d
 }
 
-function yScale(values: number[], height: number, opts?: { includeZero?: boolean; fixed?: [number, number] }) {
+function yScale(
+  values: number[],
+  height: number,
+  opts?: { includeZero?: boolean; fixed?: [number, number]; extraTopPad?: number },
+) {
   if (opts?.fixed) {
     const [min, max] = opts.fixed
     return { min, max, y: (v: number) => height * (1 - (v - min) / (max - min)) }
@@ -43,7 +48,7 @@ function yScale(values: number[], height: number, opts?: { includeZero?: boolean
   }
   const pad = (hi - lo) * 0.1 || 0.5
   const min = lo - pad
-  const max = hi + pad
+  const max = hi + pad + (opts?.extraTopPad ?? 0)
   return { min, max, y: (v: number) => height * (1 - (v - min) / (max - min)) }
 }
 
@@ -116,14 +121,23 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
     }
   }
 
-  const speed = yScale([...p1.speed_kmh, ...p2.speed_kmh], PANEL_H)
+  // Extra headroom above the fastest speed so the curve's peak doesn't crowd the corner
+  // numbers drawn just above it.
+  const speed = yScale([...p1.speed_kmh, ...p2.speed_kmh], PANEL_H, { extraTopPad: 20 })
   const delta = yScale([...p1.delta_s, ...p2.delta_s], PANEL_H, { includeZero: true })
   const throttle = yScale([], PANEL_H, { fixed: [0, 100] })
 
   const panels = [
     { key: 'speed', label: `Top speed (${unitLabel})`, offset: 0, scale: speed, p1: p1.speed_kmh, p2: p2.speed_kmh },
-    { key: 'delta', label: 'Delta to pole (s)', offset: PANEL_H + PANEL_GAP, scale: delta, p1: p1.delta_s, p2: p2.delta_s },
-    { key: 'throttle', label: 'Throttle (%)', offset: 2 * (PANEL_H + PANEL_GAP), scale: throttle, p1: p1.throttle_pct, p2: p2.throttle_pct },
+    { key: 'delta', label: 'Delta to pole (s)', offset: PANEL_H + GAP_AFTER_SPEED, scale: delta, p1: p1.delta_s, p2: p2.delta_s },
+    {
+      key: 'throttle',
+      label: 'Throttle (%)',
+      offset: PANEL_H + GAP_AFTER_SPEED + PANEL_H + GAP_AFTER_DELTA,
+      scale: throttle,
+      p1: p1.throttle_pct,
+      p2: p2.throttle_pct,
+    },
   ]
 
   function handleMove(e: MouseEvent<SVGRectElement>) {
@@ -139,9 +153,15 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   }
 
   return (
-    <div className="glass w-full rounded-[--radius-panel] p-5">
+    <div className="glass w-full select-none rounded-[--radius-panel] p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">The fight to pole</h2>
+        <div className="flex flex-wrap items-center gap-6">
+          <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">The fight to pole</h2>
+          <div className="ml-8 flex flex-wrap gap-8">
+            <DriverBadge driver={p1} color={p1Color} />
+            <DriverBadge driver={p2} color={p2Color} />
+          </div>
+        </div>
         <ChartTabs
           ariaLabel="Speed unit"
           active={unit}
@@ -151,10 +171,6 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
             { value: 'mph', label: 'MPH', hint: 'miles per hour' },
           ]}
         />
-      </div>
-      <div className="mt-4 flex flex-wrap gap-8">
-        <DriverBadge driver={p1} color={p1Color} />
-        <DriverBadge driver={p2} color={p2Color} />
       </div>
 
       <svg
@@ -167,7 +183,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {panels.map((panel) => (
             <g key={panel.key} transform={`translate(0,${panel.offset})`}>
-              <text x={0} y={-22} fill="var(--color-muted)" fontSize={textPx(12)}>
+              <text x={0} y={-22} fill="var(--color-muted)" fontSize={textPx(15)}>
                 {panel.label}
               </text>
               {panel.key === 'delta' && (
@@ -191,7 +207,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
                     strokeDasharray="2 3"
                   />
                   {panel.key === 'speed' && labeledCorners.has(cornerLabel(c)) && (
-                    <text x={x(c.distance_m)} y={-8} textAnchor="middle" fontSize={textPx(10)} fill="var(--color-muted)">
+                    <text x={x(c.distance_m)} y={-8} textAnchor="middle" fontSize={textPx(13)} fill="var(--color-muted)">
                       {cornerLabel(c)}
                     </text>
                   )}
@@ -241,9 +257,9 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
           {hoveredIndex != null && (
             <foreignObject
               x={Math.min(INNER_W - 210, Math.max(0, xs[hoveredIndex] + 12))}
-              // Tracks the cursor (offset below it, clamped inside the panels) rather than
-              // sitting pinned to the top of the chart.
-              y={Math.min(PANELS_H - 130, Math.max(0, hoveredY + 16))}
+              // To the right of the cursor, vertically centered on it (clamped inside the
+              // panels) rather than sitting pinned to the top of the chart.
+              y={Math.min(PANELS_H - 130, Math.max(0, hoveredY - 40))}
               width={210}
               height={130}
               className="pointer-events-none"
