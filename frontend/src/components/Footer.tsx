@@ -87,7 +87,6 @@ export function Footer() {
               clean-air filtering, fuel correction model, ERS depletion signal.
             </p>
             <p className="text-sm text-muted">Every figure computed from official timing data. Nothing estimated.</p>
-            <p className="text-sm text-muted">Let&apos;s telogify this weekend.</p>
           </div>
           <div className="flex shrink-0 flex-col gap-1.5 sm:items-end sm:text-right">
             <p className="text-sm text-muted">Timing data via FastF1{year != null ? ` · ${year} season` : ''}</p>
