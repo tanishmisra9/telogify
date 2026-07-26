@@ -80,6 +80,41 @@ def test_run_weekend_single_round_reports_counts(monkeypatch):
     assert "Done" in out and "3" in out and "2" in out
 
 
+def test_run_weekend_genuinely_mid_weekend_reports_still_in_progress(monkeypatch):
+    # Only practice ingested -- neither R nor Q present -- so zero counts genuinely mean
+    # "not ready yet", and the fallback message should fire.
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round, force=False: {
+            "insight_count": 0,
+            "quali_insight_count": 0,
+            "session_types": ["FP1", "FP2"],
+        },
+    )
+    result = runner.invoke(cli.app, ["run-weekend", "2026", "8"])
+    assert result.exit_code == 0
+    out = plain(result.output)
+    assert "still in progress" in out
+
+
+def test_run_weekend_already_done_does_not_report_still_in_progress(monkeypatch):
+    # R and Q are both ingested and insights already exist from a prior call, so this call's
+    # insights/quali_insights graph nodes short-circuit and never set insight_count/
+    # quali_insight_count at all -- zero counts here mean "nothing new", not "not ready".
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round, force=False: {
+            "insight_count": 0,
+            "quali_insight_count": 0,
+            "session_types": ["FP1", "FP2", "FP3", "Q", "R"],
+        },
+    )
+    result = runner.invoke(cli.app, ["run-weekend", "2026", "8"])
+    assert result.exit_code == 0
+    out = plain(result.output)
+    assert "still in progress" not in out
+
+
 def test_run_weekend_single_round_passes_force_flag(monkeypatch):
     calls = []
     monkeypatch.setattr(

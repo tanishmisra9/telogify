@@ -158,7 +158,18 @@ def _report_insights_done(state: dict, elapsed: str) -> None:
         f"[bold]{quali_insight_count}[/bold] qualifying insights [dim]({elapsed})[/dim]."
     )
     session_types = state.get("session_types")
-    if insight_count == 0 and quali_insight_count == 0 and session_types:
+    # Zero counts are ambiguous on their own: they also mean "already fully generated on a
+    # prior call, nothing new to do" (the pipeline's insights/quali_insights graph nodes
+    # short-circuit to {} in that case, so the key is simply never set -- not a sign anything
+    # is actually pending). Only genuinely "still in progress" once neither R nor Q -- the
+    # sessions that gate generation -- has been ingested at all.
+    if (
+        insight_count == 0
+        and quali_insight_count == 0
+        and session_types
+        and "R" not in session_types
+        and "Q" not in session_types
+    ):
         console.print(
             f"[yellow]Race weekend still in progress[/yellow] "
             f"(sessions ingested: {', '.join(session_types)}); insights not ready yet."
