@@ -90,7 +90,7 @@ function LiveInsight() {
           // Insight.tsx), and a long combined line ran wide enough to pass underneath them.
           <>
             <span className="block">Latest verdict</span>
-            <span className="block">{data.event_name}</span>
+            <span className="block text-muted">{data.event_name}</span>
           </>
         }
         href={`/weekends/${data.year}/${data.round}`}
