@@ -3,6 +3,11 @@ import { Tooltip } from '@/components/Tooltip'
 
 type Theme = 'light' | 'dark'
 
+// Same hex --color-bg's oklch() renders to in each theme (sampled via canvas getImageData, not
+// hand-converted -- theme-color support for oklch() itself is not dependable). Mirrors the
+// pre-paint script's dark value in index.html so both agree.
+const THEME_COLOR: Record<Theme, string> = { light: '#fffdd0', dark: '#181310' }
+
 function initialTheme(): Theme {
   return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
 }
@@ -12,6 +17,7 @@ export function ThemeToggle() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
     try {
       localStorage.setItem('theme', theme)
     } catch {

@@ -10,6 +10,7 @@ import { DegradationChart } from '@/components/DegradationChart'
 import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
 import { FightToPoleChart } from '@/components/FightToPoleChart'
 import { Insight } from '@/components/Insight'
+import { LoadingSwap } from '@/components/LoadingSwap'
 import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
 import { Results } from '@/components/Results'
@@ -226,6 +227,8 @@ function Upcoming({ children }: { children: React.ReactNode }) {
 // computed, and otherwise the section's real charts (unchanged, each keeping its own loading
 // fallback for the ordinary in-flight case). Replaces what used to be a skeleton card PER chart
 // (each with its own disclaimer footer) whenever there was really just one thing to say.
+// Wrapped in LoadingSwap so the `!sessionsLoaded` placeholder crossfades into whichever resolved
+// state follows (countdown/upcoming/children) instead of hard-swapping and leaving a gap.
 function SessionGate({
   sessionsLoaded,
   loading,
@@ -243,31 +246,38 @@ function SessionGate({
   noData: boolean
   children: React.ReactNode
 }) {
-  if (!sessionsLoaded) return <>{loading}</>
-  if (!happened) {
-    if (target?.status === 'unavailable') {
-      return <Upcoming>There was an issue with this session.</Upcoming>
+  const resolved = (() => {
+    if (!happened) {
+      if (target?.status === 'unavailable') {
+        return <Upcoming>There was an issue with this session.</Upcoming>
+      }
+      // CountdownPanel has no "expired" state of its own (it clamps at 00:00:00:00 and just
+      // sits there), so only render it while the target is genuinely still in the future. Once
+      // a session's scheduled start has passed but it isn't ingested yet (and isn't stale enough
+      // to be "unavailable"), that's the same situation as noData below -- the session ran, the
+      // data just isn't in yet -- so reuse that copy instead of a dead countdown.
+      if (target?.date_utc && new Date(target.date_utc).getTime() > Date.now()) {
+        return (
+          <CountdownPanel
+            kicker="Coming up"
+            subtitle={formatSessionDate(target.date_utc)}
+            targetIso={target.date_utc}
+            compact
+          />
+        )
+      }
+      if (target?.date_utc) return <Upcoming>No data yet.</Upcoming>
+      return <Upcoming>{label} hasn&apos;t happened yet.</Upcoming>
     }
-    // CountdownPanel has no "expired" state of its own (it clamps at 00:00:00:00 and just
-    // sits there), so only render it while the target is genuinely still in the future. Once
-    // a session's scheduled start has passed but it isn't ingested yet (and isn't stale enough
-    // to be "unavailable"), that's the same situation as noData below -- the session ran, the
-    // data just isn't in yet -- so reuse that copy instead of a dead countdown.
-    if (target?.date_utc && new Date(target.date_utc).getTime() > Date.now()) {
-      return (
-        <CountdownPanel
-          kicker="Coming up"
-          subtitle={formatSessionDate(target.date_utc)}
-          targetIso={target.date_utc}
-          compact
-        />
-      )
-    }
-    if (target?.date_utc) return <Upcoming>No data yet.</Upcoming>
-    return <Upcoming>{label} hasn&apos;t happened yet.</Upcoming>
-  }
-  if (noData) return <Upcoming>No data yet.</Upcoming>
-  return <>{children}</>
+    if (noData) return <Upcoming>No data yet.</Upcoming>
+    return <>{children}</>
+  })()
+
+  return (
+    <LoadingSwap loading={!sessionsLoaded} placeholder={loading}>
+      {resolved}
+    </LoadingSwap>
+  )
 }
 
 function FightToPoleDesktopNote() {
@@ -377,80 +387,99 @@ export function WeekendPage() {
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16">
       <SectionNav sections={navSections} />
-      {!topReady ? (
-        // Plain, borderless placeholders only: no SectionTitle heading/rule and no .glass-bordered
-        // SkeletonCard here, since those are exactly what used to pop in and then vanish. Everything
-        // below (header text, section heading, insight cards) only exists once it can blur in as one.
-        <>
-          <Skeleton className="mt-3 h-14 w-2/3 sm:h-20" />
-          <Skeleton className="mt-3 h-6 w-40" />
-          <div className="mt-16 max-w-5xl">
-            <Skeleton className="h-14 w-80" />
-            <div className="mt-8 grid gap-4">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="min-h-[150px]" />
-              ))}
-            </div>
-          </div>
-        </>
-      ) : (
-        <BlurFade>
-          <Tooltip label="Back to weekends" align="start">
-            <Link
-              to="/weekends"
-              aria-label="Back to weekends"
-              // Icon-only: the label lives in the tooltip. -m-3 + p-3 gives the same 40px
-              // circular hover/active target as the copy/collapse buttons.
-              className="-m-3 inline-flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="m15 18-6-6 6-6" />
-              </svg>
-            </Link>
-          </Tooltip>
-          <p className="kicker mt-6 text-base! text-accent">
-            {year} · Round {round}
-          </p>
-          <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
-            {weekend.data!.event_name}
-          </h1>
-          <p className="mt-3 text-lg text-muted">
-            {weekend.data!.circuit_name}
-            {weekend.data!.country ? `, ${weekend.data!.country}` : ''}
-            {weekend.data!.race_laps ? ` · ${weekend.data!.race_laps} laps` : ''}
-          </p>
+      {/* Hero text and the "Your three insights" section share one readiness signal (topReady)
+          so they land together, but are two separate LoadingSwaps (rather than one shared
+          BlurFade) so the insights SectionTitle gets its own independent reveal instead of
+          nesting a second blur-fade inside the hero's -- nested identical filter transitions
+          compound into a heavier blur than either alone. */}
+      <LoadingSwap
+        loading={!topReady}
+        placeholder={
+          <>
+            {/* Measured, not estimated: below the `sm` breakpoint the h1 wraps to two lines
+                even for short names ("Hungarian Grand Prix" -> 103px); at sm+ it's one line at
+                the larger size (82px) since the wider column fits any event name. */}
+            <Skeleton className="mt-3 h-24 w-2/3 sm:h-20" />
+            <Skeleton className="mt-3 h-6 w-40" />
+          </>
+        }
+      >
+        <Tooltip label="Back to weekends" align="start">
+          <Link
+            to="/weekends"
+            aria-label="Back to weekends"
+            // Icon-only: the label lives in the tooltip. -m-3 + p-3 gives the same 40px
+            // circular hover/active target as the copy/collapse buttons.
+            className="-m-3 inline-flex shrink-0 items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </Link>
+        </Tooltip>
+        <p className="kicker mt-6 text-base! text-accent">
+          {year} · Round {round}
+        </p>
+        <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
+          {weekend.data?.event_name}
+        </h1>
+        <p className="mt-3 text-lg text-muted">
+          {weekend.data?.circuit_name}
+          {weekend.data?.country ? `, ${weekend.data.country}` : ''}
+          {weekend.data?.race_laps ? ` · ${weekend.data.race_laps} laps` : ''}
+        </p>
+      </LoadingSwap>
 
-          <section id="insights" className="mt-16 scroll-mt-24">
-            <SectionTitle>Your three insights</SectionTitle>
-            {!insights.data || insights.data.length === 0 ? (
-              sessionsLoaded && !raceHappened ? (
-                <Upcoming>No insights yet.</Upcoming>
-              ) : (
-                <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
-              )
-            ) : (
-              // Full section width, matching the heading above (same call as the Season page's
-              // Deployment panels): the narrower max-w-5xl just left-aligned with dead space
-              // beside it on wider screens.
-              <div>
-                <div className="grid gap-4">
-                  {insights.data.map((item, i) => (
-                    <BlurFade key={item.slot} delay={0.06 * i}>
-                      <Insight item={item} collapsible contextLabel={weekend.data!.event_name} />
-                    </BlurFade>
-                  ))}
-                </div>
-                <BlurFade delay={0.06 * insights.data.length + 0.06}>
-                  <MethodologyDisclosure />
-                </BlurFade>
+      <section id="insights" className="mt-16 scroll-mt-24">
+        <SectionTitle delay={0.08}>Your three insights</SectionTitle>
+        <LoadingSwap
+          loading={!topReady}
+          placeholder={
+            // Measured, not estimated. These panels have no `defaultOpen` override (unlike the
+            // Season page's Deployment panels) so they're always open, on every viewport -- the
+            // mobile/desktop difference here is purely from the narrower column wrapping the
+            // same open prose across more lines (measured 590-673px mobile vs 230px desktop).
+            <>
+              <div className="grid gap-4">
+                {[0, 1, 2].map((i) => (
+                  <SkeletonCard key={i} className="min-h-[650px] md:min-h-[240px]" />
+                ))}
               </div>
-            )}
-          </section>
-        </BlurFade>
-      )}
+              <Skeleton className="mt-6 min-h-[85px]" />
+            </>
+          }
+        >
+          {!insights.data || insights.data.length === 0 ? (
+            sessionsLoaded && !raceHappened ? (
+              <Upcoming>No insights yet.</Upcoming>
+            ) : (
+              <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
+            )
+          ) : (
+            // Full section width, matching the heading above (same call as the Season page's
+            // Deployment panels): the narrower max-w-5xl just left-aligned with dead space
+            // beside it on wider screens.
+            <div>
+              <div className="grid gap-4">
+                {insights.data.map((item, i) => (
+                  // Offset past the heading's own 0.08 delay (+ a 0.06 gap) so a card's reveal
+                  // never starts before the heading above it has -- otherwise the fixed 0.06*i
+                  // stagger would put card 0 at delay 0, ahead of its own section heading.
+                  <BlurFade key={item.slot} delay={0.08 + 0.06 * (i + 1)}>
+                    <Insight item={item} collapsible contextLabel={weekend.data?.event_name ?? ''} />
+                  </BlurFade>
+                ))}
+              </div>
+              <BlurFade delay={0.08 + 0.06 * (insights.data.length + 1) + 0.06}>
+                <MethodologyDisclosure />
+              </BlurFade>
+            </div>
+          )}
+        </LoadingSwap>
+      </section>
 
       <section id="practice" className="mt-20 scroll-mt-24">
-        <SectionTitle>Practice</SectionTitle>
+        <SectionTitle delay={0.16}>Practice</SectionTitle>
         <SessionGate
           sessionsLoaded={sessionsLoaded}
           loading={<PracticeSkeleton />}
@@ -480,7 +509,7 @@ export function WeekendPage() {
 
       {isSprintWeekend && (
         <section id="sprint" className="mt-20 scroll-mt-24">
-          <SectionTitle>Sprint</SectionTitle>
+          <SectionTitle delay={0.24}>Sprint</SectionTitle>
           <SessionGate
             sessionsLoaded={sessionsLoaded}
             loading={<SkeletonCard label="Pace spread" className="min-h-[600px]" />}
@@ -501,7 +530,7 @@ export function WeekendPage() {
       )}
 
       <section id="qualifying" className="mt-20 scroll-mt-24">
-        <SectionTitle>Qualifying</SectionTitle>
+        <SectionTitle delay={0.32}>Qualifying</SectionTitle>
         <SessionGate
           sessionsLoaded={sessionsLoaded}
           loading={
@@ -539,7 +568,7 @@ export function WeekendPage() {
       </section>
 
       <section id="race" className="mt-20 scroll-mt-24">
-        <SectionTitle>Race</SectionTitle>
+        <SectionTitle delay={0.4}>Race</SectionTitle>
         <SessionGate
           sessionsLoaded={sessionsLoaded}
           loading={

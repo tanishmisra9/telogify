@@ -4,6 +4,11 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- iOS Safari tints its status-bar area from this, not from the page background --
+         without it, dark mode still shows a light band at the very top of the screen. Hex, not
+         --color-bg's oklch(): theme-color support for oklch is not dependable. #181310 is the
+         exact sRGB this dark oklch renders to (sampled via canvas getImageData, not hand-converted). -->
+    <meta name="theme-color" content="#fffdd0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -12,10 +17,17 @@
     />
     <title>Telogify</title>
     <script>
-      // Apply the saved theme before paint so there's no flash of the wrong palette.
+      // Apply the saved theme before paint so there's no flash of the wrong palette. Also flips
+      // theme-color so iOS Safari's status-bar tint matches from the very first frame, not just
+      // after ThemeToggle's effect runs on hydration.
       try {
         var t = localStorage.getItem('theme')
-        if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t
+        if (t === 'dark' || t === 'light') {
+          document.documentElement.dataset.theme = t
+          if (t === 'dark') {
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#181310')
+          }
+        }
       } catch (e) {}
     </script>
     <style>

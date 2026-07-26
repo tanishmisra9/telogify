@@ -24,3 +24,7 @@ export const blurFadeIn = {
   initial: { opacity: 0, filter: 'blur(10px)', y: 10 },
   animate: { opacity: 1, filter: 'blur(0px)', y: 0 },
 }
+
+// Exit state for a loading placeholder in LoadingSwap: fades/blurs out in place (no y-shift,
+// unlike blurFadeIn's entrance) as the real content blurs in on top of it.
+export const blurFadeOut = { opacity: 0, filter: 'blur(10px)' }

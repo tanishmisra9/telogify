@@ -1,6 +1,7 @@
+import { BlurFade } from '@/components/BlurFade'
 import { LogoWaveform } from '@/components/Logo'
 import { Tooltip } from '@/components/Tooltip'
-import { useApi, type WeekendSummary } from '@/lib/api'
+import { useAnyRequestPending, useApi, type WeekendSummary } from '@/lib/api'
 
 // Hand-rolled to match the codebase's icon convention (no lucide-react dependency installed).
 function InstagramIcon() {
@@ -36,7 +37,15 @@ export function Footer() {
   const years = (weekends ?? []).map((w) => w.year)
   const year = years.length > 0 ? Math.max(...years) : null
 
+  // Hidden entirely while any page fetch (this one included) is still in flight, so it can't
+  // sit mid-page during a slow load and then jump to the bottom once the real content lands --
+  // it only ever appears once, already at its final position. Reveals with the same blur-fade
+  // as everything else rather than popping in.
+  const pending = useAnyRequestPending()
+  if (pending) return null
+
   return (
+    <BlurFade>
     <footer className="mt-24 border-t-[1.5px] border-ink pb-10">
       <div className="mx-auto max-w-[1312px] px-6 pt-8">
         {/* Two stacks with one shared gap so the vertical rhythm is even on both sides: the
@@ -89,5 +98,6 @@ export function Footer() {
         <LogoWaveform className="h-16 w-full sm:h-24" />
       </div>
     </footer>
+    </BlurFade>
   )
 }

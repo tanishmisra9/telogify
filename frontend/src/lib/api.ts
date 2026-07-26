@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -271,6 +271,26 @@ export async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+// Global in-flight count across every useApi call, so the Footer (lib/api.ts is the one choke
+// point every page's fetches already go through) can hide itself while anything on the page is
+// still loading, without each page having to opt in individually. Failed requests still
+// decrement (the existing .finally below runs on the error path too), so this can't get stuck.
+let pendingRequests = 0
+const pendingListeners = new Set<() => void>()
+function notifyPending() {
+  for (const listener of pendingListeners) listener()
+}
+
+export function useAnyRequestPending(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      pendingListeners.add(listener)
+      return () => pendingListeners.delete(listener)
+    },
+    () => pendingRequests > 0,
+  )
+}
+
 // path may be null to defer fetching (e.g. until a route param or another fetch resolves
 // the real path); loading starts false in that case since nothing is in flight.
 export function useApi<T>(path: string | null) {
@@ -285,10 +305,16 @@ export function useApi<T>(path: string | null) {
     }
     let alive = true
     setLoading(true)
+    pendingRequests++
+    notifyPending()
     apiGet<T>(path)
       .then((d) => alive && (setData(d), setError(null)))
       .catch((e) => alive && setError(String(e)))
-      .finally(() => alive && setLoading(false))
+      .finally(() => {
+        pendingRequests--
+        notifyPending()
+        alive && setLoading(false)
+      })
     return () => {
       alive = false
     }
