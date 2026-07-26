@@ -83,10 +83,10 @@ export function Weekends() {
                       <span className="block font-display text-2xl leading-tight transition-transform duration-200 group-hover:translate-x-1 sm:text-3xl">
                         {w.event_name}
                       </span>
-                      <span className="mt-1 block text-sm text-muted">
-                        {w.circuit_name}
-                        {w.country ? ` · ${w.country}` : ''}
-                      </span>
+                      {/* Circuit only, no country: the event name directly above already carries
+                          the nationality ("Chinese Grand Prix" / "Shanghai"), so appending the
+                          country repeated it on nearly every row. */}
+                      <span className="mt-1 block text-sm text-muted">{w.circuit_name}</span>
                     </span>
                     <span className="num text-sm text-muted">{w.year}</span>
                     {/* Affordance: rows are links; the arrow arrives on hover in the same

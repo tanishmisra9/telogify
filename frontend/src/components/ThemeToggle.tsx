@@ -8,6 +8,20 @@ type Theme = 'light' | 'dark'
 // pre-paint script's dark value in index.html so both agree.
 const THEME_COLOR: Record<Theme, string> = { light: '#fffdd0', dark: '#181310' }
 
+// Replaces the theme-color meta node outright rather than mutating the existing one's `content`.
+// Mutating in place does update the DOM (verified), but Safari doesn't reliably repaint the
+// browser chrome / iOS status-bar strip off an attribute change -- the strip kept the old theme's
+// colour until a reload, which is exactly the reported symptom. Removing and re-appending forces
+// it to re-read. Removes *all* matches, not just the first, so repeated toggles can't accumulate
+// stale duplicates that a later querySelector might pick up instead.
+function applyThemeColor(theme: Theme) {
+  document.querySelectorAll('meta[name="theme-color"]').forEach((el) => el.remove())
+  const meta = document.createElement('meta')
+  meta.setAttribute('name', 'theme-color')
+  meta.setAttribute('content', THEME_COLOR[theme])
+  document.head.appendChild(meta)
+}
+
 function initialTheme(): Theme {
   return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
 }
@@ -17,7 +31,7 @@ export function ThemeToggle() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
+    applyThemeColor(theme)
     try {
       localStorage.setItem('theme', theme)
     } catch {
