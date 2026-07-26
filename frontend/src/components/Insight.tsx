@@ -109,7 +109,7 @@ export function Insight({
   const heading = (
     <h3 id={titleId} className="font-display text-[1.5625rem] font-semibold leading-[1.05] tracking-tight sm:text-[1.875rem] lg:text-[2.5rem]">
       {href && collapsible ? (
-        <Link to={href} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+        <Link to={href} className="transition-colors hover:text-accent" onClick={(e) => e.stopPropagation()}>
           {headingText}
         </Link>
       ) : (
