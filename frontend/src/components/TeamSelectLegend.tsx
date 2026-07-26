@@ -51,7 +51,7 @@ function Row({
         onClick={() => onToggle(row.team)}
         aria-pressed={isSelected}
         aria-label={isSelected ? 'Show every team again' : `Isolate ${row.label ?? row.team}'s line`}
-        className={`grid min-h-11 w-full cursor-pointer grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1 text-left text-sm shadow-[inset_0_0_0_1.5px_transparent] transition-[opacity,box-shadow] duration-150 hover:shadow-[inset_0_0_0_1.5px_var(--color-ink)] ${
+        className={`grid min-h-11 w-full cursor-pointer grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 border-[0.75px] border-ink/20 px-2 py-1 text-left text-sm shadow-[inset_0_0_0_1.5px_transparent] transition-[opacity,box-shadow] duration-150 hover:shadow-[inset_0_0_0_1.5px_var(--color-ink)] ${
           isDimmed ? 'opacity-40' : ''
         }`}
         style={{ backgroundColor: teamColorWithAlpha(row.team, isSelected ? 0.2 : 0.09) }}
