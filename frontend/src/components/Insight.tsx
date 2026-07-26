@@ -109,7 +109,14 @@ export function Insight({
   const heading = (
     <h3 id={titleId} className="font-display text-[1.5625rem] font-semibold leading-[1.05] tracking-tight sm:text-[1.875rem] lg:text-[2.5rem]">
       {href && collapsible ? (
-        <Link to={href} className="transition-colors hover:text-accent" onClick={(e) => e.stopPropagation()}>
+        <Link
+          to={href}
+          // Same accent hover recipe as the footer's Mirco credit link: a pill-shaped
+          // background glow, not a text-bound shadow -- the -mx/-my cancel the pill's own
+          // padding so it doesn't shift surrounding layout.
+          className="-mx-2 -my-1 inline-block rounded-full px-2 py-1 text-ink transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+          onClick={(e) => e.stopPropagation()}
+        >
           {headingText}
         </Link>
       ) : (
