@@ -399,12 +399,21 @@ export function WeekendPage() {
       <LoadingSwap
         loading={!topReady}
         placeholder={
+          // Mirrors the hero's actual structure (back-arrow, kicker, h1, subtitle) rather than
+          // padding one bar out to a guessed total -- stays in sync if the hero changes, and
+          // reads as a hero instead of a slab. Heights measured off the real elements: h1 wraps
+          // to two lines below the `sm` breakpoint even for short names ("Hungarian Grand Prix"
+          // -> 103px), one line at sm+ (82px) since the wider column fits any event name. The
+          // first bar is 29px, not the back-arrow's own 22px box: summing each element's own
+          // height + margin under-measured the real total by a constant 7px at both viewports
+          // (identical regardless of h1 height), which points to margin interaction around the
+          // negative-margin back-link that direct box measurements didn't capture -- absorbed
+          // here since it isn't proportional to anything else in the stack.
           <>
-            {/* Measured, not estimated: below the `sm` breakpoint the h1 wraps to two lines
-                even for short names ("Hungarian Grand Prix" -> 103px); at sm+ it's one line at
-                the larger size (82px) since the wider column fits any event name. */}
-            <Skeleton className="mt-3 h-24 w-2/3 sm:h-20" />
-            <Skeleton className="mt-3 h-6 w-40" />
+            <Skeleton className="h-[29px] w-10" />
+            <Skeleton className="mt-6 h-6 w-40" />
+            <Skeleton className="mt-3 h-[103px] w-2/3 sm:h-[82px]" />
+            <Skeleton className="mt-3 h-7 w-52" />
           </>
         }
       >
@@ -435,16 +444,22 @@ export function WeekendPage() {
       </LoadingSwap>
 
       <section id="insights" className="mt-16 scroll-mt-24">
-        <SectionTitle delay={0.08}>Your three insights</SectionTitle>
         <LoadingSwap
           loading={!topReady}
           delay={0.08}
           placeholder={
-            // Measured, not estimated. These panels have no `defaultOpen` override (unlike the
-            // Season page's Deployment panels) so they're always open, on every viewport -- the
-            // mobile/desktop difference here is purely from the narrower column wrapping the
-            // same open prose across more lines (measured 590-673px mobile vs 230px desktop).
+            // Heading bar first, matching SectionTitle's real footprint (mb-8 border-b-2 pb-3,
+            // 52px mobile / 90px desktop measured) -- moved inside this LoadingSwap rather than
+            // rendered as a sibling above it: AnimatePresence keeps placeholder and content BOTH
+            // mounted during the crossfade (stacked in one grid cell), so a title rendered outside
+            // the swap would add its own height on top of the placeholder's, producing a fresh
+            // snap at the exact moment the hero-placeholder fix above removes one.
             <>
+              <Skeleton className="mb-8 h-[52px] sm:h-[90px]" />
+              {/* Measured, not estimated. These panels have no `defaultOpen` override (unlike the
+                  Season page's Deployment panels) so they're always open, on every viewport -- the
+                  mobile/desktop difference here is purely from the narrower column wrapping the
+                  same open prose across more lines (measured 590-673px mobile vs 230px desktop). */}
               <div className="grid gap-4">
                 {[0, 1, 2].map((i) => (
                   <SkeletonCard key={i} className="min-h-[650px] md:min-h-[240px]" />
@@ -454,6 +469,7 @@ export function WeekendPage() {
             </>
           }
         >
+          <SectionTitle delay={0.08}>Your three insights</SectionTitle>
           {!insights.data || insights.data.length === 0 ? (
             sessionsLoaded && !raceHappened ? (
               <Upcoming>No insights yet.</Upcoming>

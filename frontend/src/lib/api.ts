@@ -285,7 +285,11 @@ let pendingRequests = 0
 // between waves re-showing it. `settled` instead starts false and only flips true once
 // pendingRequests has read 0 continuously for SETTLE_DEBOUNCE_MS, collapsing those waves into one
 // transition; it flips back to false the instant a new request starts.
-const SETTLE_DEBOUNCE_MS = 200
+// The only chained fetch in the app (SeasonStats' /weekends -> /season/{year}/stats) measures a
+// ~2ms gap in practice -- a React render tick, not a network round trip, so it doesn't grow on a
+// slow connection. 100ms keeps ~50x margin over that while roughly halving the wait a reader
+// feels on every load (was 200ms, chosen without measuring what gap it actually needed to bridge).
+const SETTLE_DEBOUNCE_MS = 100
 let settled = false
 let settleTimer: ReturnType<typeof setTimeout> | null = null
 let settleKicked = false
