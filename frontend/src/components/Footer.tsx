@@ -1,5 +1,4 @@
 import { BlurFade } from '@/components/BlurFade'
-import { LogoWaveform } from '@/components/Logo'
 import { Tooltip } from '@/components/Tooltip'
 import { useAppSettled, useApi, type WeekendSummary } from '@/lib/api'
 
@@ -24,11 +23,9 @@ function InstagramIcon() {
   )
 }
 
-// App-wide footer: gives every page a bottom instead of stopping after its content. The
-// noise-resolving-to-signal mark runs truly edge-to-edge (outside the site's usual max-w-[1312px]
-// px-6 container) instead of sitting as a small corner icon, so the site's one glyph reads at
-// the scale its idea deserves; the text label stays in the normal padded container above it.
-// Purely decorative — not a link.
+// App-wide footer: gives every page a bottom instead of stopping after its content. Text only --
+// the noise-resolving-to-signal waveform mark that used to run edge-to-edge below this was
+// removed; everything here stays inside the site's usual max-w-[1312px] px-6 container.
 export function Footer() {
   // Same "current season" derivation as SeasonRedirect/SeasonStats (max year among ingested
   // weekends), not a hardcoded year -- omit the season clause entirely rather than show a stale
@@ -93,9 +90,6 @@ export function Footer() {
             <p className="text-sm text-muted">© 2026 Tanish Misra</p>
           </div>
         </div>
-      </div>
-      <div className="mt-6 text-ink">
-        <LogoWaveform className="h-16 w-full sm:h-24" />
       </div>
     </footer>
     </BlurFade>
