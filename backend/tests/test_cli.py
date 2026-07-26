@@ -9,10 +9,19 @@ than asserting on raw output.
 """
 
 import re
+import signal
+import subprocess
+import sys
+import textwrap
+import time
+from datetime import datetime, timedelta
 
+import pytest
 from typer.testing import CliRunner
 
 from telogify import cli
+from telogify.analysis.schedule import Event
+from telogify.ingest.loader import _STALE_AFTER
 
 runner = CliRunner()
 
@@ -264,3 +273,192 @@ def test_ingest_season_reports_per_round_and_summary(monkeypatch):
     assert "Summary" in out
     assert "boom" in out
     assert "1 round(s) failed" in out
+
+
+def test_resolve_poll_year_defaults_to_now_year():
+    assert cli._resolve_poll_year(None, datetime(2027, 1, 5)) == 2027
+
+
+def test_resolve_poll_year_uses_given_year():
+    assert cli._resolve_poll_year(2026, datetime(2027, 1, 5)) == 2026
+
+
+def test_poll_round_window_empty_events_is_clean_noop():
+    assert cli._poll_round_window((), datetime(2026, 7, 20)) == []
+
+
+def test_poll_round_window_off_season_between_years_is_clean_noop():
+    # Non-empty schedule, but nothing falls in the window -- e.g. the gap between the last
+    # round of one year and the first round of the next.
+    now = datetime(2027, 1, 15)
+    events = (
+        Event(round=24, name="Season Finale", date=datetime(2026, 12, 7)),
+        Event(round=1, name="Season Opener", date=datetime(2027, 3, 6)),
+    )
+    assert cli._poll_round_window(events, now) == []
+
+
+def test_poll_round_window_includes_race_within_window():
+    now = datetime(2026, 7, 20, 12, 0)
+    events = (Event(round=12, name="A GP", date=now - timedelta(hours=2)),)
+    assert cli._poll_round_window(events, now) == [12]
+
+
+def test_poll_round_window_excludes_stale_race():
+    now = datetime(2026, 7, 20, 12, 0)
+    events = (Event(round=12, name="A GP", date=now - _STALE_AFTER - timedelta(minutes=1)),)
+    assert cli._poll_round_window(events, now) == []
+
+
+def test_poll_round_window_excludes_far_future_race():
+    now = datetime(2026, 7, 20, 12, 0)
+    events = (Event(round=12, name="A GP", date=now + timedelta(days=3, minutes=1)),)
+    assert cli._poll_round_window(events, now) == []
+
+
+def test_poll_round_window_back_to_back_rounds_both_included_sorted():
+    now = datetime(2026, 7, 20, 12, 0)
+    events = (
+        Event(round=13, name="B GP", date=now + timedelta(days=1)),
+        Event(round=12, name="A GP", date=now - timedelta(hours=1)),
+    )
+    assert cli._poll_round_window(events, now) == [12, 13]
+
+
+def test_poll_round_window_excludes_round_zero():
+    now = datetime(2026, 7, 20, 12, 0)
+    events = (Event(round=0, name="Testing", date=now),)
+    assert cli._poll_round_window(events, now) == []
+
+
+def test_poll_schedule_fetch_empty_reports_distinctly_from_empty_window(monkeypatch):
+    monkeypatch.setattr("telogify.analysis.schedule.fetch_season_schedule", lambda year: ())
+    result = runner.invoke(cli.app, ["poll", "2026"])
+    out = plain(result.output)
+    assert result.exit_code == 0
+    assert "Schedule fetch returned nothing" in out
+
+
+def test_poll_empty_window_reports_distinctly_from_empty_schedule(monkeypatch):
+    now = datetime.utcnow()
+    stale_event = (Event(round=1, name="Old GP", date=now - _STALE_AFTER - timedelta(days=30)),)
+    monkeypatch.setattr(
+        "telogify.analysis.schedule.fetch_season_schedule", lambda year: stale_event
+    )
+    result = runner.invoke(cli.app, ["poll", "2026"])
+    out = plain(result.output)
+    assert result.exit_code == 0
+    assert "no rounds in the current window" in out
+
+
+def test_poll_happy_path_calls_run_weekend_without_force(monkeypatch):
+    now = datetime.utcnow()
+    ready_event = (Event(round=8, name="Ready GP", date=now - timedelta(hours=1)),)
+    monkeypatch.setattr(
+        "telogify.analysis.schedule.fetch_season_schedule", lambda year: ready_event
+    )
+    calls = []
+
+    def fake_run_weekend(year, round):
+        calls.append((year, round))
+        return {"insight_count": 3, "quali_insight_count": 2}
+
+    monkeypatch.setattr("telogify.pipeline.run_weekend", fake_run_weekend)
+    result = runner.invoke(cli.app, ["poll", "2026"])
+    assert result.exit_code == 0
+    # Positional-only call, no `force` kwarg -- poll must never force-regenerate.
+    assert calls == [(2026, 8)]
+
+
+def test_poll_timeout_escapes_fastf1_soft_exceptions():
+    """The highest-value test in this plan: fires a real SIGALRM inside FastF1's REAL
+    @soft_exceptions decorator (not a hand-rolled mimic) and asserts _PollTimeout still
+    propagates out. Imports the real decorator so a future fastf1 upgrade that changes its
+    catch semantics fails this test rather than silently disarming the cap in production --
+    fastf1 is unpinned in requirements.txt, so a Railway rebuild can move prod onto a
+    different version with no code change."""
+    from fastf1.logger import get_logger, soft_exceptions
+
+    @soft_exceptions("test operation", "failed", get_logger("telogify-test"))
+    def slow():
+        time.sleep(3)
+
+    old_handler = signal.signal(signal.SIGALRM, cli._raise_poll_timeout)
+    signal.alarm(1)
+    try:
+        with pytest.raises(cli._PollTimeout):
+            slow()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
+
+
+def test_poll_timeout_escapes_the_full_cli_invocation(monkeypatch):
+    """Proves nothing in our own poll loop or Typer/Click's command-dispatch machinery catches
+    _PollTimeout when driven through Click's CliRunner. NOTE the scope of this: CliRunner is a
+    TEST harness, not the real deploy path -- Railway execs the installed `telogify` console
+    script directly, not CliRunner, and CliRunner.invoke() deliberately suppresses Click's
+    normal `sys.exit` (standalone_mode) to capture output instead. So this test only proves the
+    exception survives Click's *test* harness. The real production call shape is covered
+    separately by test_poll_timeout_survives_real_console_script_invocation below, which is
+    the one that actually matters for what Railway will observe."""
+    now = datetime.utcnow()
+    ready_event = (Event(round=8, name="Ready GP", date=now - timedelta(hours=1)),)
+    monkeypatch.setattr(
+        "telogify.analysis.schedule.fetch_season_schedule", lambda year: ready_event
+    )
+
+    def hanging_run_weekend(year, round):
+        time.sleep(2)
+
+    monkeypatch.setattr("telogify.pipeline.run_weekend", hanging_run_weekend)
+    monkeypatch.setattr(cli, "_POLL_TIMEOUT_S", 1)
+
+    with pytest.raises(cli._PollTimeout):
+        runner.invoke(cli.app, ["poll", "2026"], catch_exceptions=False)
+
+
+def test_poll_timeout_survives_real_console_script_invocation():
+    """The test that actually matters: Railway execs the INSTALLED `telogify` script, not
+    CliRunner. Read `.venv/bin/telogify` -- setuptools generates exactly
+    `sys.exit(app())` (verified this session), with no try/except of its own. Reproduce that
+    literal call shape in a real subprocess (so a real process exit code is observable, unlike
+    calling cli.app() in-process) with fetch_season_schedule/run_weekend faked out so this
+    stays offline and fast -- no network, no DB, no LLM call.
+
+    This is the same "silent by construction" risk category as the alarm-escape test above: a
+    future typer/click upgrade that changes standalone_mode's exception handling, or a change
+    to how setuptools generates the entry-point shim, needs to fail HERE to be caught. Without
+    this test, that regression is invisible until someone notices a hung cron in production."""
+    script = textwrap.dedent(
+        """
+        import sys
+        import time
+        from datetime import datetime, timedelta
+
+        from telogify import cli
+        from telogify.analysis.schedule import Event
+
+        now = datetime.utcnow()
+        ready_event = (Event(round=8, name="Ready GP", date=now - timedelta(hours=1)),)
+
+        import telogify.analysis.schedule as schedule
+        schedule.fetch_season_schedule = lambda year: ready_event
+
+        import telogify.pipeline as pipeline
+
+        def hanging_run_weekend(year, round):
+            time.sleep(2)
+
+        pipeline.run_weekend = hanging_run_weekend
+        cli._POLL_TIMEOUT_S = 1
+
+        sys.argv = ["telogify", "poll", "2026"]
+        sys.exit(cli.app())
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=15
+    )
+    assert result.returncode != 0
+    assert "_PollTimeout" in result.stderr

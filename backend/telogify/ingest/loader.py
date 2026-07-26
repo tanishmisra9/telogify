@@ -5,7 +5,7 @@ logic can be tested offline (see tests/test_loader.py).
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import fastf1
 import pandas as pd
@@ -26,6 +26,34 @@ _NAME_TO_TYPE = {
     "Sprint": "SPRINT",
     "Race": "R",
 }
+
+# Tuning knob: how long a session runs, used to derive a scheduled end since FastF1's schedule
+# exposes only start times. Practice/quali ~1h; sprint sessions ~45min; race gets 2h30 (2h race
+# plus red-flag headroom, since regulations cap wall-clock at 3h).
+_NOMINAL_DURATION: dict[str, timedelta] = {
+    "FP1": timedelta(hours=1),
+    "FP2": timedelta(hours=1),
+    "FP3": timedelta(hours=1),
+    "Q": timedelta(hours=1),
+    "SQ": timedelta(minutes=45),
+    "SPRINT": timedelta(minutes=45),
+    "R": timedelta(hours=2, minutes=30),
+}
+_DEFAULT_DURATION = timedelta(hours=1)  # fallback for an unmapped/unknown code
+
+# Tuning knob: how long after a session *ends* before FastF1's data is reliably complete.
+_DATA_LAG = timedelta(hours=1)
+
+# Tuning knob: minimum distinct drivers in a completeness probe. Set low so a legitimately
+# washed-out session still clears it -- a false negative here means the session never
+# auto-ingests, which is worse than a marginal false positive.
+_MIN_DRIVERS = 5
+
+# How far past a session's scheduled START it's treated as stale/cancelled rather than merely
+# running late. Shared by the poll command's round window and the API's cancellation-guard
+# fallback (both compare against scheduled start, not the derived-ready time above -- a
+# session can be "stale" long before it would ever have been eligible to ingest).
+_STALE_AFTER = timedelta(hours=6)
 
 
 @dataclass
@@ -87,9 +115,12 @@ def session_schedule(year: int, round: int) -> list[tuple[str, str, datetime | N
 
 
 def completed_weekend_sessions(event: pd.Series, now: datetime) -> list[tuple[str, str]]:
-    """Sessions on this weekend whose scheduled start is on or before `now` -- i.e. sessions
-    that have actually started, not just sessions listed on the calendar. A session with no
-    date info at all is excluded (unknown -> treat as not-yet-run)."""
+    """Sessions on this weekend whose scheduled end plus a data-availability lag has passed by
+    `now` -- i.e. sessions that have actually finished and whose FastF1 data should be reliably
+    complete, not just sessions that have started. FastF1's schedule has no end times, so the
+    end is derived from the scheduled start plus a per-type nominal duration
+    (`_NOMINAL_DURATION`) plus `_DATA_LAG`. A session with no date info at all is excluded
+    (unknown -> treat as not-yet-run)."""
     out: list[tuple[str, str]] = []
     for i in range(1, 6):
         name = event.get(f"Session{i}")
@@ -99,9 +130,33 @@ def completed_weekend_sessions(event: pd.Series, now: datetime) -> list[tuple[st
         if not code:
             continue
         date = _session_date(event, i)
-        if date is not None and date <= now:
+        if date is None:
+            continue
+        ready_at = date + _NOMINAL_DURATION.get(code, _DEFAULT_DURATION) + _DATA_LAG
+        if ready_at <= now:
             out.append((code, name))
     return out
+
+
+def _has_usable_data(ses: "fastf1.core.Session") -> bool:
+    """Whether a loaded session actually has data, as opposed to a soft-failed `.load()` that
+    returned normally with nothing loaded (FastF1 wraps its internal loaders in
+    `@soft_exceptions`, which swallows `NoLapDataError`/`SessionNotAvailableError` into log
+    warnings rather than raising). Probes laps AND telemetry independently: `_load_laps_data`
+    and `_load_telemetry` are soft-wrapped separately, so laps can load fine while telemetry
+    silently fails -- and telemetry is what several of the product's insights (ERS deployment,
+    straight-line speed, sector dominance) actually depend on."""
+    try:
+        laps = ses.laps
+    except Exception:
+        return False
+    if laps is None or laps.empty or laps["DriverNumber"].nunique() < _MIN_DRIVERS:
+        return False
+    try:
+        car_data = ses.car_data
+    except Exception:
+        return False
+    return bool(car_data)
 
 
 def _upsert_weekend(db: DBSession, year: int, round: int, event: pd.Series) -> RaceWeekend:
@@ -139,15 +194,21 @@ def _existing_session_types(db: DBSession, weekend_id: int) -> set[str]:
 def load_weekend(
     year: int, round: int, db: DBSession, now: datetime | None = None, force: bool = False
 ) -> WeekendData:
-    """Load every session that has started for (year, round), persist weekend + session rows.
-    A session not yet run (mid-weekend, e.g. only practice has happened) is simply skipped, so
-    this is safe to call at any point during a race weekend.
+    """Load every session ready for (year, round) (scheduled end + data lag has passed),
+    persist weekend + session rows. A session not yet ready (mid-weekend, e.g. only practice
+    has happened) is simply skipped, so this is safe to call at any point during a race weekend
+    -- including from an unattended recurring poll.
 
     A session already ingested by a prior call is skipped too (no re-fetch, no re-run of the
     extractors) unless `force`, so re-running this on a recurring schedule (e.g. a cron) doesn't
     redo already-done work every tick. Safe because every ingest extractor deletes-and-reinserts
     scoped to the session_ids present in the returned WeekendData.sessions, not the whole
-    weekend -- a skipped session's existing rows are simply never touched, not left stale."""
+    weekend -- a skipped session's existing rows are simply never touched, not left stale.
+
+    A session whose `.load()` soft-failed (see `_has_usable_data`) is left un-ingested rather
+    than marked `loaded`, so the next call retries it -- unless `force`, which is the manual
+    escape hatch for a session whose data genuinely never becomes complete (e.g. no telemetry
+    ever published), since an automated poll must never write `loaded` for a soft-failed load."""
     enable_cache()
     event = fastf1.get_event(year, round)
     weekend = _upsert_weekend(db, year, round, event)
@@ -159,6 +220,8 @@ def load_weekend(
             continue
         ses = fastf1.get_session(year, round, name)
         ses.load()
+        if not force and not _has_usable_data(ses):
+            continue
         _upsert_session(db, weekend.id, code, status="loaded")
         sessions[code] = ses
     db.commit()

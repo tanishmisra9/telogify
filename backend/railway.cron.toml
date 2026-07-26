@@ -1,0 +1,20 @@
+# Railway config for the CRON service (a separate Railway service from the web service, same
+# repo + root directory `backend`). Point this service's "Custom Config-as-code File" setting
+# at `/backend/railway.cron.toml` explicitly -- Railway's config-as-code always overrides
+# dashboard settings, and both services sharing root directory `backend` means the cron
+# service would otherwise inherit `railway.toml`'s `uvicorn` startCommand, never exit, and
+# (per Railway's own overlap-skip behavior) never run a second time. This file exists so that
+# doesn't happen; do not delete it or fold it back into `railway.toml`.
+#
+# `telogify poll` -- no year argument, so it never goes stale at a season boundary. Never
+# --force: safe to call on a fixed schedule without redoing FastF1 ingest or re-spending LLM
+# credits on rounds that haven't changed.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "telogify poll"
+cronSchedule = "*/30 * * * *"
+# Deliberately no restartPolicyType here (unlike railway.toml's "on_failure"): a failing cron
+# run should stay failed and visible in the logs, not restart-loop.

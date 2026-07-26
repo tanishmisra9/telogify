@@ -1,7 +1,9 @@
 """Telogify CLI. Manual triggers only (no scheduler)."""
 
 import logging
+import signal
 import time
+from datetime import datetime, timedelta
 
 import typer
 from rich.console import Console
@@ -16,6 +18,26 @@ from telogify.pipeline import RoundResult
 # did as bare print()s; the entry point is telogify.cli:app (see pyproject.toml), not
 # __main__, so this must run at import time to take effect for the installed command.
 logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+# `telogify poll`'s wall-clock cap. Sized for a HANG, not a slow-but-real run: with no
+# FASTF1_CACHE volume every run is cold, and a cold sprint weekend is 5 sessions, so a
+# legitimate run can plausibly reach 45-75 min.
+_POLL_TIMEOUT_S = 90 * 60
+
+
+class _PollTimeout(BaseException):
+    """Deliberately BaseException, NOT Exception: FastF1's `@soft_exceptions` (and our own
+    ingest extractors) catch `except Exception` broadly, which would silently swallow an
+    Exception-derived alarm and let the wrapped call return normally -- i.e. the cap would
+    become invisible rather than merely ineffective, restoring the exact indefinite-hang
+    scenario it exists to prevent. Verified empirically that a BaseException subclass escapes
+    `@soft_exceptions` cleanly and that neither `fastf1/` nor `telogify/` catches
+    `BaseException` or uses a bare `except:` anywhere."""
+
+
+def _raise_poll_timeout(signum, frame) -> None:
+    raise _PollTimeout(f"telogify poll exceeded its {_POLL_TIMEOUT_S}s hard cap")
+
 
 app = typer.Typer(
     add_completion=False,
@@ -205,6 +227,79 @@ def run_weekend_cmd(
         on_round_complete=_on_round_complete,
     )
     _echo_season_final_summary(summary)
+
+
+def _resolve_poll_year(year: int | None, now: datetime) -> int:
+    """The season year to poll: the given year, or `now`'s UTC year if omitted. Pure so the
+    default-year behavior is testable without depending on the real clock."""
+    return year if year is not None else now.year
+
+
+def _poll_round_window(events, now: datetime) -> list[int]:
+    """Round numbers whose race date falls within [`now` - _STALE_AFTER, `now` + 3 days] --
+    normally one round, occasionally two near back-to-backs. Mirrors
+    analysis.schedule.completed_rounds's shape (pure, datetime-only) so it's testable offline
+    against a stubbed schedule, no network."""
+    from telogify.ingest.loader import _STALE_AFTER
+
+    window_start = now - _STALE_AFTER
+    window_end = now + timedelta(days=3)
+    return sorted(e.round for e in events if e.round > 0 and window_start <= e.date <= window_end)
+
+
+@app.command("poll")
+def poll_cmd(
+    year: int | None = typer.Argument(
+        None,
+        help="Season year; omit to use the current UTC year. A hardcoded year would go stale "
+        "at the season boundary, so the Railway cron start command should always omit this.",
+    ),
+) -> None:
+    """Cron-safe recurring trigger: ingest whatever's newly ready in the current round window.
+
+    Intended for a fixed schedule (e.g. Railway cron every 20-30 min). Never passes --force --
+    an already-ingested session or already-persisted insight batch is left untouched, so a
+    repeat call within the same window is cheap and never re-spends LLM credits. Round
+    selection is windowed around `now` (not "all completed rounds") so a no-op tick doesn't
+    redo the analysis/candidate-mining step for every past round on every call. Wrapped in a
+    hard wall-clock cap (`_PollTimeout`) so one hung FastF1 call can't silently block every
+    future scheduled run -- see `_PollTimeout`'s docstring for why that cap must be a
+    `BaseException` subclass."""
+    from telogify.analysis.schedule import fetch_season_schedule
+    from telogify.pipeline import run_weekend
+
+    now = datetime.utcnow()
+    resolved_year = _resolve_poll_year(year, now)
+
+    events = fetch_season_schedule(resolved_year)
+    if not events:
+        # fetch_season_schedule swallows every failure into (), so an off-season year and a
+        # persistent FastF1 outage look identical from here -- flag that explicitly rather
+        # than silently reporting a healthy no-op either way.
+        console.print(
+            f"[yellow]Schedule fetch returned nothing for {resolved_year} "
+            "(off-season, or FastF1 is unreachable -- indistinguishable from here).[/yellow]"
+        )
+        return
+
+    rounds = _poll_round_window(events, now)
+    if not rounds:
+        console.print(
+            f"[yellow]Schedule fetched for {resolved_year}; no rounds in the current window.[/yellow]"
+        )
+        return
+
+    signal.signal(signal.SIGALRM, _raise_poll_timeout)
+    signal.alarm(_POLL_TIMEOUT_S)
+    try:
+        for rnd in rounds:
+            started = time.monotonic()
+            console.print(f"  [cyan]→[/cyan] round [bold]{rnd}[/bold] polling...")
+            state = run_weekend(resolved_year, rnd)
+            elapsed = _format_elapsed(time.monotonic() - started)
+            _report_insights_done(state, elapsed)
+    finally:
+        signal.alarm(0)
 
 
 @app.command("run-insights")

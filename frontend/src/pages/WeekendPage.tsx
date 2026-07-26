@@ -245,6 +245,9 @@ function SessionGate({
 }) {
   if (!sessionsLoaded) return <>{loading}</>
   if (!happened) {
+    if (target?.status === 'unavailable') {
+      return <Upcoming>There was an issue with this session.</Upcoming>
+    }
     if (target?.date_utc) {
       return (
         <CountdownPanel

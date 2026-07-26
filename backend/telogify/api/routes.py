@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from telogify.analysis.schedule import Event, fetch_season_schedule, pick_next_event
-from telogify.ingest.loader import session_schedule
+from telogify.ingest.loader import _STALE_AFTER, session_schedule
 
 from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import REFERENCE_AGE_LAPS, fit_all_groups
@@ -206,7 +206,11 @@ def weekend_detail(year: int, round: int, db: Session = Depends(get_session)):
 @router.get("/weekends/{year}/{round}/sessions")
 def weekend_sessions(year: int, round: int, db: Session = Depends(get_session)):
     """Every session on this weekend's calendar, ingested or not, in chronological order.
-    `status` is "loaded" once a session has been ingested, null while it's still upcoming;
+    `status` is "loaded" once a session has been ingested; "unavailable" once its scheduled
+    start plus `_STALE_AFTER` has passed with still no ingested row (this can't distinguish a
+    genuinely cancelled session from a stuck ingest, but the frontend's copy is honest under
+    either); null otherwise, while it's still upcoming or running. This is computed per
+    response, not persisted, so it self-corrects the moment a late session actually ingests.
     `date_utc` is the session's scheduled start (null if FastF1's schedule doesn't have one),
     used by the frontend to count down to a session that hasn't happened yet. Falls back to
     ingested-only sessions with no date if the live FastF1 schedule fetch fails."""
@@ -217,14 +221,20 @@ def weekend_sessions(year: int, round: int, db: Session = Depends(get_session)):
         return [
             {"session_type": t, "status": s, "date_utc": None} for t, s in ingested.items()
         ]
-    return [
-        {
-            "session_type": code,
-            "status": ingested.get(code),
-            "date_utc": date.isoformat() + "Z" if date else None,
-        }
-        for code, _name, date in schedule
-    ]
+    now = datetime.utcnow()
+    out = []
+    for code, _name, date in schedule:
+        status = ingested.get(code)
+        if status is None and date is not None and date + _STALE_AFTER <= now:
+            status = "unavailable"
+        out.append(
+            {
+                "session_type": code,
+                "status": status,
+                "date_utc": date.isoformat() + "Z" if date else None,
+            }
+        )
+    return out
 
 
 @router.get("/weekends/{year}/{round}/insights")

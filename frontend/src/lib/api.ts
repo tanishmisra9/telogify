@@ -89,7 +89,11 @@ export interface ResultRow {
 
 export interface SessionInfo {
   session_type: string
-  status: string | null
+  // "loaded": ingested. "unavailable": scheduled start + a stale buffer has passed with no
+  // ingested row -- either cancelled or a stuck ingest (indistinguishable from here, so the
+  // UI copy is honest under both). null: still upcoming or running. Computed server-side per
+  // response, not persisted, so it self-corrects once a late session actually ingests.
+  status: 'loaded' | 'unavailable' | null
   // Scheduled UTC start, for counting down to a session that hasn't happened yet; null if
   // FastF1's schedule doesn't have one (falls back to ingested-only sessions with no date).
   date_utc: string | null

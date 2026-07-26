@@ -226,6 +226,36 @@ def test_sessions_falls_back_to_ingested_when_schedule_unavailable(client, monke
     assert all(r["date_utc"] is None for r in rows)
 
 
+def test_sessions_reports_unavailable_for_stale_never_ingested_session(client, monkeypatch):
+    """A never-ingested session whose scheduled start + _STALE_AFTER has passed reads
+    "unavailable" -- the server-derived cancellation-guard fallback."""
+    from datetime import datetime, timedelta
+
+    from telogify.api import routes
+    from telogify.ingest.loader import _STALE_AFTER
+
+    now = datetime.utcnow()
+    monkeypatch.setattr(
+        routes,
+        "session_schedule",
+        lambda year, round: [
+            # FP2 is never ingested by the `client` fixture -- stale past its start + buffer.
+            ("FP2", "Practice 2", now - _STALE_AFTER - timedelta(minutes=1)),
+            # FP3 is also never ingested, but still inside the buffer -- stays null, not
+            # "unavailable" (merely running late is not the same as stale/cancelled).
+            ("FP3", "Practice 3", now - timedelta(minutes=1)),
+            # FP1 IS ingested by the fixture (status "loaded") -- a stale date must never
+            # override an already-`loaded` row.
+            ("FP1", "Practice 1", now - _STALE_AFTER - timedelta(days=30)),
+        ],
+    )
+    rows = client.get("/weekends/2025/11/sessions").json()
+    by_type = {r["session_type"]: r for r in rows}
+    assert by_type["FP2"]["status"] == "unavailable"
+    assert by_type["FP3"]["status"] is None
+    assert by_type["FP1"]["status"] == "loaded"
+
+
 def test_sectors(client):
     data = client.get("/weekends/2025/11/sectors").json()
     assert data["indicative"] is True
