@@ -398,6 +398,9 @@ _NB_STYLE = f"""
   .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
   .next-race-inner .stats b {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:22px; color:#E10600; display:block; }}
+  /* A genuine sign-off, not a line buried in the small-print footer: same display font as the
+     section headings so it reads as the last beat of the email's own voice, not legal copy. */
+  .closer {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; text-align: center; margin: 32px 0 40px; color: #0a0a0a; }}
   footer {{ font-size: 12px; line-height: 1.8; color: #0a0a0a99; border-top: 1.5px solid #0a0a0a; padding-top: 18px; }}
   @media (prefers-color-scheme: dark) {{
     /* Best-effort only (email.py:626 header note, .claude/plans/gmail-dark-mode-real-fix.md
@@ -436,6 +439,7 @@ _NB_STYLE = f"""
     .quali-inner {{ color: #0a0a0a; }}
     .sub, .insight-inner p {{ color: #d8d8c8; }}
     .sub b {{ color: #0a0a0a; }}
+    .closer {{ color: #f2f2ea; }}
     footer {{ color: #a8a89c; border-top-color: #3a3a30; }}
     footer a {{ color: #d8d8c8 !important; }}
   }}
@@ -541,7 +545,17 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
         return ""
     header = _clean(quali.header)
     body = _clean(_first_sentence(quali.explanation_email))
-    team_color = _team_tint(quali.team, 0.18) if quali.team else _team_tint("Mercedes", 0.18)
+    team = quali.team or "Mercedes"
+    team_color = _team_tint(team, 0.18)
+    # The box's background is already this team's own color (as a light tint), so a plain
+    # black mention of the team name inside it reads like two different design systems in one
+    # panel. Coloring the name itself in the team's real (undiluted) color ties the text back
+    # to the identity the background is already carrying.
+    accent = _darken(_team_color(team), 0.75)
+    name_escaped = html.escape(team)
+    colored = f'<span style="color:{accent}">{name_escaped}</span>'
+    header = header.replace(name_escaped, colored)
+    body = body.replace(name_escaped, colored)
     inner = (
         '<span class="lbl">QUALIFYING HOUR</span>'
         f'<h3>{header}</h3>'
@@ -549,8 +563,22 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
     )
     return _nb_shadow_box(
         inner, bg=team_color, box_class="quali-inner",
-        box_style="padding:22px 22px 26px;", wrapper_style="margin-top:44px;",
+        # margin-bottom matches headline_box's own 40px, so the section-title after this panel
+        # (PACE SPREAD // CONSTRUCTORS) gets the same breathing room the other two headings
+        # already had -- this panel used to have none, leaving that one heading flush against
+        # the panel above it while its siblings had real space.
+        box_style="padding:22px 22px 26px;", wrapper_style="margin:44px 0 40px;",
     )
+
+
+_GAP_VALUE_RE = re.compile(r"[\d.]+")
+# Chunky bars, not a thin progress-bar sliver: the ask was to see the gap before reading the
+# number, which needs real visual weight. Fixed px (not %) -- a percentage-width div inside a
+# shrink-to-content table cell has nothing stable to be a percentage OF in Gmail, so it would
+# either collapse or silently no-op depending on client. Floored at BAR_MIN_PX so the smallest
+# real gap in a field is still a visible mark, not a sliver that reads as a rendering bug.
+_BAR_MAX_PX = 240
+_BAR_MIN_PX = 18
 
 
 def _nb_pace_spread_html(pace_spread: dict | None) -> str:
@@ -558,23 +586,33 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
         return ""
     fastest = html.escape(pace_spread["fastest"])
     pace_rows = pace_spread["rows"]
-    # Table row, not display:flex (unsupported for most real Gmail recipients) -- the
-    # <tr><td>label</td><td align=right>value</td></tr> idiom is already Gmail-safe.
-    # Whitespace-only compression: the panel read as physically massive for three lines of
-    # content, so the box padding, intro-line margin, and per-row padding all come down hard
-    # (~45% less dead space, ~25% shorter overall). The type sizes themselves stay put -- they
-    # were deliberately bumped up so the team names and gaps carry the panel.
+    gap_values = []
+    for _name, gap in pace_rows:
+        m = _GAP_VALUE_RE.search(gap)
+        gap_values.append(float(m.group()) if m else 0.0)
+    max_gap = max(gap_values) if gap_values else 0.0
+    # Table rows, not display:flex (unsupported for most real Gmail recipients) -- the
+    # <tr><td>label</td><td align=right>value</td></tr> idiom is already Gmail-safe. Each team
+    # is two stacked rows (name+value, then a full-width bar row) so the divider lands after
+    # the bar and reads as one team's block ending, not a line through the middle of it.
     row_html = []
-    for i, (name, gap) in enumerate(pace_rows):
-        border = "" if i == len(pace_rows) - 1 else "border-bottom:1px dashed #0a0a0a55;"
+    for i, ((name, gap), value) in enumerate(zip(pace_rows, gap_values)):
+        color = _team_color(name)
+        is_last = i == len(pace_rows) - 1
+        border = "" if is_last else "border-bottom:1px dashed #0a0a0a55;"
+        bar_px = _BAR_MAX_PX if max_gap == 0 else max(_BAR_MIN_PX, round(value / max_gap * _BAR_MAX_PX))
         row_html.append(
             "<tr>"
-            f'<td style="padding:5px 28px 5px 0;{border}font-size:18px;text-align:left;">'
-            f'<span class="swatch" style="background:{_team_color(name)}"></span>{html.escape(name)}</td>'
-            f'<td style="padding:5px 0 5px 8px;{border}text-align:right;'
+            f'<td style="padding:5px 28px 0 0;font-size:18px;text-align:left;">'
+            f'<span class="swatch" style="background:{color}"></span>{html.escape(name)}</td>'
+            f'<td style="padding:5px 0 0 8px;text-align:right;'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
-            f'font-size:28px;color:{_team_color(name)};">{html.escape(gap)}</td>'
+            f'font-size:28px;color:{color};">{html.escape(gap)}</td>'
             "</tr>"
+            f'<tr><td colspan="2" style="padding:6px 0 9px;{border}">'
+            f'<div style="width:{bar_px}px;max-width:100%;height:11px;background:{color};'
+            f'border-radius:2px;"></div>'
+            "</td></tr>"
         )
     inner = (
         f'<p style="font-size:15px;margin:0 0 10px;">{fastest} set the pace this weekend. '
@@ -585,7 +623,7 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
         '<span class="section-title">PACE SPREAD // CONSTRUCTORS</span>'
         + _nb_shadow_box(
             inner, box_class="flat-panel-inner",
-            box_style="padding:14px 22px 16px;", wrapper_style="margin-bottom:34px;",
+            box_style="padding:14px 22px 16px;", wrapper_style="margin-bottom:40px;",
         )
     )
 
@@ -734,9 +772,10 @@ def render_email_neubrutalist(
 
   {_nb_next_race_html(next_race)}
 
+  <p class="closer">See you after the next session!</p>
+
   <footer>
     Methodology inputs come from Mirco Bartolozzi (@fdataanalysis), covering clean-air filtering, fuel correction, and the ERS depletion signal. Timing data comes from FastF1.<br>
-    See you after the next session!<br>
     &copy; {weekend.year} Tanish Misra &middot; <a href="{html.escape(base_url.rstrip('/'))}/unsubscribe" style="color:#0a0a0a">Unsubscribe</a>
   </footer>
 
