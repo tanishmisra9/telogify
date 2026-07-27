@@ -156,9 +156,10 @@ function SeasonView({ year }: { year: number }) {
             the WEEKENDS/SEASON nav links, instead of the season year stacking above as its own
             line and pushing the heading down. */}
         <div className="flex flex-col gap-3 border-b-2 border-ink pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          {/* 0.9x text-6xl/text-7xl, matching Weekends' heading and the type ramp the other display
-              headings already sit on (WeekendPage's text-[3.375rem]/text-[5.4rem]). */}
-          <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[4.05rem]">Season at a glance</h1>
+          {/* Split on purpose, matching Weekends' heading: mobile keeps the 0.9x display-ramp size
+              (text-[3.375rem]) because the narrower column needs it, while sm+ is back on the raw
+              text-7xl it was before the 0.9x pass -- the reduction was only ever wanted on mobile. */}
+          <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-7xl">Season at a glance</h1>
           <span className="kicker whitespace-nowrap text-muted">{year} season</span>
         </div>
         <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
@@ -323,9 +324,10 @@ function SeasonRedirect() {
           <BackHomeButton />
         </div>
         <div className="flex flex-col gap-3 border-b-2 border-ink pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          {/* 0.9x text-6xl/text-7xl, matching Weekends' heading and the type ramp the other display
-              headings already sit on (WeekendPage's text-[3.375rem]/text-[5.4rem]). */}
-          <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[4.05rem]">Season at a glance</h1>
+          {/* Split on purpose, matching Weekends' heading: mobile keeps the 0.9x display-ramp size
+              (text-[3.375rem]) because the narrower column needs it, while sm+ is back on the raw
+              text-7xl it was before the 0.9x pass -- the reduction was only ever wanted on mobile. */}
+          <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-7xl">Season at a glance</h1>
         </div>
         <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
           Every team's season so far, rolled up from the weekend pages.

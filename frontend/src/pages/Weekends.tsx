@@ -25,10 +25,10 @@ export function Weekends() {
           <BackHomeButton />
         </div>
         <div className="flex flex-col gap-3 border-b-2 border-ink pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          {/* 0.9x text-6xl/text-7xl. Same scale factor the other display headings already use
-              (WeekendPage's text-[3.375rem]/text-[5.4rem], Insight's text-[2.025rem]/[2.7rem]),
-              so this stays on the existing type ramp rather than introducing a new size. */}
-          <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[4.05rem]">
+          {/* Split on purpose: mobile keeps the 0.9x display-ramp size (text-[3.375rem]) because
+              the narrower column needs it, while sm+ is back on the raw text-7xl it was before the
+              0.9x pass -- the reduction was only ever wanted on mobile. */}
+          <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-7xl">
             Race weekends
           </h1>
           {/* Always mounted; only the text changes. This header is flex-col below `sm`, so the
