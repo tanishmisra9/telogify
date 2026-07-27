@@ -306,6 +306,16 @@ function SeasonRedirect() {
     return <Navigate to={`/season/${Math.max(...years)}`} replace />
   }
 
+  // Nothing at all while the year lookup is in flight. The nav's "Season" link points at bare
+  // /season, so this component is on the critical path of every visit, and it always redirects to
+  // /season/<latest year> the instant /weekends resolves -- so anything painted here mounts, plays
+  // its reveal, and is torn down again a few hundred ms later. That showed up as the header
+  // blur-fading in, vanishing to a blank frame, then blur-fading in a second time from SeasonView
+  // (visibly a different header: this one has no year badge and no Ranking section below it).
+  // Only the terminal states below are worth painting, because those are the ones that never
+  // redirect and so are the only ones a reader is left looking at.
+  if (weekends.loading) return null
+
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
       <BlurFade>
@@ -322,9 +332,6 @@ function SeasonRedirect() {
         </p>
       </BlurFade>
 
-      {/* This route only ever redirects to /season/<latest year> once /weekends resolves, so its
-          loading state is a brief flash before navigating away -- render nothing rather than a
-          bare "Loading..." that pops in and is immediately replaced by a different page. */}
       {weekends.error && <p className="mt-8 text-muted">API offline.</p>}
       {weekends.data && years.length === 0 && <p className="mt-8 text-muted">No seasons ingested yet.</p>}
     </main>
