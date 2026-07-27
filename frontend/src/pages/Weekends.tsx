@@ -31,11 +31,16 @@ export function Weekends() {
           <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[4.05rem]">
             Race weekends
           </h1>
-          {/* Withheld while loading rather than rendering "0 logged", which is a real (wrong)
-              figure a reader can act on, not an obviously-empty placeholder. */}
-          {!loading && (
-            <span className="kicker whitespace-nowrap text-muted">{weekends.length} logged</span>
-          )}
+          {/* Always mounted; only the text changes. This header is flex-col below `sm`, so the
+              badge is its own row there -- gating the whole span on `!loading` meant it appeared
+              late and pushed the rest of the page down by 29px (measured; desktop was unaffected
+              since the badge sits inline beside the h1 there). One span with a non-breaking space
+              while loading reserves the identical line box by construction, so there's no height
+              to measure and nothing to drift out of sync. Still never renders "0 logged", which
+              would be a real but wrong figure a reader could act on. */}
+          <span className="kicker whitespace-nowrap text-muted">
+            {loading ? ' ' : `${weekends.length} logged`}
+          </span>
         </div>
         <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
           Every ingested race weekend, each with its verdicts traced to official timing data.
