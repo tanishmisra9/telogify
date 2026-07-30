@@ -44,12 +44,12 @@ const STEPS = [
 
 function CTAs() {
   return (
-    <div className="flex flex-wrap gap-4">
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
       <Tooltip label="See every analysed race weekend">
         <Link
           to="/weekends"
           aria-label="Browse analysed race weekends"
-          className="lift inline-flex items-center border-[1.5px] border-ink bg-accent px-6 py-2.5 font-display text-2xl text-accent-ink shadow-[4px_4px_0_var(--color-shadow)]"
+          className="lift inline-flex w-full items-center justify-center border-[1.5px] border-ink bg-accent px-6 py-2.5 font-display text-2xl text-accent-ink shadow-[4px_4px_0_var(--color-shadow)] sm:w-auto"
         >
           Browse
         </Link>
@@ -58,7 +58,7 @@ function CTAs() {
         <Link
           to="/season"
           aria-label="View season rankings and trends"
-          className="lift inline-flex items-center border-[1.5px] border-ink bg-surface px-6 py-2.5 font-display text-2xl text-ink shadow-[4px_4px_0_var(--color-shadow)]"
+          className="lift inline-flex w-full items-center justify-center border-[1.5px] border-ink bg-surface px-6 py-2.5 font-display text-2xl text-ink shadow-[4px_4px_0_var(--color-shadow)] sm:w-auto"
         >
           Trends
         </Link>
@@ -67,7 +67,7 @@ function CTAs() {
         <Link
           to="/subscribe"
           aria-label="Subscribe to the weekly email digest"
-          className="lift inline-flex items-center border-[1.5px] border-ink bg-surface px-6 py-2.5 font-display text-2xl text-ink shadow-[4px_4px_0_var(--color-shadow)]"
+          className="lift inline-flex w-full items-center justify-center border-[1.5px] border-ink bg-surface px-6 py-2.5 font-display text-2xl text-ink shadow-[4px_4px_0_var(--color-shadow)] sm:w-auto"
         >
           Subscribe
         </Link>
