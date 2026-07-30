@@ -67,12 +67,15 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   return (
     <div>
       {/* Header mirrors each row's 4 columns (rank / team / track / figure) so its axis ticks
-          sit directly above the bars. Desktop only -- "Team"/"Race pace" don't fit the mobile
-          column widths below, and the per-row figure already carries the exact number, so a
-          squeezed mobile header would add clutter without adding information. */}
+          sit directly above the bars. Desktop only -- "Team" doesn't fit the mobile column
+          widths below, and the per-row figure already carries the exact number, so a squeezed
+          mobile header would add clutter without adding information. The figure column's own
+          label ("Race pace") was removed -- the bars already read as pace, a caption calling out
+          one column was redundant; the trailing spacer stays so the tick axis above still lines
+          up with the track column, not the row's full width. */}
       <div className="hidden items-center gap-3 border-b border-border pb-2 sm:flex">
         <span className={`${RANK_W} shrink-0`} aria-hidden />
-        <span className={`${TEAM_W} shrink-0 text-sm font-semibold text-ink`}>Team</span>
+        <span className={`${TEAM_W} shrink-0 text-base font-semibold text-ink`}>Team</span>
         <span className="relative h-4 flex-1">
           {ticks.map((t, i) => (
             <span
@@ -88,7 +91,7 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
             </span>
           ))}
         </span>
-        <span className={`${FIGURE_W} shrink-0 text-right text-sm font-semibold text-ink`}>Race pace</span>
+        <span className={`${FIGURE_W} shrink-0`} aria-hidden />
       </div>
 
       <ol>
