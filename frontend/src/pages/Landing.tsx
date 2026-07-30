@@ -54,6 +54,15 @@ function CTAs() {
           Browse
         </Link>
       </Tooltip>
+      <Tooltip label="See season-wide rankings and trends">
+        <Link
+          to="/season"
+          aria-label="View season rankings and trends"
+          className="lift inline-flex items-center border-[1.5px] border-ink bg-surface px-6 py-2.5 font-display text-2xl text-ink shadow-[4px_4px_0_var(--color-shadow)]"
+        >
+          Trends
+        </Link>
+      </Tooltip>
       <Tooltip label="Get the weekly digest in your inbox">
         <Link
           to="/subscribe"
