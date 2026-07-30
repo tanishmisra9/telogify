@@ -35,15 +35,19 @@ function ConfidenceChip({ confidence }: { confidence: string }) {
   )
 }
 
+// gapCells' sentinel string stays "best" (lib/gapLadder.ts + its tests); only the displayed
+// label changes here.
 const renderGap = (text: string | null) =>
-  text == null ? '–' : text === 'best' ? <span className="font-semibold text-ink">best</span> : text
+  text == null ? '–' : text === 'best' ? <span className="font-sans font-semibold text-ink">leader</span> : text
 
 // Fixed column widths shared by the header and every row so the axis ticks land directly above
 // the bars they describe, and so a team's bar always starts at the same x position regardless
-// of its name length -- the zero rule reads as one continuous line down the panel.
-const RANK_W = 'w-7 sm:w-9'
-const TEAM_W = 'sm:w-44'
-const FIGURE_W = 'w-auto sm:w-24'
+// of its name length -- the zero rule reads as one continuous line down the panel. One row shape
+// at every width (team name and bar stay on the same line on mobile too); only the widths shrink
+// -- the team name truncates rather than wrapping to a second line.
+const RANK_W = 'w-6 sm:w-9'
+const TEAM_W = 'w-24 sm:w-44'
+const FIGURE_W = 'w-14 sm:w-24'
 
 function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   const reduce = useReducedMotion()
@@ -63,9 +67,9 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   return (
     <div>
       {/* Header mirrors each row's 4 columns (rank / team / track / figure) so its axis ticks
-          sit directly above the bars. Desktop only -- on mobile the bar moves to its own
-          full-width line below the team row, so there's no fixed track region left for a
-          shared axis to describe; the per-row figure carries the number instead. */}
+          sit directly above the bars. Desktop only -- "Team"/"Race pace" don't fit the mobile
+          column widths below, and the per-row figure already carries the exact number, so a
+          squeezed mobile header would add clutter without adding information. */}
       <div className="hidden items-center gap-3 border-b border-border pb-2 sm:flex">
         <span className={`${RANK_W} shrink-0`} aria-hidden />
         <span className={`${TEAM_W} shrink-0 text-sm font-semibold text-ink`}>Team</span>
@@ -93,11 +97,17 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
           const fraction = fractions[i]
           const figure = renderGap(paceCells[i])
 
+          // Confidence chip only fits on wider rows: its own text ("partial data") is close to
+          // the entire mobile team column's width, so it would crowd out the name it's meant to
+          // annotate. Every team is "high" confidence at time of writing; when a thin-data team
+          // does show a chip, the desktop-only reveal is the tradeoff for keeping mobile scannable.
           const team = (
             <span className="flex min-w-0 items-center gap-2">
               <TeamRule team={r.constructor} />
               <span className="truncate font-medium text-ink">{r.constructor}</span>
-              <ConfidenceChip confidence={r.confidence} />
+              <span className="hidden shrink-0 sm:inline-flex">
+                <ConfidenceChip confidence={r.confidence} />
+              </span>
             </span>
           )
 
@@ -105,12 +115,8 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
           // continuous vertical line. The bar itself grows rightward from it in team color; a
           // team with no pace data (fraction null) shows the rule with no fill, not a fabricated
           // zero-length bar that would misread as tied for best.
-          // w-full (not flex-1) below: inside the mobile flex-col row wrapper, flex-1's
-          // flex-basis:0 sizes along the COLUMN's main axis (height), which silently collapses
-          // this element's explicit h-[1.125rem] to 0. sm:flex-1 takes over once the row goes
-          // back to flex-row, where flex-1 correctly means "fill the width".
           const track = (
-            <span className="relative h-[1.125rem] w-full border-l-[1.5px] border-ink/25 sm:w-auto sm:flex-1">
+            <span className="relative h-[1.375rem] flex-1 border-l-[1.5px] border-ink/25">
               {fraction != null && (
                 <m.span
                   className={`absolute inset-y-0 left-0 block rounded-r-[1px] ${fraction > 0 ? 'min-w-[3px]' : ''}`}
@@ -127,27 +133,16 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
             </span>
           )
 
+          // One row shape at every width: team name and bar always share a line, columns aligned
+          // to the header above on sm+. Narrower fixed widths (RANK_W/TEAM_W/FIGURE_W) do the
+          // work below sm -- the team name truncates into the space it's given rather than the
+          // row wrapping to a second line.
           return (
-            <li key={r.constructor} className={`py-3 ${b}`}>
-              {/* Desktop: one line, columns aligned to the header above. */}
-              <div className="hidden items-center gap-3 sm:flex">
-                <span className={`num ${RANK_W} shrink-0 text-sm text-muted`}>{r.overall_rank ?? '–'}</span>
-                <span className={`${TEAM_W} shrink-0`}>{team}</span>
-                {track}
-                <span className={`num ${FIGURE_W} shrink-0 text-right text-sm text-ink`}>{figure}</span>
-              </div>
-              {/* Mobile: rank + team + figure on one line; the bar gets its own full-width line
-                  below instead of squeezing into a track too narrow to read (a shared team-column
-                  width doesn't survive a 390px viewport, so the whole row's shape has to change,
-                  not just shrink -- same reasoning as Results.tsx's driver-name swap). */}
-              <div className="flex flex-col gap-2 sm:hidden">
-                <div className="flex items-center gap-2">
-                  <span className={`num ${RANK_W} shrink-0 text-sm text-muted`}>{r.overall_rank ?? '–'}</span>
-                  <span className="min-w-0 flex-1">{team}</span>
-                  <span className="num shrink-0 text-sm text-ink">{figure}</span>
-                </div>
-                {track}
-              </div>
+            <li key={r.constructor} className={`flex items-center gap-2 py-3 sm:gap-3 ${b}`}>
+              <span className={`num ${RANK_W} shrink-0 text-sm text-muted`}>{r.overall_rank ?? '–'}</span>
+              <span className={`${TEAM_W} shrink-0`}>{team}</span>
+              {track}
+              <span className={`num ${FIGURE_W} shrink-0 text-right text-sm text-ink`}>{figure}</span>
             </li>
           )
         })}
@@ -213,11 +208,14 @@ function SeasonView({ year }: { year: number }) {
         {/* LoadingSwap reserves the table's real footprint while loading and crossfades the
             skeleton into the resolved content in place, instead of the page suddenly growing
             underneath a one-line "Loading…" string. Heights measured from the real rendered
-            panel (693px desktop / 773px mobile at an 11-constructor field), not estimated. */}
+            panel (673px desktop / 744px mobile at an 11-constructor field), not estimated.
+            Breakpoint is sm: (640px), matching RankingTable's own column-width swap (RANK_W /
+            TEAM_W / FIGURE_W) -- md: (768px) would leave a 640-768px dead zone where the real
+            content has already widened to its desktop columns but the skeleton hasn't. */}
         <LoadingSwap
           loading={season.loading}
           delay={0.08}
-          placeholder={<SkeletonCard className="min-h-[780px] md:min-h-[700px]" />}
+          placeholder={<SkeletonCard className="min-h-[744px] sm:min-h-[673px]" />}
         >
           {season.error ? (
             <p className="text-sm text-muted">No season data for {year}.</p>
@@ -226,7 +224,7 @@ function SeasonView({ year }: { year: number }) {
               <RankingTable rows={rows} />
               <p className="mt-4 text-sm text-muted">
                 Ranked on the season's blend of race and qualifying pace (60/40). Each bar is
-                race pace alone: the season's best team shows "best", every other team its gap
+                race pace alone: the season's best team shows "leader", every other team its gap
                 to it in seconds. A "partial data" or "low data" tag marks a team seen in too
                 few rounds to read at full confidence.
               </p>
