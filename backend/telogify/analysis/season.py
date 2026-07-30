@@ -3,7 +3,9 @@
 Nothing here is a new class of number. Each weekend's per-constructor figures (race-pace
 gap, qualifying gap, top-speed deficit, sector dominance, tyre degradation) come from the
 SAME analysis functions the weekend endpoints use, then get averaged across the season per
-team. Aggregation, not new analysis.
+team. Aggregation, not new analysis. The two metrics that drive the overall ranking (race
+pace, qualifying gap) use a recency-weighted average (see RECENCY_HALF_LIFE_ROUNDS); every
+other metric stays a flat mean.
 
 The pure functions (aggregate / _normalize / overall_ranking / confidence) are unit-tested
 offline; build_season_snapshot is the thin DB orchestrator, mirroring constructor_index.py.
@@ -28,6 +30,10 @@ RACE_WEIGHT = 0.6
 QUALI_WEIGHT = 0.4
 _KMH_TO_MPH = 0.621371
 
+# Recency: a round's influence on the season mean halves every this many rounds back from the
+# season's current round. Gentle by design -- rewards sustained recent form, not one fluke race.
+RECENCY_HALF_LIFE_ROUNDS = 6.0
+
 
 # --- pure aggregation ------------------------------------------------------
 
@@ -40,6 +46,25 @@ def aggregate(values: list[float | None]) -> dict:
     if not vals:
         return {"mean": None, "spread": None, "n": 0}
     return {"mean": mean(vals), "spread": pstdev(vals) if len(vals) > 1 else 0.0, "n": len(vals)}
+
+
+def _recency_weight(round_: int, current_round: int) -> float:
+    """Exponential decay: 1.0 at the current round, halving every RECENCY_HALF_LIFE_ROUNDS
+    rounds back. Keyed on round number, not a date -- no weekend/session row has a timestamp."""
+    return 0.5 ** ((current_round - round_) / RECENCY_HALF_LIFE_ROUNDS)
+
+
+def weighted_aggregate(values_by_round: list[tuple[int, float]], current_round: int) -> dict:
+    """Same {mean, spread, n} shape as aggregate(), but mean is recency-weighted (see
+    _recency_weight) so recent rounds count more without discarding older ones. spread/n stay
+    unweighted population stats over the raw values -- season-long consistency is a genuinely
+    different signal from the recency-weighted mean that drives ranking. No values -> all None."""
+    if not values_by_round:
+        return {"mean": None, "spread": None, "n": 0}
+    rounds, vals = zip(*values_by_round)
+    weights = [_recency_weight(r, current_round) for r in rounds]
+    wmean = sum(w * v for w, v in zip(weights, vals)) / sum(weights)
+    return {"mean": wmean, "spread": pstdev(vals) if len(vals) > 1 else 0.0, "n": len(vals)}
 
 
 def _normalize(means: dict[str, float | None]) -> dict[str, float]:
@@ -219,11 +244,11 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
         rounds_meta.append({"round": w.round, "event_name": w.event_name})
 
         for c, v in m["pace_gap"].items():
-            pace_vals[c].append(v)
+            pace_vals[c].append((w.round, v))
             pace_trend[c].append({"round": w.round, "value": v})
             rounds_with_data[c].add(w.round)
         for c, v in m["quali_gap_pct"].items():
-            quali_vals[c].append(v)
+            quali_vals[c].append((w.round, v))
             quali_trend[c].append({"round": w.round, "value": v})
             rounds_with_data[c].add(w.round)
         for c, v in m["top_speed_deficit_kmh"].items():
@@ -246,9 +271,10 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
     # so a team's number reflects its car, not which tyre it happened to run. Median over that
     # compound's fits is robust to a stray short-stint slope.
     ref_compound = _reference_compound(deg_vals)
+    current_round = weekends[-1].round
 
-    pace_means = {c: aggregate(pace_vals[c])["mean"] for c in constructors}
-    quali_means = {c: aggregate(quali_vals[c])["mean"] for c in constructors}
+    pace_means = {c: weighted_aggregate(pace_vals[c], current_round)["mean"] for c in constructors}
+    quali_means = {c: weighted_aggregate(quali_vals[c], current_round)["mean"] for c in constructors}
     ranking = overall_ranking(pace_means, quali_means)
     unranked = len(constructors) + 1
 
@@ -259,8 +285,8 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
             {
                 "constructor": c,
                 "overall_rank": ranking.get(c, {}).get("rank"),
-                "pace_gap": aggregate(pace_vals[c]),
-                "quali_gap_pct": aggregate(quali_vals[c]),
+                "pace_gap": weighted_aggregate(pace_vals[c], current_round),
+                "quali_gap_pct": weighted_aggregate(quali_vals[c], current_round),
                 "top_speed_deficit_kmh": ts["mean"],
                 "top_speed_deficit_mph": ts["mean"] * _KMH_TO_MPH if ts["mean"] is not None else None,
                 "sector_dominance_count": sector_totals.get(c, 0),

@@ -240,10 +240,11 @@ function SeasonView({ year }: { year: number }) {
             <div className="glass rounded-[--radius-panel] p-6">
               <RankingTable rows={rows} />
               <p className="mt-4 text-sm text-muted">
-                Ranked on the season's blend of race and qualifying pace (60/40). Each bar is
-                race pace alone: the season's best team shows "leader", every other team its gap
-                to it in seconds. A "partial data" or "low data" tag marks a team seen in too
-                few rounds to read at full confidence.
+                Ranked on the season's blend of race and qualifying pace (60/40), weighted so
+                recent rounds count somewhat more than early ones. Each bar is race pace alone:
+                the season's best team shows "leader", every other team its gap to it in
+                seconds. A "partial data" or "low data" tag marks a team seen in too few rounds
+                to read at full confidence.
               </p>
             </div>
           ) : null}

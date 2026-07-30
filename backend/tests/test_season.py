@@ -4,6 +4,8 @@ the build_season_snapshot / build_season_accel_scatter DB orchestrators below.""
 import pytest
 
 from telogify.analysis.season import (
+    RECENCY_HALF_LIFE_ROUNDS,
+    _recency_weight,
     _reference_compound,
     _stride_cap,
     _tyre_deg_on_ref,
@@ -12,6 +14,7 @@ from telogify.analysis.season import (
     build_season_snapshot,
     confidence,
     overall_ranking,
+    weighted_aggregate,
 )
 
 
@@ -62,6 +65,45 @@ def test_aggregate_ignores_none_but_counts_the_rest():
     a = aggregate([1.0, None, 3.0])
     assert a["n"] == 2
     assert a["mean"] == 2.0
+
+
+# --- _recency_weight / weighted_aggregate ---------------------------------
+
+
+def test_recency_weight_is_one_at_current_round():
+    assert _recency_weight(11, 11) == 1.0
+
+
+def test_recency_weight_is_half_at_one_half_life_back():
+    assert _recency_weight(11 - RECENCY_HALF_LIFE_ROUNDS, 11) == pytest.approx(0.5)
+
+
+def test_weighted_aggregate_empty():
+    assert weighted_aggregate([], 11) == {"mean": None, "spread": None, "n": 0}
+
+
+def test_weighted_aggregate_single_round():
+    a = weighted_aggregate([(5, 0.5)], 5)
+    assert a["mean"] == 0.5
+    assert a["spread"] == 0.0
+    assert a["n"] == 1
+
+
+def test_weighted_aggregate_favors_recent_rounds_over_flat_mean():
+    # Early rounds were slow (2.0s off), the most recent round is fast (0.2s off): a recency-
+    # weighted mean should sit closer to the recent value than the flat mean does.
+    values_by_round = [(1, 2.0), (2, 2.0), (3, 2.0), (4, 2.0), (5, 2.0), (6, 0.2)]
+    flat = aggregate([v for _r, v in values_by_round])["mean"]
+    weighted = weighted_aggregate(values_by_round, current_round=6)["mean"]
+    assert weighted < flat
+
+
+def test_weighted_aggregate_n_and_spread_match_unweighted_aggregate():
+    values_by_round = [(1, 0.4), (2, 0.5), (3, 0.6)]
+    w = weighted_aggregate(values_by_round, current_round=3)
+    flat = aggregate([v for _r, v in values_by_round])
+    assert w["n"] == flat["n"]
+    assert w["spread"] == flat["spread"]
 
 
 # --- overall_ranking -----------------------------------------------------

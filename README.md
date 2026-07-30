@@ -113,7 +113,8 @@ npm test                 # vitest unit tests (pure lib functions)
 Routes: landing (`/`), weekends index (`/weekends`), race weekend page
 (`/weekends/:year/:round`: 3 insights, pace/degradation/qualifying charts including "The fight
 to pole" P1-vs-P2 telemetry scrub, and finishing order), season snapshot (`/season[/:year]`:
-constructor ranking, form guide, season-wide trend and ERS deployment charts), and subscribe
+constructor ranking (recency-weighted pace/quali blend), form guide, season-wide trend and ERS
+deployment charts), and subscribe
 (`/subscribe`, currently a placeholder — the email signup form is removed until the digest
 ships publicly).
 

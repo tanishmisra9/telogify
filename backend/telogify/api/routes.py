@@ -687,9 +687,10 @@ def weekend_session_summary(
 
 @router.get("/season/{year}")
 def season_snapshot(year: int, db: Session = Depends(get_session)):
-    """Season-long rollup, one entry per constructor: overall rank (0.6 race / 0.4 quali),
-    per-metric season means with spread, round-by-round trend, and a thin-data confidence
-    flag. Every figure aggregates numbers already computed at the weekend level."""
+    """Season-long rollup, one entry per constructor: overall rank (0.6 race / 0.4 quali,
+    recency-weighted across rounds), per-metric season means with spread, round-by-round trend,
+    and a thin-data confidence flag. Every figure aggregates numbers already computed at the
+    weekend level."""
     snapshot = build_season_snapshot(year, db)
     if snapshot is None:
         raise HTTPException(status_code=404, detail="no weekends for year")
