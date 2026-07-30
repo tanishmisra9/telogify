@@ -39,10 +39,12 @@ describe('barFractions', () => {
 })
 
 describe('axisTicks', () => {
-  it('produces whole-second ticks from 0 to the ceiling of the max gap', () => {
-    expect(axisTicks(3.603)).toEqual([0, 1, 2, 3, 4])
+  it('produces whole-second ticks from 0 to the floor of the max gap', () => {
+    // Floored, not ceiled: a tick past the max gap would sit beyond where any bar reaches.
+    expect(axisTicks(3.603)).toEqual([0, 1, 2, 3])
   })
   it('always includes at least the zero tick', () => {
     expect(axisTicks(0)).toEqual([0])
+    expect(axisTicks(0.4)).toEqual([0])
   })
 })

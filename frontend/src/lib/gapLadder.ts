@@ -24,8 +24,10 @@ export function barFractions(values: (number | null)[]): (number | null)[] {
   return values.map((v) => (v == null ? null : (v - best) / span))
 }
 
-// Whole-second tick marks for the header axis, 0 up to the field's worst gap.
+// Whole-second tick marks for the header axis. Floored, not ceiled: a bar's width is always a
+// fraction of the field's actual worst gap (barFractions above), so the axis has to share that
+// same [0, maxGap] domain or its last tick would sit past where any bar actually reaches.
 export function axisTicks(maxGap: number): number[] {
-  const top = Math.max(0, Math.ceil(maxGap))
+  const top = Math.max(0, Math.floor(maxGap))
   return Array.from({ length: top + 1 }, (_, i) => i)
 }

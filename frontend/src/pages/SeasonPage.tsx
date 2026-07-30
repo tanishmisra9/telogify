@@ -1,11 +1,10 @@
-import { useRef } from 'react'
+import { useReducedMotion, m } from 'framer-motion'
 import { Navigate, useParams } from 'react-router-dom'
 import { BackHomeButton } from '@/components/BackHomeButton'
 import { BackToTopButton } from '@/components/BackToTopButton'
 import { BlurFade } from '@/components/BlurFade'
 import { Insight } from '@/components/Insight'
 import { LoadingSwap } from '@/components/LoadingSwap'
-import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
@@ -13,10 +12,9 @@ import { SectionTitle } from '@/components/SectionTitle'
 import { SkeletonCard } from '@/components/Skeleton'
 import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
-import { heatBg, rankAsc } from '@/lib/heat'
+import { axisTicks, barFractions, gapCells } from '@/lib/gapLadder'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { useIsMobile } from '@/lib/useIsMobile'
-import { useScrollFade } from '@/lib/useScrollFade'
 import {
   useApi,
   type SeasonConstructorRow,
@@ -37,80 +35,123 @@ function ConfidenceChip({ confidence }: { confidence: string }) {
   )
 }
 
-// Re-anchor a column to its own best: the best (smallest) team shows "best", every other
-// team shows its gap to that best. Renders one <span> so "best" reads as the reference.
-function gapCells(values: (number | null)[], fmtGap: (d: number) => string): (string | null)[] {
-  const present = values.filter((v): v is number => v != null)
-  if (present.length === 0) return values.map(() => null)
-  const best = Math.min(...present)
-  return values.map((v) => (v == null ? null : v === best ? 'best' : fmtGap(v - best)))
-}
-
-const renderCell = (text: string | null) =>
+const renderGap = (text: string | null) =>
   text == null ? '–' : text === 'best' ? <span className="font-semibold text-ink">best</span> : text
 
-// No grid gap: cells touch and use matching horizontal padding instead, so each row's
-// border-top reads as one continuous line rather than breaking at every column boundary
-// (same recipe as Results.tsx).
-const RANK_GRID = 'grid grid-cols-[1.9fr_1fr_1fr_1fr] items-center'
-const HEAD = 'border-b border-border px-2 pb-2 text-sm font-semibold text-ink'
+// Fixed column widths shared by the header and every row so the axis ticks land directly above
+// the bars they describe, and so a team's bar always starts at the same x position regardless
+// of its name length -- the zero rule reads as one continuous line down the panel.
+const RANK_W = 'w-7 sm:w-9'
+const TEAM_W = 'sm:w-44'
+const FIGURE_W = 'w-auto sm:w-24'
 
 function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const canScrollRight = useScrollFade(containerRef)
-  const topRanks = rankAsc(rows.map((r) => r.top_speed_deficit_kmh))
-  const degRanks = rankAsc(rows.map((r) => r.tyre_deg_s_per_lap))
-  const n = rows.length
+  const reduce = useReducedMotion()
 
-  // One bare delta per column (no sign, no unit-doubling): the leader reads "leader", the rest
-  // their gap to it. Pace shows race pace only; the 60/40 blend still drives the order + shading.
-  const paceCells = gapCells(rows.map((r) => r.pace_gap.mean), (d) => `+${d.toFixed(3)}s`)
-  const topCells = gapCells(rows.map((r) => r.top_speed_deficit_kmh), (d) => `-${Math.round(d)} km/h`)
-  const degCells = gapCells(rows.map((r) => r.tyre_deg_s_per_lap), (d) => `${d.toFixed(3)}s/lap`)
+  // Pace only: the row order still comes from the locked 60/40 race+qualifying blend
+  // (r.overall_rank, set server-side), but the bar and figure show race pace alone, in seconds
+  // behind the season's best -- see the footnote below.
+  const paceValues = rows.map((r) => r.pace_gap.mean)
+  const present = paceValues.filter((v): v is number => v != null)
+  const maxGap = present.length > 0 ? Math.max(...present) - Math.min(...present) : 0
+  const ticks = axisTicks(maxGap)
+  const tickMax = ticks[ticks.length - 1] || 1 // guards a flat field (every gap 0, ticks = [0])
 
-  const cell = (rank: number) => ({ backgroundColor: heatBg(rank, n) })
+  const paceCells = gapCells(paceValues, (d) => `+${d.toFixed(3)}s`)
+  const fractions = barFractions(paceValues)
 
   return (
-    // Same recipe as Results.tsx: the "Team" cell's rank + rule + name + confidence chip can't
-    // shrink below its content width, so on a narrow viewport the grid needs its own scroll
-    // container instead of forcing the whole page wider.
-    <div className="relative">
-    <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
-      <ol className={`${RANK_GRID} min-w-[480px]`}>
-        <li className="contents" aria-hidden>
-          <span className={HEAD}>Team</span>
-          <span className={`${HEAD} text-center`}>Pace</span>
-          <span className={`${HEAD} text-center`}>Top speed</span>
-          <span className={`${HEAD} text-center`}>Tyre wear</span>
-        </li>
+    <div>
+      {/* Header mirrors each row's 4 columns (rank / team / track / figure) so its axis ticks
+          sit directly above the bars. Desktop only -- on mobile the bar moves to its own
+          full-width line below the team row, so there's no fixed track region left for a
+          shared axis to describe; the per-row figure carries the number instead. */}
+      <div className="hidden items-center gap-3 border-b border-border pb-2 sm:flex">
+        <span className={`${RANK_W} shrink-0`} aria-hidden />
+        <span className={`${TEAM_W} shrink-0 text-sm font-semibold text-ink`}>Team</span>
+        <span className="relative h-4 flex-1">
+          {ticks.map((t, i) => (
+            <span
+              key={t}
+              className="absolute top-0 whitespace-nowrap text-xs text-muted"
+              style={{
+                left: `${(t / tickMax) * 100}%`,
+                transform:
+                  i === 0 ? 'translateX(0)' : i === ticks.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
+              }}
+            >
+              {t === 0 ? '0' : `+${t}s`}
+            </span>
+          ))}
+        </span>
+        <span className={`${FIGURE_W} shrink-0 text-right text-sm font-semibold text-ink`}>Race pace</span>
+      </div>
+
+      <ol>
         {rows.map((r, i) => {
           const b = i > 0 ? 'border-t border-border' : ''
-          // Rank + team merge into one washed pill instead of two separately-washed cells; the
-          // metric cells already use heatBg to shade by rank, so they keep their own wash.
-          const wash = { backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }
+          const fraction = fractions[i]
+          const figure = renderGap(paceCells[i])
+
+          const team = (
+            <span className="flex min-w-0 items-center gap-2">
+              <TeamRule team={r.constructor} />
+              <span className="truncate font-medium text-ink">{r.constructor}</span>
+              <ConfidenceChip confidence={r.confidence} />
+            </span>
+          )
+
+          // The zero rule (border-l) marks every row's baseline -- the season's best -- as one
+          // continuous vertical line. The bar itself grows rightward from it in team color; a
+          // team with no pace data (fraction null) shows the rule with no fill, not a fabricated
+          // zero-length bar that would misread as tied for best.
+          // w-full (not flex-1) below: inside the mobile flex-col row wrapper, flex-1's
+          // flex-basis:0 sizes along the COLUMN's main axis (height), which silently collapses
+          // this element's explicit h-[1.125rem] to 0. sm:flex-1 takes over once the row goes
+          // back to flex-row, where flex-1 correctly means "fill the width".
+          const track = (
+            <span className="relative h-[1.125rem] w-full border-l-[1.5px] border-ink/25 sm:w-auto sm:flex-1">
+              {fraction != null && (
+                <m.span
+                  className={`absolute inset-y-0 left-0 block rounded-r-[1px] ${fraction > 0 ? 'min-w-[3px]' : ''}`}
+                  style={{
+                    width: `${fraction * 100}%`,
+                    backgroundColor: teamColorWithAlpha(r.constructor, 0.55),
+                    transformOrigin: 'left',
+                  }}
+                  initial={reduce ? false : { scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: reduce ? 0 : i * 0.03 }}
+                />
+              )}
+            </span>
+          )
+
           return (
-            <li key={r.constructor} className="contents">
-              <span className={`flex items-center gap-2 px-2 py-3 font-medium text-ink ${b}`} style={wash}>
-                <span className="num w-5 shrink-0 text-sm text-muted">{r.overall_rank ?? '–'}</span>
-                <TeamRule team={r.constructor} />
-                {r.constructor}
-                <ConfidenceChip confidence={r.confidence} />
-              </span>
-              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(r.overall_rank ?? n)}>
-                {renderCell(paceCells[i])}
-              </span>
-              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(topRanks[i])}>
-                {renderCell(topCells[i])}
-              </span>
-              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell(degRanks[i])}>
-                {renderCell(degCells[i])}
-              </span>
+            <li key={r.constructor} className={`py-3 ${b}`}>
+              {/* Desktop: one line, columns aligned to the header above. */}
+              <div className="hidden items-center gap-3 sm:flex">
+                <span className={`num ${RANK_W} shrink-0 text-sm text-muted`}>{r.overall_rank ?? '–'}</span>
+                <span className={`${TEAM_W} shrink-0`}>{team}</span>
+                {track}
+                <span className={`num ${FIGURE_W} shrink-0 text-right text-sm text-ink`}>{figure}</span>
+              </div>
+              {/* Mobile: rank + team + figure on one line; the bar gets its own full-width line
+                  below instead of squeezing into a track too narrow to read (a shared team-column
+                  width doesn't survive a 390px viewport, so the whole row's shape has to change,
+                  not just shrink -- same reasoning as Results.tsx's driver-name swap). */}
+              <div className="flex flex-col gap-2 sm:hidden">
+                <div className="flex items-center gap-2">
+                  <span className={`num ${RANK_W} shrink-0 text-sm text-muted`}>{r.overall_rank ?? '–'}</span>
+                  <span className="min-w-0 flex-1">{team}</span>
+                  <span className="num shrink-0 text-sm text-ink">{figure}</span>
+                </div>
+                {track}
+              </div>
             </li>
           )
         })}
       </ol>
-    </div>
-    <ScrollFadeEdge visible={canScrollRight} />
     </div>
   )
 }
