@@ -143,18 +143,39 @@ def test_render_email_neubrutalist_renders_core_content():
     assert "28.094s" in html
     assert "0.019s" not in html
     assert "#E8002D" in html  # Ferrari team color present (top speed row)
-    # ransom-note headline: first name plain, surname big/red, verdict in a black box, rival
-    # team wavy-underlined
-    assert '<span class="a">Charles</span>' in html
-    # surname is styled in the winner's team color, not a fixed hex
-    assert '<span class="b" style="color:#E8002D">LECLERC</span>' in html
-    assert '<span class="c">WON</span>' in html
-    assert '<span class="e">Mercedes</span>' in html
+    # attempt 6: one-line headline, uniform size -- driver name in the winner's team color,
+    # verdict in a black box, no more mixed-size ransom-note spans
+    assert '<span class="name" style="color:#E8002D">CHARLES LECLERC</span>' in html
+    assert '<span class="verdict">WON FOR FERRARI</span>' in html
+    # sub-line names the faster rival when it differs from the winner's own team
+    assert "Though Mercedes had the faster race pace." in html
+    assert "Here&rsquo;s what actually happened!" in html
+    assert ", sector by sector" not in html
+    # attempt 7 item 2: WINNER stamp is always black/white now (was team-colored, forcing a
+    # per-team ink/white contrast pick), and the verdict box moved off black onto brand red
+    assert '>WINNER</' in html
+    assert 'background:#0a0a0a' in html and 'color:#fff' in html
+    assert 'background: #E10600; color: #fff; padding: 2px 8px;' in html
+    # attempt 7 item 1: capital T in the wordmark, matching the site's own casing
+    assert '<p class="wordmark">Telo<span>gify</span></p>' in html
+    # attempt 7 item 3: pace-gap figure is plain ink now, not a per-team darkened variant that
+    # drifted away from the swatch's true color
+    assert f'font-size:28px;color:#0a0a0a;">+0.181s' in html
     # next-race panel is light (matching v59), not the dark-inverted regression
     assert 'class="next-race-inner"' in html
     # attempt 5: off-white #FEFEFE not pure #fff (dark-mode best effort -- Gmail's auto-invert
     # is measurably less aggressive on near-white than pure white)
     assert 'background:#FEFEFE' in html
+    # attempt 6 copy fixes
+    assert "SUNDAY&rsquo;S FRONT RUNNERS" in html
+    assert "YOUR 3 INSIGHTS" in html
+    assert "FAST OUT THE GATES IN PRACTICE" in html
+    # next-race stat label sits inline right of the number (item 7), not display:block below it
+    assert '<span class="stat-label">days away</span>' in html
+    assert '<span class="stat-label">km circuit</span>' in html
+    # top speed mph moves onto the value line, not appended to the driver's name (item 10)
+    assert "322 km/h" in html and "(200 mph)" in html
+    assert "Lewis Hamilton (200 mph)" not in html
 
 
 def test_render_digest_preview_renders_neubrutalist(db_session):

@@ -123,6 +123,18 @@ def _darken(hex_color: str, factor: float = 0.6) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def _relative_luminance(hex_color: str) -> float:
+    r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+
+
+def _on_color(hex_color: str) -> str:
+    """Text/icon color for a solid fill of hex_color: ink on light fills (papaya, teal,
+    silver), white on dark fills (Ferrari red, navy) -- so a solid chip never has to be
+    darkened away from the real team color just to keep its own label legible."""
+    return _NB_INK if _relative_luminance(hex_color) > 0.5 else "#fff"
+
+
 def _clean(text: str) -> str:
     # format_lap_times at render, not on persist: it fixes the already-persisted insights too,
     # which a persist-time hook could only do by re-running the paid pipeline.
@@ -188,7 +200,7 @@ def render_email_plaintext(
     lines = [f"TELOGIFY · {weekend.event_name}", "", opener_text, ""]
 
     if practice is not None:
-        lines.append("FAST OUT THE GATES")
+        lines.append("FAST OUT THE GATES IN PRACTICE")
         lines.append("")
         for sector, constructor, driver, margin, _best_time_s in practice["sectors"]:
             driver_bit = f" ({_full_driver_name(driver)})" if driver else ""
@@ -221,10 +233,10 @@ def render_email_plaintext(
         lines.append("")
 
     if pace_spread is not None:
-        lines.append("PACE SPREAD - CONSTRUCTORS")
+        lines.append("SUNDAY'S FRONT RUNNERS")
         lines.append(
-            f"{pace_spread['fastest']} set the pace this weekend. Here's how far back the "
-            "next three fell, per lap."
+            f"{pace_spread['fastest']} set the pace this weekend. Here's how much time the "
+            "next three lost, every single lap."
         )
         for name, gap in pace_spread["rows"]:
             lines.append(f"  {name}: {gap}")
@@ -349,11 +361,11 @@ def _nb_shadow_box(
     )
 
 
-def _nb_stamp(text_html: str, *, bg: str = "#E10600", inline: bool = True) -> str:
+def _nb_stamp(text_html: str, *, bg: str = "#E10600", fg: str | None = None, inline: bool = True) -> str:
     return _nb_shadow_box(
         text_html, bg=bg, border_width="1.5px", offset=3, inline=inline,
         box_style=(
-            f"color:#fff;font-family:{_NB_DISPLAY_FONT};font-weight:700;"
+            f"color:{fg or _on_color(bg)};font-family:{_NB_DISPLAY_FONT};font-weight:700;"
             "padding:10px 18px;font-size:15px;letter-spacing:0.02em;"
         ),
     )
@@ -375,12 +387,14 @@ _NB_STYLE = f"""
   .masthead {{ text-align: center; margin-bottom: 30px; }}
   .masthead .wordmark {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 52px; line-height: 0.9; margin: 18px 0 0; letter-spacing: -0.01em; }}
   .masthead .wordmark span {{ color: #E10600; }}
-  .ransom {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; line-height: 1.25; margin: 4px 0 0; }}
-  .ransom .a {{ font-size: 22px; }}
-  .ransom .b {{ font-size: 44px; color: #E10600; }}
-  .ransom .c {{ font-size: 30px; background: #0a0a0a; color: #fff; padding: 2px 6px; }}
-  .ransom .d {{ font-size: 22px; }}
-  .ransom .e {{ font-size: 38px; text-decoration: underline wavy #27F4D2 4px; text-underline-offset: 6px; }}
+  /* attempt 6: one uniform size on the headline line (name + verdict), not the old mixed
+     22/44/30/38px inline run -- that's what let it baseline-align by construction instead of
+     wrapping into uneven gaps. */
+  .headline {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 28px; line-height: 1.3; margin: 0; }}
+  /* attempt 7 item 2: moved off black -- brand red instead, the same fill already proven
+     legible white-on-red in both light and dark mode (masthead stamp, CTA), so no new
+     dark-mode override is needed here either. */
+  .headline .verdict {{ background: #E10600; color: #fff; padding: 2px 8px; display: inline-block; }}
   .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
   .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
@@ -397,10 +411,15 @@ _NB_STYLE = f"""
   .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
   .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
-  .next-race-inner .stats b {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:22px; color:#E10600; display:block; }}
+  /* item 7: label sits to the right of the number, baseline-aligned ("27 days away" as one
+     phrase), not stacked below it -- the old display:block on b pushed the label onto its own
+     line under the figure. */
+  .next-race-inner .stats b {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:22px; color:#E10600; margin-right:6px; }}
+  .next-race-inner .stats .stat-label {{ font-size:13px; color:#0a0a0a; }}
   /* A genuine sign-off, not a line buried in the small-print footer: same display font as the
-     section headings so it reads as the last beat of the email's own voice, not legal copy. */
-  .closer {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; text-align: center; margin: 32px 0 40px; color: #0a0a0a; }}
+     section headings so it reads as the last beat of the email's own voice, not legal copy.
+     Left-justified per item 5, matching the rest of the email's left-aligned prose. */
+  .closer {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; text-align: left; margin: 32px 0 40px; color: #0a0a0a; }}
   footer {{ font-size: 12px; line-height: 1.8; color: #0a0a0a99; border-top: 1.5px solid #0a0a0a; padding-top: 18px; }}
   @media (prefers-color-scheme: dark) {{
     /* Best-effort only (email.py:626 header note, .claude/plans/gmail-dark-mode-real-fix.md
@@ -446,53 +465,42 @@ _NB_STYLE = f"""
 """
 
 
-def _nb_ransom_html(winner: dict | None, pace_spread: dict | None) -> str:
-    """Generalizes v59's hand-built ransom note (Charles / LECLERC / WON / even though /
-    Mercedes / had the faster race pace.) across every branch _opener_html already handles,
-    by semantic role rather than literal words: driver's first name -> plain (.a), surname in
-    caps -> big red (.b), the verdict verb -> black box (.c), connective words -> plain (.a),
-    the rival/fastest team when it differs from the winner's own team -> wavy underline (.e)."""
+def _nb_headline_html(winner: dict | None) -> str:
+    """attempt 6: replaces the old ransom note (four inline font sizes, one of them a padded
+    black box -- can never baseline-align in Gmail-safe CSS, which read as scattered fragments).
+    Now a single line at one uniform size: the driver's full name in the team's real color,
+    immediately followed by the verdict in a black box. Hierarchy comes from color and the box,
+    not from mixing sizes, so the line aligns and wraps evenly by construction."""
     raw_team = winner["constructor"] if winner and winner.get("constructor") else None
-    raw_fastest = pace_spread["fastest"] if pace_spread else None
     full_name = _full_driver_name(winner["driver"]) if winner else None
-    first_name, _, surname = full_name.rpartition(" ") if full_name else (None, None, None)
-    first_name = html.escape(first_name) if first_name else None
-    surname = html.escape(surname.upper()) if surname else None
+    name = html.escape(full_name.upper()) if full_name else None
     team = html.escape(raw_team) if raw_team else None
-    fastest = html.escape(raw_fastest) if raw_fastest else None
     team_color = _team_color(raw_team) if raw_team else "#E10600"
-    name_html = (
-        f'<span class="a">{first_name}</span> <span class="b" style="color:{team_color}">{surname}</span>'
-        if surname and first_name else
-        f'<span class="b" style="color:{team_color}">{surname}</span>' if surname else None
-    )
 
-    if surname and team and fastest:
-        if raw_fastest == raw_team:
-            spans = (
-                f'{name_html} <span class="c">WON FOR {team.upper()}</span> '
-                '<span class="a">the fastest car on pace too.</span>'
-            )
-        else:
-            spans = (
-                f'{name_html} <span class="c">WON</span> '
-                f'<span class="d">even though</span> <span class="e">{fastest}</span> '
-                '<span class="a">had the faster race pace.</span>'
-            )
-    elif surname and team:
+    if name and team:
         spans = (
-            f'{name_html} <span class="c">WON FOR {team.upper()}</span> '
-            '<span class="a">this weekend.</span>'
-        )
-    elif fastest:
-        spans = (
-            '<span class="a">Here&rsquo;s what the telemetry found this weekend, with</span> '
-            f'<span class="e">{fastest}</span> <span class="a">setting the pace.</span>'
+            f'<span class="name" style="color:{team_color}">{name}</span> '
+            f'<span class="verdict">WON FOR {team.upper()}</span>'
         )
     else:
-        spans = '<span class="a">Here&rsquo;s what the telemetry found this weekend.</span>'
+        spans = '<span class="verdict">HERE&rsquo;S WHAT THE TELEMETRY FOUND</span>'
 
-    return f'<p class="ransom">{spans}</p>'
+    return f'<p class="headline">{spans}</p>'
+
+
+def _nb_sub_html(winner: dict | None, pace_spread: dict | None) -> str:
+    """attempt 6 item 9: drops ', sector by sector.' and always ends on 'happened!'; the
+    winner-vs-fastest-car fact still leads, highlighted, but never repeats the headline's own
+    words back."""
+    raw_team = winner["constructor"] if winner and winner.get("constructor") else None
+    raw_fastest = pace_spread["fastest"] if pace_spread else None
+    if raw_team and raw_fastest:
+        if raw_fastest == raw_team:
+            lead = "The fastest car on pace too."
+        else:
+            lead = f"Though {html.escape(raw_fastest)} had the faster race pace."
+        return f'<p class="sub"><b>{lead}</b> Here&rsquo;s what actually happened!</p>'
+    return '<p class="sub"><b>Here&rsquo;s what actually happened!</b></p>'
 
 
 def _nb_practice_html(practice: dict | None) -> str:
@@ -502,13 +510,16 @@ def _nb_practice_html(practice: dict | None) -> str:
     for sector, constructor, driver, _margin, best_time_s in practice["sectors"]:
         driver_name = _full_driver_name(driver) if driver else "Unknown"
         value = f"{best_time_s:.3f}s" if best_time_s is not None else "—"
-        tiles.append((f"SECTOR {sector}", value, constructor or "Unknown", driver_name))
+        tiles.append((f"SECTOR {sector}", value, constructor or "Unknown", driver_name, ""))
     kmh = practice["top_speed_kmh"]
     mph = kmh * 0.621371
     tiles.append((
         "TOP SPEED", f"{kmh:.0f} km/h",
         practice["top_speed_constructor"] or "Unknown",
-        f"{_full_driver_name(practice['top_speed_driver'])} ({mph:.0f} mph)",
+        f"{_full_driver_name(practice['top_speed_driver'])}",
+        # attempt 6 item 10: mph moves onto the value line (with the km/h figure it belongs
+        # to) instead of tacking onto the driver name, which read as part of the driver's name.
+        f' <span style="font-size:13px;font-weight:400;color:{_MUTED}">({mph:.0f} mph)</span>',
     ))
     # Table, not CSS grid (email.py:626 header note / project CLAUDE.md): Gmail (desktop,
     # iOS, Android, non-Workspace accounts) doesn't support display:grid, which was collapsing
@@ -518,14 +529,14 @@ def _nb_practice_html(practice: dict | None) -> str:
     _tile_rotations = ["", "transform:rotate(1.5deg);margin-top:-4px;", "transform:rotate(-1.2deg);", "transform:rotate(0.8deg);margin-top:-6px;"]
     tile_divs = [
         _nb_shadow_box(
-            f'<span class="lbl" style="background:{_darken(_team_color(constructor), 0.9)}">{html.escape(label)}</span>'
-            f'<p class="val">{html.escape(value)}</p>'
+            f'<span class="lbl" style="background:{_team_color(constructor)};color:{_on_color(_team_color(constructor))}">{html.escape(label)}</span>'
+            f'<p class="val">{html.escape(value)}{mph_html}</p>'
             f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p>',
             border_width="1.5px", offset=3.5, box_class="practice-tile-inner",
             box_style="padding:14px 14px 16px;",
             wrapper_style=_tile_rotations[i] if i < len(_tile_rotations) else "",
         )
-        for i, (label, value, constructor, driver_bit) in enumerate(tiles)
+        for i, (label, value, constructor, driver_bit, mph_html) in enumerate(tiles)
     ]
     rows_html = "".join(
         '<tr>'
@@ -535,7 +546,7 @@ def _nb_practice_html(practice: dict | None) -> str:
         for r in range(0, len(tile_divs), 2)
     )
     return (
-        '<span class="section-title">FAST OUT THE GATES</span>'
+        '<span class="section-title">FAST OUT THE GATES IN PRACTICE</span>'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows_html}</table>'
     )
 
@@ -547,17 +558,13 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
     body = _clean(_first_sentence(quali.explanation_email))
     team = quali.team or "Mercedes"
     team_color = _team_tint(team, 0.18)
-    # The box's background is already this team's own color (as a light tint), so a plain
-    # black mention of the team name inside it reads like two different design systems in one
-    # panel. Coloring the name itself in the team's real (undiluted) color ties the text back
-    # to the identity the background is already carrying.
-    accent = _darken(_team_color(team), 0.75)
-    name_escaped = html.escape(team)
-    colored = f'<span style="color:{accent}">{name_escaped}</span>'
-    header = header.replace(name_escaped, colored)
-    body = body.replace(name_escaped, colored)
+    # attempt 6 item 1: the team name used to be recolored via a flat _darken(0.75), which
+    # turned McLaren papaya into brown. Team identity now lives in the panel's own background
+    # tint (already this team's real color) and the QUALIFYING HOUR label's solid fill below,
+    # so the inline prose stays plain ink instead of duplicating (and muddying) the color cue.
+    lbl_color = _team_color(team)
     inner = (
-        '<span class="lbl">QUALIFYING HOUR</span>'
+        f'<span class="lbl" style="background:{lbl_color};color:{_on_color(lbl_color)}">QUALIFYING HOUR</span>'
         f'<h3>{header}</h3>'
         f'<p>{body}</p>'
     )
@@ -598,6 +605,12 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
     row_html = []
     for i, ((name, gap), value) in enumerate(zip(pace_rows, gap_values)):
         color = _team_color(name)
+        # attempt 7 item 3: the gap figure used to be darkened via _readable_on_light for
+        # contrast, which visibly drifted several teams' text away from their real hex (Ferrari
+        # red went dull, Mercedes teal went murky) while the swatch right next to it stayed the
+        # true color -- the two no longer matched. Team color now lives only on the swatch and
+        # bar (solid fills, always legible at any hue); the figure itself is plain ink, so
+        # there's no color to drift and nothing to darken.
         is_last = i == len(pace_rows) - 1
         border = "" if is_last else "border-bottom:1px dashed #0a0a0a55;"
         bar_px = _BAR_MAX_PX if max_gap == 0 else max(_BAR_MIN_PX, round(value / max_gap * _BAR_MAX_PX))
@@ -607,7 +620,7 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
             f'<span class="swatch" style="background:{color}"></span>{html.escape(name)}</td>'
             f'<td style="padding:5px 0 0 8px;text-align:right;'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
-            f'font-size:28px;color:{color};">{html.escape(gap)}</td>'
+            f'font-size:28px;color:{_NB_INK};">{html.escape(gap)}</td>'
             "</tr>"
             f'<tr><td colspan="2" style="padding:6px 0 9px;{border}">'
             f'<div style="width:{bar_px}px;max-width:100%;height:11px;background:{color};'
@@ -616,11 +629,11 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
         )
     inner = (
         f'<p style="font-size:15px;margin:0 0 10px;">{fastest} set the pace this weekend. '
-        f'Gap per lap, race pace:</p>'
+        f"Here&rsquo;s how much time the next three lost, every single lap.</p>"
         f'<table role="presentation" cellpadding="0" cellspacing="0">{"".join(row_html)}</table>'
     )
     return (
-        '<span class="section-title">PACE SPREAD // CONSTRUCTORS</span>'
+        '<span class="section-title">SUNDAY&rsquo;S FRONT RUNNERS</span>'
         + _nb_shadow_box(
             inner, box_class="flat-panel-inner",
             box_style="padding:14px 22px 16px;", wrapper_style="margin-bottom:40px;",
@@ -637,9 +650,12 @@ def _nb_next_race_html(next_race: dict | None) -> str:
     elif days == 1:
         days_stat = '<td style="padding-right:28px;"><b>TOMORROW</b></td>'
     else:
-        days_stat = f'<td style="padding-right:28px;"><b>{days}</b>days away</td>'
+        days_stat = f'<td style="padding-right:28px;"><b>{days}</b><span class="stat-label">days away</span></td>'
     length_km = next_race.get("length_km")
-    km_stat = f'<td><b>{length_km:.3f}</b>km circuit</td>' if length_km is not None else ""
+    km_stat = (
+        f'<td><b>{length_km:.3f}</b><span class="stat-label">km circuit</span></td>'
+        if length_km is not None else ""
+    )
     place = (
         f'<p style="margin:0;font-size:13px;">{html.escape(next_race["place"])}</p>'
         if next_race.get("place") else ""
@@ -670,21 +686,7 @@ def render_email_neubrutalist(
 ) -> str:
     cta_url = f"{base_url.rstrip('/')}/weekends/{weekend.year}/{weekend.round}"
     event_name = html.escape(weekend.event_name)
-
     raw_team = winner["constructor"] if winner and winner.get("constructor") else None
-    raw_fastest = pace_spread["fastest"] if pace_spread else None
-    if raw_team and raw_fastest and raw_fastest != raw_team:
-        verdict = "The telemetry says the fastest car didn&rsquo;t win"
-    elif raw_team and raw_fastest:
-        verdict = "The telemetry backs it up"
-    else:
-        verdict = "Here&rsquo;s what actually happened, sector by sector"
-    sub = (
-        f'<p class="sub">{html.escape(raw_team)} takes the {event_name}. '
-        f'<b>{verdict}.</b> Here&rsquo;s what actually happened, sector by sector.</p>'
-        if raw_team else
-        f'<p class="sub"><b>{verdict}, sector by sector.</b></p>'
-    )
 
     cards_html = ""
     if insights:
@@ -699,14 +701,17 @@ def render_email_neubrutalist(
             # the card instead, as a small team-colored tag ahead of the heading: one less
             # moving part, and it reads as a section marker rather than a stuck-on sticker.
             num_tag = f'<span class="nb-num" style="background:{color}">{i:02d}</span>'
+            # attempt 6 item 11: matches the pace-spread panel's right ink strip (offset=5,
+            # side="right") so both panel families share the same shadow motif; the team-
+            # colored border stays as the card's own identity marker.
             box = _nb_shadow_box(
                 f"{num_tag}<h3>{header}</h3><p>{body}</p>",
                 border_color=color, border_width="3px", box_class="insight-inner",
-                box_style="padding:22px 20px 24px;", offset=0,
+                box_style="padding:22px 20px 24px;", offset=5, side="right",
                 wrapper_style="margin:0 0 20px;",
             )
             cards.append(box)
-        cards_html = '<span class="section-title">THE 3 INSIGHTS</span>' + "".join(cards)
+        cards_html = '<span class="section-title">YOUR 3 INSIGHTS</span>' + "".join(cards)
 
     # Inline color (not the .cta class alone): Gmail's default link-blue was winning over
     # class-only anchor color in the attempt-2 send. Shadow-boxed like the panels; the anchor
@@ -723,23 +728,23 @@ def render_email_neubrutalist(
         wrapper_style="margin:20px 0 50px;",
     )
 
-    winner_sticker = f'<div style="text-align:right;margin:0 20px 0 0;">{_nb_stamp("WINNER", bg=html.escape(_darken(_team_color(raw_team), 0.85)) if raw_team else "#E10600")}</div>'
-    # Corner-overlap sticker, not position:absolute + z-index (email.py:626 header note --
-    # both dead in Gmail). The sticker renders first at its normal (known, fixed-height ~40px)
-    # size; the box below it pulls its own top edge up via negative margin to partially tuck
-    # under the sticker -- the box paints after in DOM order, so it covers the sticker's bottom
-    # slice while the sticker's top portion keeps peeking out above the box's raised edge.
-    # Bounded by the sticker's fixed size rather than the box's dynamic content height, so it
-    # stays predictable regardless of how long the ransom note/sub-line run. Real fragility in
-    # the negative margin itself (Yahoo/AOL dropped support outright, Gmail's own support isn't
-    # confirmed) -- verify against the real send; fall back to non-overlapping stacked
-    # placement if it doesn't hold.
-    # Top padding trimmed from 28px to 18px: the WINNER sticker already occupies visual space
-    # tucked into the box's top edge (see winner_sticker's comment below), so the old 28px
-    # compounded into an oversized empty gap above the ransom headline.
+    # attempt 6: the WINNER stamp used to float in its own row above this box and tuck under it
+    # via a negative margin -- a different right edge than the panel it belonged to, and negative
+    # margins are dropped outright by Yahoo/AOL per this comment's prior history. Moved inside
+    # the panel's own top-left instead: one box, one left edge, nothing to misalign.
+    # attempt 7 item 2: was filled with the true team color, so WINNER's text color had to be
+    # picked per-team by luminance (black on McLaren papaya) -- reads inconsistent and, per
+    # feedback, wrong for at least McLaren. Black fill sidesteps the whole per-team contrast
+    # question: white text is always safely legible on it, for every team including the
+    # lighter ones, with no darkening logic needed.
+    winner_stamp = (
+        f'<div style="margin-bottom:14px;">{_nb_stamp("WINNER", bg=_NB_INK, fg="#fff", inline=True)}</div>'
+        if raw_team else ""
+    )
     headline_box = _nb_shadow_box(
-        _nb_ransom_html(winner, pace_spread) + sub, box_class="headline-inner",
-        box_style="padding:18px 24px 32px;", wrapper_style="margin:-22px 0 40px;",
+        f'{winner_stamp}{_nb_headline_html(winner)}{_nb_sub_html(winner, pace_spread)}',
+        box_class="headline-inner",
+        box_style="padding:22px 24px 28px;", wrapper_style="margin-bottom:40px;",
     )
 
     return f"""<!doctype html>
@@ -757,10 +762,9 @@ def render_email_neubrutalist(
 
   <div class="masthead">
     {_nb_stamp(event_name)}
-    <p class="wordmark">telo<span>gify</span></p>
+    <p class="wordmark">Telo<span>gify</span></p>
   </div>
 
-  {winner_sticker}
   {headline_box}
 
   {_nb_practice_html(practice)}
@@ -776,7 +780,8 @@ def render_email_neubrutalist(
 
   <footer>
     Methodology inputs come from Mirco Bartolozzi (@fdataanalysis), covering clean-air filtering, fuel correction, and the ERS depletion signal. Timing data comes from FastF1.<br>
-    &copy; {weekend.year} Tanish Misra &middot; <a href="{html.escape(base_url.rstrip('/'))}/unsubscribe" style="color:#0a0a0a">Unsubscribe</a>
+    &copy; {weekend.year} Tanish Misra<br>
+    <a href="{html.escape(base_url.rstrip('/'))}/unsubscribe" style="color:#0a0a0a">Unsubscribe</a>
   </footer>
 
 </div>
