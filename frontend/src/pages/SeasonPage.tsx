@@ -225,11 +225,10 @@ function SeasonView({ year }: { year: number }) {
             <div className="glass rounded-[--radius-panel] p-6">
               <RankingTable rows={rows} />
               <p className="mt-4 text-sm text-muted">
-                Each column is anchored to the season's best team: it shows "best" and every other
-                team its gap to it. Pace is the 60/40 race and qualifying blend that drives the
-                order. Tyre wear is measured on the compound the field ran most, so it reflects the car and
-                not its tyre choice. Cells shade toward the accent as a team ranks higher on that metric. A
-                "partial data" or "low data" tag marks a team seen in too few rounds to read at full confidence.
+                Ranked on the season's blend of race and qualifying pace (60/40). Each bar is
+                race pace alone: the season's best team shows "best", every other team its gap
+                to it in seconds. A "partial data" or "low data" tag marks a team seen in too
+                few rounds to read at full confidence.
               </p>
             </div>
           ) : null}
