@@ -13,7 +13,7 @@ import { SkeletonCard } from '@/components/Skeleton'
 import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
 import { axisTicks, barFractions, gapCells } from '@/lib/gapLadder'
-import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
+import { resolveTeamColor, teamColorWithAlpha, teamShortName } from '@/lib/teamColors'
 import { useIsMobile } from '@/lib/useIsMobile'
 import {
   useApi,
@@ -63,9 +63,6 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
 
   const paceCells = gapCells(paceValues, (d) => `+${d.toFixed(3)}s`)
   const fractions = barFractions(paceValues)
-  // Every whole-second tick except 0 -- 0 already has the solid zero rule (border-l on the
-  // track itself); a dotted line there would just double it up.
-  const dashedTicks = ticks.filter((t) => t > 0)
 
   return (
     <div>
@@ -107,10 +104,17 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
           // the entire mobile team column's width, so it would crowd out the name it's meant to
           // annotate. Every team is "high" confidence at time of writing; when a thin-data team
           // does show a chip, the desktop-only reveal is the tradeoff for keeping mobile scannable.
+          // Mobile uses the same short names as the pace-chart axis ("Red Bull Racing" -> "Red
+          // Bull", "Racing Bulls" -> "RB") instead of truncating the full name with an ellipsis
+          // -- a real name that fits beats a clipped one. truncate stays as a safety net; every
+          // short name already fits TEAM_W without needing it.
           const team = (
             <span className="flex min-w-0 items-center gap-2">
               <TeamRule team={r.constructor} />
-              <span className="truncate font-medium text-ink">{r.constructor}</span>
+              <span className="truncate font-medium text-ink">
+                <span className="hidden sm:inline">{r.constructor}</span>
+                <span className="sm:hidden">{teamShortName(r.constructor)}</span>
+              </span>
               <span className="hidden shrink-0 sm:inline-flex">
                 <ConfidenceChip confidence={r.confidence} />
               </span>
@@ -120,21 +124,16 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
           // The zero rule (border-l) marks every row's baseline -- the season's best -- as one
           // continuous vertical line. The bar itself grows rightward from it in team color; a
           // team with no pace data (fraction null) shows the rule with no fill, not a fabricated
-          // zero-length bar that would misread as tied for best. The dashed ticks are rendered
-          // per-row (not as one overlay across the whole panel) because they share the header's
-          // exact tick math and this track's own local width -- no separate pixel measurement of
-          // the column's offset needed; every row's track is the same width at the same x
-          // position, so the dashes still read as one continuous gridline down the panel.
+          // zero-length bar that would misread as tied for best. On the leader's own row
+          // (fraction === 0) there's no bar next to the rule to give it color, so it reads as a
+          // bare gray sliver -- thicken it and color it with that team's own color there only;
+          // every other row's rule stays the plain neutral baseline.
+          const isLeaderRow = fraction === 0
           const track = (
-            <span className="relative h-[1.375rem] flex-1 border-l-[1.5px] border-ink/25">
-              {dashedTicks.map((t) => (
-                <span
-                  key={t}
-                  aria-hidden
-                  className="absolute inset-y-0 border-l border-dotted border-ink/25"
-                  style={{ left: `${(t / tickMax) * 100}%` }}
-                />
-              ))}
+            <span
+              className="relative h-[1.375rem] flex-1 border-l-[1.5px] border-ink/25"
+              style={isLeaderRow ? { borderLeftWidth: '2px', borderLeftColor: resolveTeamColor(r.constructor) } : undefined}
+            >
               {fraction != null && (
                 <m.span
                   className={`absolute inset-y-0 left-0 block rounded-r-[1px] ${fraction > 0 ? 'min-w-[3px]' : ''}`}
