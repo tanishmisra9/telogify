@@ -107,13 +107,15 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
           // Mobile uses the same short names as the pace-chart axis ("Red Bull Racing" -> "Red
           // Bull", "Racing Bulls" -> "RB") instead of truncating the full name with an ellipsis
           // -- a real name that fits beats a clipped one. truncate stays as a safety net; every
-          // short name already fits TEAM_W without needing it.
+          // short name already fits TEAM_W without needing it. Aston Martin is the one exception
+          // kept spelled out in full -- that column had room for it, unlike Racing Bulls' "RB".
+          const mobileName = r.constructor === 'Aston Martin' ? r.constructor : teamShortName(r.constructor)
           const team = (
             <span className="flex min-w-0 items-center gap-2">
               <TeamRule team={r.constructor} />
               <span className="truncate font-medium text-ink">
                 <span className="hidden sm:inline">{r.constructor}</span>
-                <span className="sm:hidden">{teamShortName(r.constructor)}</span>
+                <span className="sm:hidden">{mobileName}</span>
               </span>
               <span className="hidden shrink-0 sm:inline-flex">
                 <ConfidenceChip confidence={r.confidence} />
