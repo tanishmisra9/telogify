@@ -25,6 +25,12 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "python -m telogify.cli poll"
-cronSchedule = "*/30 * * * *"
+# Every 30 min, Thu through Mon (0,1,4,5,6 -- padded a day on each side of the Fri/Sat/Sun race
+# weekend, as a buffer against UTC day-shift at tracks far from UTC and against a session
+# running long). Not a single range: day-of-week wraps at Sunday (0), so a contiguous
+# Thu-through-Mon span isn't expressible as "4-1" in a way that's portable across cron
+# implementations -- the explicit list is unambiguous everywhere. All schedules are evaluated
+# in UTC (Railway docs).
+cronSchedule = "*/30 * * * 0,1,4,5,6"
 # Deliberately no restartPolicyType here (unlike railway.toml's "on_failure"): a failing cron
 # run should stay failed and visible in the logs, not restart-loop.
