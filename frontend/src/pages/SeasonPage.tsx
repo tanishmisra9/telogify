@@ -63,6 +63,9 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
 
   const paceCells = gapCells(paceValues, (d) => `+${d.toFixed(3)}s`)
   const fractions = barFractions(paceValues)
+  // Every whole-second tick except 0 -- 0 already has the solid zero rule (border-l on the
+  // track itself); a dotted line there would just double it up.
+  const dashedTicks = ticks.filter((t) => t > 0)
 
   return (
     <div>
@@ -75,7 +78,7 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
           up with the track column, not the row's full width. */}
       <div className="hidden items-center gap-3 border-b border-border pb-2 sm:flex">
         <span className={`${RANK_W} shrink-0`} aria-hidden />
-        <span className={`${TEAM_W} shrink-0 text-base font-semibold text-ink`}>Team</span>
+        <span className={`${TEAM_W} shrink-0 text-lg font-semibold text-ink`}>Team</span>
         <span className="relative h-4 flex-1">
           {ticks.map((t, i) => (
             <span
@@ -117,9 +120,21 @@ function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
           // The zero rule (border-l) marks every row's baseline -- the season's best -- as one
           // continuous vertical line. The bar itself grows rightward from it in team color; a
           // team with no pace data (fraction null) shows the rule with no fill, not a fabricated
-          // zero-length bar that would misread as tied for best.
+          // zero-length bar that would misread as tied for best. The dashed ticks are rendered
+          // per-row (not as one overlay across the whole panel) because they share the header's
+          // exact tick math and this track's own local width -- no separate pixel measurement of
+          // the column's offset needed; every row's track is the same width at the same x
+          // position, so the dashes still read as one continuous gridline down the panel.
           const track = (
             <span className="relative h-[1.375rem] flex-1 border-l-[1.5px] border-ink/25">
+              {dashedTicks.map((t) => (
+                <span
+                  key={t}
+                  aria-hidden
+                  className="absolute inset-y-0 border-l border-dotted border-ink/25"
+                  style={{ left: `${(t / tickMax) * 100}%` }}
+                />
+              ))}
               {fraction != null && (
                 <m.span
                   className={`absolute inset-y-0 left-0 block rounded-r-[1px] ${fraction > 0 ? 'min-w-[3px]' : ''}`}
