@@ -342,22 +342,25 @@ def _nb_shadow_box(
     box_style: str = "",
     wrapper_style: str = "",
 ) -> str:
-    """Fakes a hard offset-shadow with two nested boxes instead of CSS box-shadow (dead on
-    Gmail desktop webmail, Google-Workspace-account-only on iOS/Android): an outer div painted
-    the shadow color, with the visible content box inset from it via ordinary positive margin,
-    so the shadow color peeks out as a real color discontinuity. background-color and margin
-    are both universally supported, unlike box-shadow -- this reads as actual depth instead of
-    attempt 3's thick-border version, which tested as "looks like a mistake, not a design
-    choice." `side` flips which edges the inset margin (and therefore the visible shadow) sits
-    on, for the insight cards' alternating shadow direction."""
+    """Real CSS box-shadow -- confirmed supported on Gmail iOS by emailsim's measured CSS
+    support matrix (backend/telogify/emailsim/support.py), which is why this is no longer the
+    two-nested-div fake it used to be (that trick existed only because box-shadow was believed
+    unsupported everywhere; it wasn't, at least not on the client that matters most). One div,
+    a real border, a real offset shadow -- the same technique the approved comp
+    (digest-neubrutalist.html) uses directly. `side` flips which way the shadow's horizontal
+    offset points, for the insight cards' alternating motif; `wrapper_style` carries the box's
+    own margin/transform (kept as a separate param from `box_style`'s inner padding only because
+    every call site already writes it that way, not because they land on different elements
+    anymore -- both concatenate onto this same div)."""
     display = "inline-block" if inline else "block"
-    margin = f"0 {offset}px {offset}px 0" if side == "right" else f"0 0 {offset}px {offset}px"
+    dx = offset if side == "right" else -offset
     cls = f' class="{box_class}"' if box_class else ""
     return (
-        f'<div style="display:{display};background:{shadow_color};{wrapper_style}">'
-        f'<div{cls} style="background:{bg};border:{border_width} solid {border_color};margin:{margin};{box_style}">'
-        f"{inner_html}"
-        "</div></div>"
+        f'<div{cls} style="display:{display};background:{bg};'
+        f"border:{border_width} solid {border_color};"
+        f"box-shadow:{dx}px {offset}px 0 0 {shadow_color};"
+        f'{wrapper_style}{box_style}">'
+        f"{inner_html}</div>"
     )
 
 
