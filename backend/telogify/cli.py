@@ -595,5 +595,148 @@ def preview_digest(
     console.print(f"[green]Wrote preview to[/green] [cyan]{escape(out)}[/cyan]")
 
 
+@app.command("emailsim-probe")
+def emailsim_probe(
+    kind: str = typer.Option("color", "--kind", help="Which probe to render: color | css."),
+    out: str = typer.Option("probe.html", "--out", help="Path to write the rendered HTML."),
+) -> None:
+    """Render an emailsim probe email to a local HTML file. No send, no API key."""
+    from pathlib import Path
+
+    from telogify.emailsim.probe import render_probe_a, render_probe_b
+
+    if kind == "color":
+        html_body = render_probe_a()
+    elif kind == "css":
+        html_body = render_probe_b()
+    else:
+        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css)")
+    Path(out).write_text(html_body)
+    console.print(f"[green]Wrote probe to[/green] [cyan]{escape(out)}[/cyan]")
+
+
+@app.command("emailsim-extract")
+def emailsim_extract(
+    shot: str = typer.Argument(..., help="Path to a screenshot PNG."),
+    kind: str = typer.Option("color", "--kind", help="Which probe this screenshot is of: color | css."),
+    out: str = typer.Option("extract.json", "--out", help="Path to write the measured results as JSON."),
+    debug_overlay: str = typer.Option(
+        None, "--debug-overlay", help="Optional path to write an annotated overlay PNG."
+    ),
+    tol: int = typer.Option(40, "--tol", help="Color-distance tolerance for locating the magenta frame."),
+) -> None:
+    """Extract measured results from a probe screenshot. Always prints a summary so a bad
+    extraction is visible immediately rather than silently trusted."""
+    import json
+    from pathlib import Path
+
+    from telogify.emailsim.extract import (
+        draw_debug_overlay,
+        load_image,
+        locate_and_classify,
+        locate_and_extract,
+        locate_frames,
+    )
+    from telogify.emailsim.probe import probe_a_grids, probe_b_grids
+
+    image = load_image(shot)
+
+    if kind == "color":
+        grids = probe_a_grids()
+        results = locate_and_extract(image, grids, tol=tol)
+        payload = {
+            grid_name: [
+                {"row": m.row, "col": m.col, "expected_hex": m.expected_hex, "measured_hex": m.measured_hex, "delta": m.delta}
+                for m in measurements
+            ]
+            for grid_name, measurements in results.items()
+        }
+        total = sum(len(v) for v in results.values())
+        max_delta = max((m.delta for measurements in results.values() for m in measurements), default=0.0)
+        console.print(
+            f"[green]Extracted {total} swatches[/green] across {len(results)} grid(s). "
+            f"Max delta from sent color: {max_delta:.1f}"
+        )
+    elif kind == "css":
+        grids = probe_b_grids()
+        results = locate_and_classify(image, grids, tol=tol)
+        payload = {
+            grid_name: [
+                {"id": v.id, "label": v.label, "verdict": v.verdict, "measured_rgb": v.measured_rgb}
+                for v in verdicts
+            ]
+            for grid_name, verdicts in results.items()
+        }
+        for verdicts in results.values():
+            for v in verdicts:
+                console.print(f"  [cyan]{v.id:<28}[/cyan] {v.verdict}")
+        total = sum(len(v) for v in results.values())
+        console.print(f"[green]Classified {total} CSS test(s).[/green]")
+    else:
+        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css)")
+
+    if debug_overlay:
+        boxes = locate_frames(image, tol=tol)
+        overlay = draw_debug_overlay(image, grids, boxes)
+        overlay.save(debug_overlay)
+        console.print(f"[green]Wrote debug overlay to[/green] [cyan]{escape(debug_overlay)}[/cyan]")
+
+    Path(out).write_text(json.dumps(payload, indent=2))
+    console.print(f"[green]Wrote results to[/green] [cyan]{escape(out)}[/cyan]")
+
+
+@app.command("emailsim-send")
+def emailsim_send(
+    to: str = typer.Option(..., "--to", help="Recipient email address."),
+    kind: str = typer.Option("color", "--kind", help="Which probe to send: color | css."),
+) -> None:
+    """Send an emailsim probe via Resend. Real send, real API key required."""
+    from telogify.config import settings
+    from telogify.emailsim.probe import render_probe_a, render_probe_b
+
+    if kind == "color":
+        html_body, subject = render_probe_a(), "emailsim Probe A -- color calibration"
+    elif kind == "css":
+        html_body, subject = render_probe_b(), "emailsim Probe B -- CSS support matrix"
+    else:
+        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css)")
+
+    if not settings.resend_api_key:
+        raise RuntimeError("RESEND_API_KEY is not set; cannot send the probe.")
+
+    import resend
+
+    resend.api_key = settings.resend_api_key
+    resend.Emails.send({"from": settings.resend_from, "to": [to], "subject": subject, "html": html_body})
+    console.print(f"[green]Sent {kind} probe to[/green] [cyan]{escape(to)}[/cyan]")
+
+
+@app.command("emailsim-render")
+def emailsim_render(
+    year: int,
+    round: int,
+    client: str = typer.Option("gmail-ios", "--client", help="Client profile family: gmail-ios."),
+    theme: str = typer.Option("light", "--theme", help="light | dark."),
+    out: str = typer.Option("digest-simulated.html", "--out", help="Path to write the simulated HTML."),
+) -> None:
+    """Render the real digest through a measured emailsim profile (color transform + CSS
+    support stripping), for comparison against the current naive/emulated render. No send."""
+    from pathlib import Path
+
+    from sqlmodel import Session
+
+    from telogify.db import engine
+    from telogify.email import render_digest_preview
+    from telogify.emailsim.profiles import get_profile
+    from telogify.emailsim.simulate import apply
+
+    profile = get_profile(f"{client}-{theme}")
+    with Session(engine) as db:
+        html_body = render_digest_preview(year, round, db)
+    simulated = apply(html_body, profile)
+    Path(out).write_text(simulated)
+    console.print(f"[green]Wrote simulated ({profile.name}) digest to[/green] [cyan]{escape(out)}[/cyan]")
+
+
 if __name__ == "__main__":
     app()
