@@ -1,14 +1,19 @@
 """Measured Gmail iOS app dark-mode color transform.
 
-DARK_MODE_SAMPLES is real measured data, not a guessed formula: 68 (input_hex -> dark_hex) pairs
+DARK_MODE_SAMPLES is real measured data, not a guessed formula: 74 (input_hex -> dark_hex) pairs
 captured from Probe A screenshots (Gmail iOS app, light vs dark, both light-theme readings
-verified pixel-exact against the known input first) on 2026-08-01. Desktop Gmail's dark toggle
-was confirmed inert on this account (every desktop screenshot read as light regardless of macOS
-appearance), so this transform is iOS-app-specific -- see the emailsim plan and PROFILE_IOS_DARK
-in profiles.py.
+verified pixel-exact against the known input first) on 2026-08-01, plus a supplemental probe
+sent the same day for the 6 2026-season team colors the original probe missed (Alpine, RB, Haas,
+Kick Sauber, Audi, Cadillac) -- without them, an insight card border/badge in any of those teams'
+colors nearest-neighbor-extrapolated to a wildly wrong result (Cadillac's `#E8A33D` landed on
+`#303e07`, a near-invisible dark olive, purely because it happened to be geometrically closest to
+an unrelated calibration point; the real measured result is `#6d4c1c`, a plainly visible dark
+gold). Desktop Gmail's dark toggle was confirmed inert on this account (every desktop screenshot
+read as light regardless of macOS appearance), so this transform is iOS-app-specific -- see the
+emailsim plan and PROFILE_IOS_DARK in profiles.py.
 
 ColorTransform wraps this as a nearest-neighbor lookup in RGB space via a KD-tree: for a color
-outside the 68 measured samples, it returns the measured dark-mode result of whichever sample is
+outside the 74 measured samples, it returns the measured dark-mode result of whichever sample is
 closest in Euclidean RGB distance. This is deliberately not a fitted analytic curve (e.g. a
 single global "invert lightness" formula) because the measured data itself isn't one -- a
 solid grayscale ramp inverts on a smooth curve, but the same-lightness *team colors* (blue, red,
@@ -93,6 +98,13 @@ DARK_MODE_SAMPLES: dict[str, str] = {
     "#ff8000": "#9c4411",
     "#229971": "#0e7c5d",
     "#64c4ff": "#0e547d",
+    # Supplemental probe (2026-08-01): the 2026-season team colors the original Probe A missed.
+    "#0093cc": "#3877a2",  # Alpine
+    "#6692ff": "#446cbd",  # RB / Racing Bulls
+    "#b6babd": "#4f5154",  # Haas
+    "#52e252": "#224f17",  # Kick Sauber
+    "#f50537": "#d74854",  # Audi
+    "#e8a33d": "#6d4c1c",  # Cadillac
 }
 
 
