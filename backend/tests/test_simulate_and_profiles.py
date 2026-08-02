@@ -93,3 +93,38 @@ def test_apply_unsupported_property_not_used_in_html_is_a_no_op():
     profile = Profile(name="test", color_transform=None, support=support)
     html = "<div>no float here</div>"
     assert apply(html, profile) == html
+
+
+def test_apply_strips_transform_rotate_by_default_on_the_gmail_ios_profile():
+    # measured 2026-08-02: real rotated elements come back at 0.000deg. gmail-ios-{light,dark}'s
+    # support matrix must mark transform_rotate unsupported and this must actually strip it.
+    profile = get_profile("gmail-ios-light")
+    html = '<div style="transform:rotate(-4deg);background:red;"></div>'
+    result = apply(html, profile)
+    assert "transform" not in result
+    assert "background:red" in result
+
+
+def test_apply_always_strips_the_webfont_link_regardless_of_profile():
+    # Gmail never fetches external stylesheets -- unconditional, not keyed to any support-matrix
+    # entry, so this must strip even for a profile with no unsupported properties at all.
+    profile = Profile(name="test", color_transform=None, support={})
+    html = (
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">'
+        "<title>kept</title>"
+    )
+    result = apply(html, profile)
+    assert "fonts.googleapis.com" not in result
+    assert "<title>kept</title>" in result
+
+
+def test_apply_dark_profile_does_not_transform_colors_inside_img_tags():
+    # image pixels bypass Gmail's color rewriting entirely (measured 2026-08-02: a hosted SVG's
+    # internal red stayed exact while CSS-colored reds around it inverted), so an <img>'s own
+    # markup must never be treated as authored light-mode CSS the way an inline style is.
+    profile = get_profile("gmail-ios-dark")
+    html = '<img src="https://example.com/logo.svg" alt="#0a0a0a mark"><div style="color:#0a0a0a;"></div>'
+    result = apply(html, profile)
+    assert '<img src="https://example.com/logo.svg" alt="#0a0a0a mark">' in result
+    assert "color:#0a0a0a" not in result
