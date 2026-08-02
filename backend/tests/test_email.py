@@ -157,7 +157,10 @@ def test_render_email_neubrutalist_renders_core_content():
     assert 'background:#0a0a0a' in html and 'color:#fff' in html
     assert 'background: #E10600; color: #fff; padding: 2px 8px;' in html
     # attempt 7 item 1: capital T in the wordmark, matching the site's own casing
-    assert '<p class="wordmark">Telo<span>gify</span></p>' in html
+    assert '<p class="wordmark" style="margin:0;">Telo<span>gify</span></p>' in html
+    # masthead icon: a hosted <img> referencing the deployed site's real logo mark, not inline
+    # <svg> markup -- a far more standard, reliable code path for email clients.
+    assert '<img src="https://telogify.app/favicon.svg"' in html
     # attempt 7 item 3: pace-gap figure is plain ink now, not a per-team darkened variant that
     # drifted away from the swatch's true color
     assert f'font-size:28px;color:#0a0a0a;">+0.181s' in html

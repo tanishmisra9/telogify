@@ -377,6 +377,22 @@ def _nb_stamp(text_html: str, *, bg: str = "#E10600", fg: str | None = None, inl
     )
 
 
+def _nb_logo_chip(base_url: str) -> str:
+    """The masthead icon (comp's .logo-mark): a real hosted <img>, not an inline <svg> element
+    -- the comp's inline SVG geometry is coincidentally identical to the site's own real mark
+    (frontend/public/favicon.svg, frontend/src/components/Logo.tsx), already live at
+    {base_url}/favicon.svg. Referencing an external image via <img src> is an entirely
+    different, far more standard code path than embedding raw <svg> markup in the email body
+    (this is how essentially every marketing email includes a logo); unlike inline SVG, this
+    isn't a technique this project's own probes have ever found reason to distrust."""
+    logo_url = f"{base_url.rstrip('/')}/favicon.svg"
+    return _nb_shadow_box(
+        f'<img src="{html.escape(logo_url)}" width="24" height="24" alt="" style="display:block;width:24px;height:24px;">',
+        bg="#fff", border_width="3px", offset=4, inline=True,
+        box_style="padding:6px;", wrapper_style="transform:rotate(-6deg);",
+    )
+
+
 _NB_STYLE = f"""
   * {{ box-sizing: border-box; }}
   body {{ margin: 0; }}
@@ -793,7 +809,10 @@ def render_email_neubrutalist(
 
   <div class="masthead">
     {_nb_stamp(event_name)}
-    <p class="wordmark">Telo<span>gify</span></p>
+    <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:18px auto 0;"><tr>
+      <td style="padding-right:10px;vertical-align:middle;">{_nb_logo_chip(base_url)}</td>
+      <td style="vertical-align:middle;"><p class="wordmark" style="margin:0;">Telo<span>gify</span></p></td>
+    </tr></table>
   </div>
 
   {headline_box}
