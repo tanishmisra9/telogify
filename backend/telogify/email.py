@@ -364,13 +364,16 @@ def _nb_shadow_box(
     )
 
 
-def _nb_stamp(text_html: str, *, bg: str = "#E10600", fg: str | None = None, inline: bool = True) -> str:
+def _nb_stamp(text_html: str, *, bg: str = "#E10600", fg: str | None = None, inline: bool = True, rotate: float = -4) -> str:
+    # rotate=-4 matches the comp's .stamp class exactly (used for both the masthead event-name
+    # stamp and the WINNER sticker there) -- transform:rotate is confirmed supported.
     return _nb_shadow_box(
         text_html, bg=bg, border_width="1.5px", offset=3, inline=inline,
         box_style=(
             f"color:{fg or _on_color(bg)};font-family:{_NB_DISPLAY_FONT};font-weight:700;"
             "padding:10px 18px;font-size:15px;letter-spacing:0.02em;"
         ),
+        wrapper_style=f"transform:rotate({rotate}deg);" if rotate else "",
     )
 
 
@@ -400,19 +403,19 @@ _NB_STYLE = f"""
   .headline .verdict {{ background: #E10600; color: #fff; padding: 2px 8px; display: inline-block; }}
   .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
-  .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
+  .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; transform: rotate(1.5deg); }}
   .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
   .practice-tile-inner {{ font-size: 13px; }}
   .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
   .practice-tile-inner .val {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 20px; margin: 2px 0; }}
-  .quali-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; background: #0a0a0a; color: #fff; display: inline-block; padding: 3px 10px; }}
+  .quali-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; background: #0a0a0a; color: #fff; display: inline-block; padding: 3px 10px; transform: rotate(-2deg); }}
   .quali-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 21px; margin: 12px 0 8px; line-height: 1.15; }}
   .quali-inner p {{ font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }}
   .insight-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }}
   .insight-inner p {{ font-size: 14px; line-height: 1.65; margin: 0; }}
   .nb-num {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; color: #fff; padding: 4px 9px; border-radius: 3px; margin-bottom: 10px; }}
   .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
-  .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
+  .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; transform: rotate(-2deg); }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
   /* item 7: label sits to the right of the number, baseline-aligned ("27 days away" as one
      phrase), not stacked below it -- the old display:block on b pushed the label onto its own
@@ -577,7 +580,8 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
         # (PACE SPREAD // CONSTRUCTORS) gets the same breathing room the other two headings
         # already had -- this panel used to have none, leaving that one heading flush against
         # the panel above it while its siblings had real space.
-        box_style="padding:22px 22px 26px;", wrapper_style="margin:44px 0 40px;",
+        # rotate matches the comp's .quali-block exactly (0.8deg).
+        box_style="padding:22px 22px 26px;", wrapper_style="margin:44px 0 40px;transform:rotate(0.8deg);",
     )
 
 
@@ -704,14 +708,16 @@ def render_email_neubrutalist(
             # the card instead, as a small team-colored tag ahead of the heading: one less
             # moving part, and it reads as a section marker rather than a stuck-on sticker.
             num_tag = f'<span class="nb-num" style="background:{color}">{i:02d}</span>'
-            # attempt 6 item 11: matches the pace-spread panel's right ink strip (offset=5,
-            # side="right") so both panel families share the same shadow motif; the team-
-            # colored border stays as the card's own identity marker.
+            # Alternating shadow direction + a slight counter-rotation on even cards matches the
+            # comp's :nth-child(odd)/:nth-child(even) collage motif directly -- both transform
+            # and the shadow's own side are confirmed supported, so there's no longer a reason
+            # to flatten every card to the same right-side shadow.
+            is_even = i % 2 == 0
             box = _nb_shadow_box(
                 f"{num_tag}<h3>{header}</h3><p>{body}</p>",
                 border_color=color, border_width="3px", box_class="insight-inner",
-                box_style="padding:22px 20px 24px;", offset=5, side="right",
-                wrapper_style="margin:0 0 20px;",
+                box_style="padding:22px 20px 24px;", offset=5, side="left" if is_even else "right",
+                wrapper_style=f"margin:0 0 20px;{'transform:rotate(-0.4deg);' if is_even else ''}",
             )
             cards.append(box)
         cards_html = '<span class="section-title">YOUR 3 INSIGHTS</span>' + "".join(cards)
@@ -728,7 +734,8 @@ def render_email_neubrutalist(
         f'font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:15px;color:#E10600;'
         'text-decoration:none;padding:11px 18px;">READ THE FULL ANALYSIS</a>',
         border_color="#E10600", inline=True, box_class="cta-inner",
-        wrapper_style="margin:20px 0 50px;",
+        # rotate matches the comp's .cta exactly (-0.5deg).
+        wrapper_style="margin:20px 0 50px;transform:rotate(-0.5deg);",
     )
 
     # attempt 6: the WINNER stamp used to float in its own row above this box and tuck under it
@@ -747,7 +754,8 @@ def render_email_neubrutalist(
     headline_box = _nb_shadow_box(
         f'{winner_stamp}{_nb_headline_html(winner)}{_nb_sub_html(winner, pace_spread)}',
         box_class="headline-inner",
-        box_style="padding:22px 24px 28px;", wrapper_style="margin-bottom:40px;",
+        # rotate matches the comp's .headline-block exactly (-0.6deg).
+        box_style="padding:22px 24px 28px;", wrapper_style="margin-bottom:40px;transform:rotate(-0.6deg);",
     )
 
     return f"""<!doctype html>
