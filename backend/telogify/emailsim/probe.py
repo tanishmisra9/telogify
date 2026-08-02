@@ -290,23 +290,36 @@ def _negative_margin_test() -> CssTest:
 
 
 def _transform_rotate_test() -> CssTest:
-    """Defect candidate, paired with negative_margin above. A green rectangle sits away from the
-    cell's center by design; `transform:rotate(180deg)` around an off-center transform-origin
-    point-reflects it across that point, moving it to cover the center instead. Geometry (all in
-    px, CELL_PX_B=60): box 22x54 at margin(3,0,0,3) -> page position [3,25]x[3,57]; transform-
-    origin local (22,30) -> page-space origin (25,33); reflecting [3,25]x[3,57] through (25,33)
-    gives [25,47]x[9,63], which comfortably contains the cell center (30,30) with ~5px margin,
-    while the unrotated box's max x (25) sits ~5px clear of center on the other side. rotate(180)
-    rather than a small angle (email.py uses 0.8-1.5deg) is a deliberate simplification: it is
-    far more robust to verify by center-sampling, and if a client parses `transform:rotate()`
-    syntax at all for one angle it overwhelmingly is going to honor other angles too."""
+    """CORRECTED 2026-08-02. The original version of this test used `rotate(180deg)` around an
+    off-center transform-origin -- which, for an axis-aligned rectangle, is mathematically a
+    point reflection, and a point reflection of a rectangle is PIXEL-IDENTICAL to some specific
+    translation of that same rectangle (both preserve the rectangle's own width and height,
+    landing it at a new position; nothing about the result distinguishes "this rotated" from
+    "this slid over"). The test proved a box moved, not that Gmail rotates anything, and its
+    "supported" verdict shipped as a false positive: the real digest went out rotated, and every
+    rotated element in the real send measured 0.000deg.
+
+    This version uses a genuine dimension swap instead, which NO translation can produce (a
+    translation always preserves a shape's own width and height exactly): a long, thin bar
+    (40x6) rotated 90deg about its own center (the CSS default transform-origin, so nothing
+    about the origin needs separate verification either) becomes a thin, long bar (6x40) at the
+    SAME center point. Geometry (CELL_PX_B=60, cell center at (30,30)): unrotated bar at
+    margin(27,0,0,2) -> page box [2,42]x[27,33], own center (22,30) -- the cell-center sample
+    point (30,30) sits exactly on this bar's vertical midline (safest possible spot, maximally
+    far from both its top and bottom edges) and 12px clear of its right edge, so it reads GREEN
+    if the transform is dropped entirely (fallback). Once genuinely rotated 90deg about (22,30),
+    the SAME bar becomes 6 wide x 40 tall, still centered at (22,30) -> new box [19,25]x[10,50];
+    the sample point (30,30) is now 5px clear OUTSIDE it on the x-axis, so it reads RED
+    (container background) only if a real rotation happened. Both positive margins only --
+    deliberately no negative-margin dependency, so this test can't be confounded by that
+    separately-tested property."""
     html = (
         f'<div style="width:{CELL_PX_B}px;height:{CELL_PX_B}px;background:{_RED};overflow:hidden;">'
-        f'<div style="width:22px;height:54px;margin:3px 0 0 3px;background:{_GREEN};'
-        f'transform:rotate(180deg);transform-origin:22px 30px;"></div>'
+        f'<div style="width:40px;height:6px;margin:27px 0 0 2px;background:{_GREEN};'
+        f'transform:rotate(90deg);"></div>'
         "</div>"
     )
-    return _binary_test("transform_rotate", "transform:rotate (defect candidate)", html)
+    return _binary_test("transform_rotate", "transform:rotate (dimension-swap proof)", html, supported_hex=_RED, fallback_hex=_GREEN)
 
 
 def _box_shadow_test() -> CssTest:
