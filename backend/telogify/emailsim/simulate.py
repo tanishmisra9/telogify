@@ -55,6 +55,7 @@ _PROPERTY_STRIP_PATTERNS: dict[str, str] = {
     "position_absolute": r"position\s*:\s*absolute\s*;?",
     "border_radius": r"border-radius\s*:\s*[^;\"']+;?",
     "transform_rotate": r"transform\s*:\s*rotate\([^)]*\)\s*;?",
+    "box_shadow": r"box-shadow\s*:\s*[^;\"']+;?",
 }
 
 

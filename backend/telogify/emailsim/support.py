@@ -12,7 +12,8 @@ three once built):
   - display:flex WORKS. display:grid, float, and position:absolute do NOT.
   - Negative margins work.
   - border-radius does NOT work.
-  - box-shadow DOES work -- contradicts email.py's existing comment claiming it's dead on iOS.
+  - box-shadow WAS claimed to work here, contradicting email.py's existing comment that it's
+    dead on iOS. See the 2026-08-02 correction below: it does not.
   - linear-gradient, and BOTH radial-gradient forms (the shorthand email.py's `.page` actually
     uses, and the split control), all work -- the shorthand's base color is not silently
     dropped, so that defect candidate also does not apply on this client.
@@ -25,15 +26,28 @@ three once built):
     torn-paper masthead strip (clip-path polygon()): it can't be built this way, and confirms
     the strip's pre-existing absence from the digest was the right call, not a missed detail.
 
-CORRECTION (2026-08-02): transform_rotate was WRONG. It shipped as True, and the digest went out
+CORRECTION (2026-08-02, transform_rotate): was WRONG. It shipped as True, and the digest went out
 rotated -- but every rotated element in the real send measured **0.000 degrees** (the stamp's
 inline `rotate(-4deg)` and the section-title chips' stylesheet `rotate(1.5deg)`, both measured via
 top-edge slope on the actual screenshots). The original probe's "supported" branch used
 `rotate(180deg)` around an off-center transform-origin -- which is geometrically identical to a
 pure translation, the one degenerate case where "the box rotated" and "something else moved the
-box" produce the same pixels. It proved a box moved, not that Gmail rotates anything. Every other
-verdict in this file needs re-checking against a real composed render, not just a synthetic
-Probe B cell, before being trusted again.
+box" produce the same pixels. It proved a box moved, not that Gmail rotates anything.
+
+CORRECTION (2026-08-02, box_shadow): also WRONG, found by re-checking every remaining verdict
+against the same real send rather than assuming they were fine because the rotation bug was an
+isolated fluke. Measured directly: the headline block's border is exactly 5px thick at its
+bottom-right corner (x=790, y=702-706) -- the one place a 7px-offset shadow computationally MUST
+add ~12px of extra dark region if box-shadow is honored. There is none; 5px is exactly what a
+plain 3px CSS border scales to at this capture's 1.79x. A practice tile's corner (smaller, 3.5px
+offset) showed the same: a single flat border line, no depth. Every panel in the redesigned
+digest relies on box-shadow for its visual depth, so this is a second real regression the same
+class of send shipped with, not a one-off.
+
+Both false positives came from Probe B testing single properties in isolation with synthetic
+geometry and never comparing a composed render against reality -- see the emailsim plan. Every
+remaining `True` verdict in this matrix (both gradients, the two <style> tests, negative_margin,
+display_flex) still needs the same direct re-check before being trusted for a design decision.
 """
 
 from __future__ import annotations
@@ -45,7 +59,7 @@ GMAIL_IOS_SUPPORT: dict[str, bool] = {
     "position_absolute": False,
     "negative_margin": True,
     "transform_rotate": False,  # corrected 2026-08-02, see module docstring
-    "box_shadow": True,
+    "box_shadow": False,  # corrected 2026-08-02, see module docstring
     "border_radius": False,
     "linear_gradient": True,
     "radial_gradient_shorthand": True,
