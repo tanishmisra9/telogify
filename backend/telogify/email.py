@@ -413,7 +413,7 @@ _NB_STYLE = f"""
   .quali-inner p {{ font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }}
   .insight-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }}
   .insight-inner p {{ font-size: 14px; line-height: 1.65; margin: 0; }}
-  .nb-num {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; color: #fff; padding: 4px 9px; border-radius: 3px; margin-bottom: 10px; }}
+  .nb-num {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; padding: 4px 9px; border-radius: 3px; margin-bottom: 10px; }}
   .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
   .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; transform: rotate(-2deg); }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
@@ -721,7 +721,13 @@ def render_email_neubrutalist(
             # margin -- see the WINNER sticker's comment for that construction). Folded inside
             # the card instead, as a small team-colored tag ahead of the heading: one less
             # moving part, and it reads as a section marker rather than a stuck-on sticker.
-            num_tag = f'<span class="nb-num" style="background:{color}">{i:02d}</span>'
+            # Text color was hardcoded white, which fails contrast against light team colors
+            # even in light mode (Cadillac gold, ~1.5:1) -- _on_color picks per-team like every
+            # other solid-fill chip already does (stamps, sector labels, quali label). As a side
+            # effect this also fixes the dark-mode simulation: a dark _on_color pick (ink) turns
+            # light under Gmail's measured transform while a medium-light team-color background
+            # turns dark, landing on light-text-on-dark instead of dark-transforming-to-dark.
+            num_tag = f'<span class="nb-num" style="background:{color};color:{_on_color(color)}">{i:02d}</span>'
             # Alternating shadow direction + a slight counter-rotation on even cards matches the
             # comp's :nth-child(odd)/:nth-child(even) collage motif directly -- both transform
             # and the shadow's own side are confirmed supported, so there's no longer a reason
