@@ -27,13 +27,18 @@ from telogify.emailsim.probe import (
     CELL_PX,
     CELL_PX_B,
     FRAME_COLOR,
+    PROBE_E_ASSET_PATH,
+    PROBE_E_COLOR,
     CssTestGrid,
     GridSpec,
+    _solid_png_data_uri,
     probe_a_grids,
     probe_b_grids,
     probe_b_tests,
+    probe_e_grids,
     render_probe_a,
     render_probe_b,
+    render_probe_e,
 )
 
 
@@ -245,3 +250,45 @@ def test_css_test_hex_for_raises_on_unknown_verdict():
     test = probe_b_tests()[0]
     with pytest.raises(KeyError):
         test.hex_for("ambiguous")
+
+
+# --------------------------------------------------------------------------------------------
+# Probe E: does an image's own pixel content survive Gmail's dark-mode rewriting. render_probe_e
+# needs a real base_url (hosted URLs, not data: URIs -- see probe.py's module docstring for why
+# the data-URI version was corrected away from), so these tests only cover the pure HTML/PNG
+# generation; whether Gmail actually renders the fetched image is verified by a real send.
+# --------------------------------------------------------------------------------------------
+
+
+def test_solid_png_data_uri_round_trips_the_requested_color(tmp_path):
+    import base64
+
+    uri = _solid_png_data_uri(PROBE_E_COLOR, 10, 10)
+    assert uri.startswith("data:image/png;base64,")
+    path = tmp_path / "swatch.png"
+    path.write_bytes(base64.b64decode(uri.split(",", 1)[1]))
+    image = Image.open(path)
+    assert image.size == (10, 10)
+    assert image.getpixel((0, 0)) == hex_to_rgb(PROBE_E_COLOR)
+
+
+def test_probe_e_grids_all_carry_the_diagnostic_color():
+    grids = probe_e_grids()
+    assert len(grids) == 4
+    for grid in grids:
+        assert grid.swatch_at(0, 0) == PROBE_E_COLOR
+
+
+def test_render_probe_e_points_every_technique_at_the_hosted_asset_url():
+    html = render_probe_e("https://www.telogify.com")
+    assert html.lower().startswith("<!doctype html>")
+    image_url = f"https://www.telogify.com{PROBE_E_ASSET_PATH}"
+    assert html.count(image_url) == len(probe_e_grids())
+    for grid in probe_e_grids():
+        assert grid.name in html
+
+
+def test_render_probe_e_strips_trailing_slash_from_base_url():
+    html = render_probe_e("https://www.telogify.com/")
+    assert f"https://www.telogify.com{PROBE_E_ASSET_PATH}" in html
+    assert f"https://www.telogify.com/{PROBE_E_ASSET_PATH}" not in html

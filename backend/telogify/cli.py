@@ -603,6 +603,7 @@ def emailsim_probe(
     """Render an emailsim probe email to a local HTML file. No send, no API key."""
     from pathlib import Path
 
+    from telogify.config import settings
     from telogify.emailsim.probe import render_probe_a, render_probe_b, render_probe_e
 
     if kind == "color":
@@ -610,7 +611,7 @@ def emailsim_probe(
     elif kind == "css":
         html_body = render_probe_b()
     elif kind == "image":
-        html_body = render_probe_e()
+        html_body = render_probe_e(settings.web_base_url)
     else:
         raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css | image)")
     Path(out).write_text(html_body)
@@ -705,7 +706,7 @@ def emailsim_send(
     elif kind == "css":
         html_body, subject = render_probe_b(), "emailsim Probe B -- CSS support matrix"
     elif kind == "image":
-        html_body, subject = render_probe_e(), "emailsim Probe E -- image color survival"
+        html_body, subject = render_probe_e(settings.web_base_url), "emailsim Probe E -- image color survival"
     else:
         raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css | image)")
 

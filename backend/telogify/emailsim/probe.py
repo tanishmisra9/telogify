@@ -510,7 +510,17 @@ def render_probe_b() -> str:
 # same color expressed as CSS does not? Measured directly on 2026-08-02 for one case (the hosted
 # favicon.svg's baked-in red stayed exact while CSS color/background of the same red inverted) --
 # this probe checks whether that holds for every practical way the digest could carry a color as
-# an image, using self-contained data-URI PNGs (no deploy/hosting needed to test it).
+# an image.
+#
+# CORRECTED 2026-08-02: the first version used self-contained data: URI PNGs (no hosting needed
+# to test it). Sent to real Gmail, every technique came back blank in BOTH light and dark
+# screenshots -- not inverted, just showing the page's own background color through, identically
+# across all four markup techniques. That points to Gmail stripping/refusing to render inline
+# data: URIs outright (plausibly an anti-abuse measure), not a color-inversion effect at all --
+# a different failure mode than what this probe means to isolate. Switched to a real hosted URL
+# (frontend/public/emailsim-probe-teal.png, the same pattern the masthead logo already proved:
+# `_nb_logo_chip`'s `{base_url}/favicon.svg`), which needs the frontend deployed with that asset
+# present before this probe is sent.
 #
 # Reuses Probe A's exact extraction path: each technique is a GridSpec, ground truth is the sent
 # hex, extract_grid/SwatchMeasurement.delta (extract.py) need no changes since they only care
@@ -524,10 +534,17 @@ def render_probe_b() -> str:
 # digest's color-carrying elements on.
 PROBE_E_COLOR = "#27F4D2"
 
+# Path of the hosted test asset within the deployed frontend (frontend/public/), matching
+# PROBE_E_COLOR. Generated once via _solid_png_data_uri and checked into the repo as a real file
+# -- regenerate it the same way if PROBE_E_COLOR ever changes.
+PROBE_E_ASSET_PATH = "/emailsim-probe-teal.png"
+
 
 def _solid_png_data_uri(hexval: str, width: int, height: int) -> str:
-    """A minimal solid-color PNG, hand-built (stdlib zlib/struct only, no image library needed
-    just to generate a probe asset) and inlined as a data: URI so this probe needs no hosting."""
+    """A minimal solid-color PNG, hand-built (stdlib zlib/struct only, no image library needed)
+    and inlined as a data: URI. Not used at probe-render time (see the module docstring's
+    correction above) -- kept as the generator for the checked-in hosted asset at
+    PROBE_E_ASSET_PATH, so that file stays reproducible if the diagnostic color ever changes."""
     r, g, b = int(hexval[1:3], 16), int(hexval[3:5], 16), int(hexval[5:7], 16)
     raw = b"".join(b"\x00" + bytes((r, g, b)) * width for _ in range(height))
 
@@ -539,50 +556,46 @@ def _solid_png_data_uri(hexval: str, width: int, height: int) -> str:
     return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
 
 
-def _img_swatch_td(hexval: str, cell_px: int = CELL_PX) -> str:
+def _img_swatch_td(image_url: str, cell_px: int = CELL_PX) -> str:
     """Technique 1: a plain `<img>` element, the most direct way an email carries an image."""
-    uri = _solid_png_data_uri(hexval, cell_px, cell_px)
     return (
         f'<td width="{cell_px}" height="{cell_px}" '
         f'style="width:{cell_px}px;height:{cell_px}px;padding:0;margin:0;border:0;font-size:0;line-height:0;">'
-        f'<img src="{uri}" width="{cell_px}" height="{cell_px}" alt="" '
+        f'<img src="{image_url}" width="{cell_px}" height="{cell_px}" alt="" '
         f'style="display:block;width:{cell_px}px;height:{cell_px}px;border:0;"></td>'
     )
 
 
-def _css_bg_image_swatch_td(hexval: str, cell_px: int = CELL_PX) -> str:
+def _css_bg_image_swatch_td(image_url: str, cell_px: int = CELL_PX) -> str:
     """Technique 2: CSS `background-image` on the cell itself -- the mechanism the pace-spread
     swatches/bars would need if rebuilt as images without changing their markup shape."""
-    uri = _solid_png_data_uri(hexval, cell_px, cell_px)
     return (
         f'<td width="{cell_px}" height="{cell_px}" '
         f'style="width:{cell_px}px;height:{cell_px}px;padding:0;margin:0;border:0;font-size:0;line-height:0;'
-        f'background-image:url({uri});background-size:{cell_px}px {cell_px}px;">&nbsp;</td>'
+        f'background-image:url({image_url});background-size:{cell_px}px {cell_px}px;">&nbsp;</td>'
     )
 
 
-def _td_background_attr_swatch_td(hexval: str, cell_px: int = CELL_PX) -> str:
+def _td_background_attr_swatch_td(image_url: str, cell_px: int = CELL_PX) -> str:
     """Technique 3: the old-school HTML `background=` attribute on `<td>` -- a distinct code path
     from CSS `background-image` in some mail clients' sanitizers, worth ruling in or out on its
     own rather than assuming it behaves like technique 2."""
-    uri = _solid_png_data_uri(hexval, cell_px, cell_px)
     return (
-        f'<td width="{cell_px}" height="{cell_px}" background="{uri}" '
+        f'<td width="{cell_px}" height="{cell_px}" background="{image_url}" '
         f'style="width:{cell_px}px;height:{cell_px}px;padding:0;margin:0;border:0;font-size:0;line-height:0;">&nbsp;</td>'
     )
 
 
-def _bg_image_with_text_swatch_td(hexval: str, cell_px: int = CELL_PX) -> str:
+def _bg_image_with_text_swatch_td(image_url: str, cell_px: int = CELL_PX) -> str:
     """Technique 4: background-image with real, live (selectable) text on top -- the construction
     behind the emails the user described, real text over an exact-color background. Text sits in
     the top-left corner; the grid's own sample point (this cell's true center, per
     extract.py's `_cell_center`) stays clear of every glyph by design, so it measures the
     background image's own surviving color, not text or its anti-aliasing."""
-    uri = _solid_png_data_uri(hexval, cell_px, cell_px)
     return (
         f'<td width="{cell_px}" height="{cell_px}" '
         f'style="width:{cell_px}px;height:{cell_px}px;padding:0;margin:0;border:0;'
-        f'background-image:url({uri});background-size:{cell_px}px {cell_px}px;">'
+        f'background-image:url({image_url});background-size:{cell_px}px {cell_px}px;">'
         f'<div style="font-family:Arial,sans-serif;font-size:9px;color:#fff;padding:2px 0 0 2px;">Aa</div></td>'
     )
 
@@ -602,13 +615,16 @@ def probe_e_grids() -> list[GridSpec]:
     return [GridSpec(name, rows=1, cols=1, swatches=[PROBE_E_COLOR]) for name, _ in _PROBE_E_TECHNIQUES]
 
 
-def render_probe_e() -> str:
-    """Full standalone HTML document for the image-color-survival probe. Grids stack vertically,
-    same layout convention as render_probe_a, so locate_frames' top-to-bottom ordering lines up
-    with probe_e_grids() the same way."""
+def render_probe_e(base_url: str) -> str:
+    """Full standalone HTML document for the image-color-survival probe. `base_url` must point at
+    a deployment where PROBE_E_ASSET_PATH is actually live (e.g. https://www.telogify.com) --
+    Gmail needs to fetch it over a real network request. Grids stack vertically, same layout
+    convention as render_probe_a, so locate_frames' top-to-bottom ordering lines up with
+    probe_e_grids() the same way."""
+    image_url = f"{base_url.rstrip('/')}{PROBE_E_ASSET_PATH}"
     sections = []
     for name, cell_fn in _PROBE_E_TECHNIQUES:
-        table = _frame_table_html(1, 1, [cell_fn(PROBE_E_COLOR, CELL_PX)], cell_px=CELL_PX)
+        table = _frame_table_html(1, 1, [cell_fn(image_url, CELL_PX)], cell_px=CELL_PX)
         caption = f"{name} &middot; {PROBE_E_COLOR}"
         sections.append(
             '<div style="margin-bottom:40px;">'
