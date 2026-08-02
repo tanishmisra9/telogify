@@ -426,8 +426,9 @@ _NB_STYLE = f"""
      wrapping into uneven gaps. */
   .headline {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 28px; line-height: 1.3; margin: 0; }}
   /* attempt 8: the solid highlight box read as loud/bad across every real send regardless of
-     theme -- plain brand-red text instead, no background. */
-  .headline .verdict {{ color: #E10600; }}
+     theme -- plain text instead, no background. attempt 9: red read worse than black next to
+     the team-colored name right before it, so plain ink. */
+  .headline .verdict {{ color: #0a0a0a; }}
   .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
   .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
