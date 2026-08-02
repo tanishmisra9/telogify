@@ -16,8 +16,12 @@ without needing to assume anything about zoom level or device pixel ratio.
 
 from __future__ import annotations
 
+import base64
 import colorsys
+import struct
+import zlib
 from dataclasses import dataclass
+from typing import Callable
 
 FRAME_COLOR = "#FF00FF"
 CELL_PX = 40
@@ -497,5 +501,129 @@ def render_probe_b() -> str:
 <td style="vertical-align:top;">{_css_test_grid_table_html(grid)}</td>
 <td style="vertical-align:top;"><table role="presentation" cellpadding="0" cellspacing="0">{label_rows}</table></td>
 </tr></table>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------------------------
+# Probe E: does an image's own pixel content survive Gmail's dark-mode color rewriting where the
+# same color expressed as CSS does not? Measured directly on 2026-08-02 for one case (the hosted
+# favicon.svg's baked-in red stayed exact while CSS color/background of the same red inverted) --
+# this probe checks whether that holds for every practical way the digest could carry a color as
+# an image, using self-contained data-URI PNGs (no deploy/hosting needed to test it).
+#
+# Reuses Probe A's exact extraction path: each technique is a GridSpec, ground truth is the sent
+# hex, extract_grid/SwatchMeasurement.delta (extract.py) need no changes since they only care
+# about a magenta-framed table of cells and never look at what's inside a cell beyond its
+# rendered color at the sample point.
+# ---------------------------------------------------------------------------------------------
+
+# The worst measured dark-mode offender (Probe A, 2026-08-01): relative luminance 0.698, the
+# furthest of any digest color above Gmail's ~0.235 inversion fixed point, collapsing to
+# #074231/1.28:1 via CSS. If any image technique preserves it, that is the one worth building the
+# digest's color-carrying elements on.
+PROBE_E_COLOR = "#27F4D2"
+
+
+def _solid_png_data_uri(hexval: str, width: int, height: int) -> str:
+    """A minimal solid-color PNG, hand-built (stdlib zlib/struct only, no image library needed
+    just to generate a probe asset) and inlined as a data: URI so this probe needs no hosting."""
+    r, g, b = int(hexval[1:3], 16), int(hexval[3:5], 16), int(hexval[5:7], 16)
+    raw = b"".join(b"\x00" + bytes((r, g, b)) * width for _ in range(height))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+
+
+def _img_swatch_td(hexval: str, cell_px: int = CELL_PX) -> str:
+    """Technique 1: a plain `<img>` element, the most direct way an email carries an image."""
+    uri = _solid_png_data_uri(hexval, cell_px, cell_px)
+    return (
+        f'<td width="{cell_px}" height="{cell_px}" '
+        f'style="width:{cell_px}px;height:{cell_px}px;padding:0;margin:0;border:0;font-size:0;line-height:0;">'
+        f'<img src="{uri}" width="{cell_px}" height="{cell_px}" alt="" '
+        f'style="display:block;width:{cell_px}px;height:{cell_px}px;border:0;"></td>'
+    )
+
+
+def _css_bg_image_swatch_td(hexval: str, cell_px: int = CELL_PX) -> str:
+    """Technique 2: CSS `background-image` on the cell itself -- the mechanism the pace-spread
+    swatches/bars would need if rebuilt as images without changing their markup shape."""
+    uri = _solid_png_data_uri(hexval, cell_px, cell_px)
+    return (
+        f'<td width="{cell_px}" height="{cell_px}" '
+        f'style="width:{cell_px}px;height:{cell_px}px;padding:0;margin:0;border:0;font-size:0;line-height:0;'
+        f'background-image:url({uri});background-size:{cell_px}px {cell_px}px;">&nbsp;</td>'
+    )
+
+
+def _td_background_attr_swatch_td(hexval: str, cell_px: int = CELL_PX) -> str:
+    """Technique 3: the old-school HTML `background=` attribute on `<td>` -- a distinct code path
+    from CSS `background-image` in some mail clients' sanitizers, worth ruling in or out on its
+    own rather than assuming it behaves like technique 2."""
+    uri = _solid_png_data_uri(hexval, cell_px, cell_px)
+    return (
+        f'<td width="{cell_px}" height="{cell_px}" background="{uri}" '
+        f'style="width:{cell_px}px;height:{cell_px}px;padding:0;margin:0;border:0;font-size:0;line-height:0;">&nbsp;</td>'
+    )
+
+
+def _bg_image_with_text_swatch_td(hexval: str, cell_px: int = CELL_PX) -> str:
+    """Technique 4: background-image with real, live (selectable) text on top -- the construction
+    behind the emails the user described, real text over an exact-color background. Text sits in
+    the top-left corner; the grid's own sample point (this cell's true center, per
+    extract.py's `_cell_center`) stays clear of every glyph by design, so it measures the
+    background image's own surviving color, not text or its anti-aliasing."""
+    uri = _solid_png_data_uri(hexval, cell_px, cell_px)
+    return (
+        f'<td width="{cell_px}" height="{cell_px}" '
+        f'style="width:{cell_px}px;height:{cell_px}px;padding:0;margin:0;border:0;'
+        f'background-image:url({uri});background-size:{cell_px}px {cell_px}px;">'
+        f'<div style="font-family:Arial,sans-serif;font-size:9px;color:#fff;padding:2px 0 0 2px;">Aa</div></td>'
+    )
+
+
+_PROBE_E_TECHNIQUES: list[tuple[str, Callable[[str, int], str]]] = [
+    ("img_solid_color", _img_swatch_td),
+    ("css_background_image", _css_bg_image_swatch_td),
+    ("td_background_attr", _td_background_attr_swatch_td),
+    ("background_image_with_text", _bg_image_with_text_swatch_td),
+]
+
+
+def probe_e_grids() -> list[GridSpec]:
+    """One 1x1 grid per technique, all carrying the same diagnostic color -- reuses GridSpec/
+    extract_grid unchanged; only the cell HTML (image-based, not a flat CSS background) differs
+    from Probe A."""
+    return [GridSpec(name, rows=1, cols=1, swatches=[PROBE_E_COLOR]) for name, _ in _PROBE_E_TECHNIQUES]
+
+
+def render_probe_e() -> str:
+    """Full standalone HTML document for the image-color-survival probe. Grids stack vertically,
+    same layout convention as render_probe_a, so locate_frames' top-to-bottom ordering lines up
+    with probe_e_grids() the same way."""
+    sections = []
+    for name, cell_fn in _PROBE_E_TECHNIQUES:
+        table = _frame_table_html(1, 1, [cell_fn(PROBE_E_COLOR, CELL_PX)], cell_px=CELL_PX)
+        caption = f"{name} &middot; {PROBE_E_COLOR}"
+        sections.append(
+            '<div style="margin-bottom:40px;">'
+            f'<p style="font-family:monospace;font-size:11px;color:#333;margin:0 0 8px;">{caption}</p>'
+            f"{table}"
+            "</div>"
+        )
+    body = "".join(sections)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Telogify emailsim -- Probe E (image color survival)</title>
+</head>
+<body style="margin:0;padding:20px;background:#ffffff;">
+{body}
 </body>
 </html>"""

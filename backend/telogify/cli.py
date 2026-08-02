@@ -597,20 +597,22 @@ def preview_digest(
 
 @app.command("emailsim-probe")
 def emailsim_probe(
-    kind: str = typer.Option("color", "--kind", help="Which probe to render: color | css."),
+    kind: str = typer.Option("color", "--kind", help="Which probe to render: color | css | image."),
     out: str = typer.Option("probe.html", "--out", help="Path to write the rendered HTML."),
 ) -> None:
     """Render an emailsim probe email to a local HTML file. No send, no API key."""
     from pathlib import Path
 
-    from telogify.emailsim.probe import render_probe_a, render_probe_b
+    from telogify.emailsim.probe import render_probe_a, render_probe_b, render_probe_e
 
     if kind == "color":
         html_body = render_probe_a()
     elif kind == "css":
         html_body = render_probe_b()
+    elif kind == "image":
+        html_body = render_probe_e()
     else:
-        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css)")
+        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css | image)")
     Path(out).write_text(html_body)
     console.print(f"[green]Wrote probe to[/green] [cyan]{escape(out)}[/cyan]")
 
@@ -618,7 +620,7 @@ def emailsim_probe(
 @app.command("emailsim-extract")
 def emailsim_extract(
     shot: str = typer.Argument(..., help="Path to a screenshot PNG."),
-    kind: str = typer.Option("color", "--kind", help="Which probe this screenshot is of: color | css."),
+    kind: str = typer.Option("color", "--kind", help="Which probe this screenshot is of: color | css | image."),
     out: str = typer.Option("extract.json", "--out", help="Path to write the measured results as JSON."),
     debug_overlay: str = typer.Option(
         None, "--debug-overlay", help="Optional path to write an annotated overlay PNG."
@@ -637,12 +639,12 @@ def emailsim_extract(
         locate_and_extract,
         locate_frames,
     )
-    from telogify.emailsim.probe import probe_a_grids, probe_b_grids
+    from telogify.emailsim.probe import probe_a_grids, probe_b_grids, probe_e_grids
 
     image = load_image(shot)
 
-    if kind == "color":
-        grids = probe_a_grids()
+    if kind in ("color", "image"):
+        grids = probe_a_grids() if kind == "color" else probe_e_grids()
         results = locate_and_extract(image, grids, tol=tol)
         payload = {
             grid_name: [
@@ -653,6 +655,10 @@ def emailsim_extract(
         }
         total = sum(len(v) for v in results.values())
         max_delta = max((m.delta for measurements in results.values() for m in measurements), default=0.0)
+        if kind == "image":
+            for grid_name, measurements in results.items():
+                m = measurements[0]
+                console.print(f"  [cyan]{grid_name:<28}[/cyan] sent {m.expected_hex} -> measured {m.measured_hex} (delta {m.delta:.1f})")
         console.print(
             f"[green]Extracted {total} swatches[/green] across {len(results)} grid(s). "
             f"Max delta from sent color: {max_delta:.1f}"
@@ -673,7 +679,7 @@ def emailsim_extract(
         total = sum(len(v) for v in results.values())
         console.print(f"[green]Classified {total} CSS test(s).[/green]")
     else:
-        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css)")
+        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css | image)")
 
     if debug_overlay:
         boxes = locate_frames(image, tol=tol)
@@ -688,18 +694,20 @@ def emailsim_extract(
 @app.command("emailsim-send")
 def emailsim_send(
     to: str = typer.Option(..., "--to", help="Recipient email address."),
-    kind: str = typer.Option("color", "--kind", help="Which probe to send: color | css."),
+    kind: str = typer.Option("color", "--kind", help="Which probe to send: color | css | image."),
 ) -> None:
     """Send an emailsim probe via Resend. Real send, real API key required."""
     from telogify.config import settings
-    from telogify.emailsim.probe import render_probe_a, render_probe_b
+    from telogify.emailsim.probe import render_probe_a, render_probe_b, render_probe_e
 
     if kind == "color":
         html_body, subject = render_probe_a(), "emailsim Probe A -- color calibration"
     elif kind == "css":
         html_body, subject = render_probe_b(), "emailsim Probe B -- CSS support matrix"
+    elif kind == "image":
+        html_body, subject = render_probe_e(), "emailsim Probe E -- image color survival"
     else:
-        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css)")
+        raise typer.BadParameter(f"unknown probe kind {kind!r} (expected: color | css | image)")
 
     if not settings.resend_api_key:
         raise RuntimeError("RESEND_API_KEY is not set; cannot send the probe.")

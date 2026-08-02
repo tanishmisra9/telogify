@@ -291,16 +291,16 @@ _META_COLOR_SCHEME = (
 # full standalone HTML document (doctype/head/style), not a body fragment -- real webfonts and
 # a dot-pattern canvas need a real <head>.
 #
-# Real send test (Resend -> real Gmail address) found Gmail (desktop webmail + iOS/Android,
-# the overwhelming majority of recipients) strips or ignores: transform (no rotation, any
-# platform), the left/right/top/bottom offsets a position:absolute element needs to actually
-# be positioned, display:flex/grid, box-shadow (desktop webmail), inline <svg>, and CSS custom
-# properties (var() references survive, :root declarations don't -- N/A here, Neubrutalist
-# never used them). Verified against Context7's /hteumeuleu/caniemail. Grid/flex rows, the
-# WINNER sticker, and the insight number badges are now table-based / normal-flow instead of
-# relying on those properties; transform/box-shadow/clip-path stay in the stylesheet since
-# Gmail ignores them for free and Apple Mail/Samsung Email/Thunderbird still render the fuller
-# collage effect.
+# Measured against real Gmail sends (backend/telogify/emailsim/, support.py's measured CSS
+# support matrix) that Gmail (desktop webmail + iOS/Android, the overwhelming majority of
+# recipients) strips or ignores: transform (no rotation, any platform -- so none is used here
+# at all anymore), box-shadow (also proven false on iOS after initially misreading as
+# supported; see _nb_shadow_box's own note), the left/right/top/bottom offsets a
+# position:absolute element needs to actually be positioned, display:flex/grid, border-radius,
+# clip-path, and CSS custom properties (var() references survive, :root declarations don't --
+# N/A here, Neubrutalist never used them). Grid/flex rows, the WINNER sticker, and the insight
+# number badges are table-based / normal-flow instead of relying on those properties; the
+# collage's depth comes from _nb_shadow_box's nested-box shadow fake, which needs none of them.
 _NB_INK = "#0a0a0a"
 
 _NB_FONTS_LINK = (
@@ -342,38 +342,37 @@ def _nb_shadow_box(
     box_style: str = "",
     wrapper_style: str = "",
 ) -> str:
-    """Real CSS box-shadow -- confirmed supported on Gmail iOS by emailsim's measured CSS
-    support matrix (backend/telogify/emailsim/support.py), which is why this is no longer the
-    two-nested-div fake it used to be (that trick existed only because box-shadow was believed
-    unsupported everywhere; it wasn't, at least not on the client that matters most). One div,
-    a real border, a real offset shadow -- the same technique the approved comp
-    (digest-neubrutalist.html) uses directly. `side` flips which way the shadow's horizontal
-    offset points, for the insight cards' alternating motif; `wrapper_style` carries the box's
-    own margin/transform (kept as a separate param from `box_style`'s inner padding only because
-    every call site already writes it that way, not because they land on different elements
-    anymore -- both concatenate onto this same div)."""
+    """Fakes a hard offset-shadow with two nested boxes instead of CSS box-shadow. CORRECTED
+    2026-08-02: this briefly switched to real box-shadow on the belief emailsim's Probe B had
+    confirmed it supported on Gmail iOS -- that verdict was itself a false positive (Probe B's
+    original test couldn't distinguish "shadow rendered" from "shadow offset ignored, box just
+    sits there"; see support.py's box_shadow correction). Direct pixel measurement of a real
+    send showed a plain single-line border with zero shadow growth. Back to the nested-box fake:
+    an outer div painted the shadow color, with the visible content box inset from it via
+    ordinary positive margin, so the shadow color peeks out as a real color discontinuity.
+    background-color and margin are both universally supported, unlike box-shadow. `side` flips
+    which edges the inset margin (and therefore the visible shadow) sits on, for the insight
+    cards' alternating shadow direction. `wrapper_style` carries the outer box's own margin
+    (kept as a separate param from `box_style`'s inner padding since they land on different
+    elements again now)."""
     display = "inline-block" if inline else "block"
-    dx = offset if side == "right" else -offset
+    margin = f"0 {offset}px {offset}px 0" if side == "right" else f"0 0 {offset}px {offset}px"
     cls = f' class="{box_class}"' if box_class else ""
     return (
-        f'<div{cls} style="display:{display};background:{bg};'
-        f"border:{border_width} solid {border_color};"
-        f"box-shadow:{dx}px {offset}px 0 0 {shadow_color};"
-        f'{wrapper_style}{box_style}">'
-        f"{inner_html}</div>"
+        f'<div style="display:{display};background:{shadow_color};{wrapper_style}">'
+        f'<div{cls} style="background:{bg};border:{border_width} solid {border_color};margin:{margin};{box_style}">'
+        f"{inner_html}"
+        "</div></div>"
     )
 
 
-def _nb_stamp(text_html: str, *, bg: str = "#E10600", fg: str | None = None, inline: bool = True, rotate: float = -4) -> str:
-    # rotate=-4 matches the comp's .stamp class exactly (used for both the masthead event-name
-    # stamp and the WINNER sticker there) -- transform:rotate is confirmed supported.
+def _nb_stamp(text_html: str, *, bg: str = "#E10600", fg: str | None = None, inline: bool = True) -> str:
     return _nb_shadow_box(
         text_html, bg=bg, border_width="1.5px", offset=3, inline=inline,
         box_style=(
             f"color:{fg or _on_color(bg)};font-family:{_NB_DISPLAY_FONT};font-weight:700;"
             "padding:10px 18px;font-size:15px;letter-spacing:0.02em;"
         ),
-        wrapper_style=f"transform:rotate({rotate}deg);" if rotate else "",
     )
 
 
@@ -389,7 +388,7 @@ def _nb_logo_chip(base_url: str) -> str:
     return _nb_shadow_box(
         f'<img src="{html.escape(logo_url)}" width="24" height="24" alt="" style="display:block;width:24px;height:24px;">',
         bg="#fff", border_width="3px", offset=4, inline=True,
-        box_style="padding:6px;", wrapper_style="transform:rotate(-6deg);",
+        box_style="padding:6px;",
     )
 
 
@@ -419,19 +418,19 @@ _NB_STYLE = f"""
   .headline .verdict {{ background: #E10600; color: #fff; padding: 2px 8px; display: inline-block; }}
   .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
-  .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; transform: rotate(1.5deg); }}
+  .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
   .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
   .practice-tile-inner {{ font-size: 13px; }}
   .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
   .practice-tile-inner .val {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 20px; margin: 2px 0; }}
-  .quali-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; background: #0a0a0a; color: #fff; display: inline-block; padding: 3px 10px; transform: rotate(-2deg); }}
+  .quali-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; background: #0a0a0a; color: #fff; display: inline-block; padding: 3px 10px; }}
   .quali-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 21px; margin: 12px 0 8px; line-height: 1.15; }}
   .quali-inner p {{ font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }}
   .insight-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }}
   .insight-inner p {{ font-size: 14px; line-height: 1.65; margin: 0; }}
   .nb-num {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; padding: 4px 9px; border-radius: 3px; margin-bottom: 10px; }}
   .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
-  .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; transform: rotate(-2deg); }}
+  .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
   /* item 7: label sits to the right of the number, baseline-aligned ("27 days away" as one
      phrase), not stacked below it -- the old display:block on b pushed the label onto its own
@@ -565,10 +564,7 @@ def _nb_practice_html(practice: dict | None) -> str:
     ))
     # Table, not CSS grid (email.py:626 header note / project CLAUDE.md): Gmail (desktop,
     # iOS, Android, non-Workspace accounts) doesn't support display:grid, which was collapsing
-    # this into one stacked column. Per-tile rotation moves onto the shadow-box's outer wrapper
-    # (rotating shadow+content as one rigid unit) since it rode on :nth-child selectors that
-    # don't match once tiles become <td>s.
-    _tile_rotations = ["", "transform:rotate(1.5deg);margin-top:-4px;", "transform:rotate(-1.2deg);", "transform:rotate(0.8deg);margin-top:-6px;"]
+    # this into one stacked column.
     tile_divs = [
         _nb_shadow_box(
             f'<span class="lbl" style="background:{_team_color(constructor)};color:{_on_color(_team_color(constructor))}">{html.escape(label)}</span>'
@@ -576,9 +572,8 @@ def _nb_practice_html(practice: dict | None) -> str:
             f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p>',
             border_width="1.5px", offset=3.5, box_class="practice-tile-inner",
             box_style="padding:14px 14px 16px;",
-            wrapper_style=_tile_rotations[i] if i < len(_tile_rotations) else "",
         )
-        for i, (label, value, constructor, driver_bit, mph_html) in enumerate(tiles)
+        for label, value, constructor, driver_bit, mph_html in tiles
     ]
     rows_html = "".join(
         '<tr>'
@@ -616,8 +611,7 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
         # (PACE SPREAD // CONSTRUCTORS) gets the same breathing room the other two headings
         # already had -- this panel used to have none, leaving that one heading flush against
         # the panel above it while its siblings had real space.
-        # rotate matches the comp's .quali-block exactly (0.8deg).
-        box_style="padding:22px 22px 26px;", wrapper_style="margin:44px 0 40px;transform:rotate(0.8deg);",
+        box_style="padding:22px 22px 26px;", wrapper_style="margin:44px 0 40px;",
     )
 
 
@@ -750,16 +744,16 @@ def render_email_neubrutalist(
             # light under Gmail's measured transform while a medium-light team-color background
             # turns dark, landing on light-text-on-dark instead of dark-transforming-to-dark.
             num_tag = f'<span class="nb-num" style="background:{color};color:{_on_color(color)}">{i:02d}</span>'
-            # Alternating shadow direction + a slight counter-rotation on even cards matches the
-            # comp's :nth-child(odd)/:nth-child(even) collage motif directly -- both transform
-            # and the shadow's own side are confirmed supported, so there's no longer a reason
-            # to flatten every card to the same right-side shadow.
+            # Alternating shadow direction on even cards matches the comp's
+            # :nth-child(odd)/:nth-child(even) collage motif -- the shadow's own side is
+            # confirmed supported, so there's no reason to flatten every card to the same
+            # right-side shadow.
             is_even = i % 2 == 0
             box = _nb_shadow_box(
                 f"{num_tag}<h3>{header}</h3><p>{body}</p>",
                 border_color=color, border_width="3px", box_class="insight-inner",
                 box_style="padding:22px 20px 24px;", offset=5, side="left" if is_even else "right",
-                wrapper_style=f"margin:0 0 20px;{'transform:rotate(-0.4deg);' if is_even else ''}",
+                wrapper_style="margin:0 0 20px;",
             )
             cards.append(box)
         cards_html = '<span class="section-title">YOUR 3 INSIGHTS</span>' + "".join(cards)
@@ -776,8 +770,7 @@ def render_email_neubrutalist(
         f'font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:15px;color:#E10600;'
         'text-decoration:none;padding:11px 18px;">READ THE FULL ANALYSIS</a>',
         border_color="#E10600", inline=True, box_class="cta-inner",
-        # rotate matches the comp's .cta exactly (-0.5deg).
-        wrapper_style="margin:20px 0 50px;transform:rotate(-0.5deg);",
+        wrapper_style="margin:20px 0 50px;",
     )
 
     # attempt 6: the WINNER stamp used to float in its own row above this box and tuck under it
@@ -796,8 +789,7 @@ def render_email_neubrutalist(
     headline_box = _nb_shadow_box(
         f'{winner_stamp}{_nb_headline_html(winner)}{_nb_sub_html(winner, pace_spread)}',
         box_class="headline-inner",
-        # rotate matches the comp's .headline-block exactly (-0.6deg).
-        box_style="padding:22px 24px 28px;", wrapper_style="margin-bottom:40px;transform:rotate(-0.6deg);",
+        box_style="padding:22px 24px 28px;", wrapper_style="margin-bottom:40px;",
     )
 
     return f"""<!doctype html>
