@@ -92,6 +92,19 @@ def _team_color(team: str) -> str:
     return _TEAM_COLORS.get(team, _MUTED)
 
 
+def _team_swatch_url(base_url: str, hex_color: str) -> str:
+    """A hosted, solid-color PNG for `hex_color` (frontend/public/team-colors/, one file per
+    distinct value in _TEAM_COLORS + _MUTED -- generated once via
+    emailsim.probe._solid_png_data_uri, not at request time, since the palette is fixed in code).
+    Measured (emailsim Probe E, 2026-08-02): a real hosted image's own color survives Gmail's
+    dark-mode rewriting where the same color as CSS background does not -- delta 78 from the
+    original color vs. delta 262 from what the CSS-inversion curve predicts, confirmed against
+    a real Gmail dark-mode screenshot. A single small square scales cleanly to any on-page size
+    via width/height (or background-size), so this one file serves both the fixed-size swatch
+    and the variable-width pace bar."""
+    return f"{base_url.rstrip('/')}/team-colors/{hex_color.lstrip('#').lower()}.png"
+
+
 def _team_color_alpha(team: str, alpha: float) -> str:
     """Ported from teamColorWithAlpha in teamColors.ts, used at 0.09 for the site's row-wash
     pattern (Results.tsx, SeasonPage.tsx, QualiCharacterTable.tsx, DegradationChart.tsx)."""
@@ -625,7 +638,7 @@ _BAR_MAX_PX = 240
 _BAR_MIN_PX = 18
 
 
-def _nb_pace_spread_html(pace_spread: dict | None) -> str:
+def _nb_pace_spread_html(pace_spread: dict | None, base_url: str) -> str:
     if pace_spread is None:
         return ""
     fastest = html.escape(pace_spread["fastest"])
@@ -642,26 +655,30 @@ def _nb_pace_spread_html(pace_spread: dict | None) -> str:
     row_html = []
     for i, ((name, gap), value) in enumerate(zip(pace_rows, gap_values)):
         color = _team_color(name)
+        swatch_url = _team_swatch_url(base_url, color)
         # attempt 7 item 3: the gap figure used to be darkened via _readable_on_light for
         # contrast, which visibly drifted several teams' text away from their real hex (Ferrari
         # red went dull, Mercedes teal went murky) while the swatch right next to it stayed the
         # true color -- the two no longer matched. Team color now lives only on the swatch and
         # bar (solid fills, always legible at any hue); the figure itself is plain ink, so
         # there's no color to drift and nothing to darken.
+        # Swatch and bar render as a hosted image, not a CSS background (see _team_swatch_url):
+        # a CSS-colored Mercedes swatch crushes to near-invisible on real Gmail dark mode, the
+        # image does not.
         is_last = i == len(pace_rows) - 1
         border = "" if is_last else "border-bottom:1px dashed #0a0a0a55;"
         bar_px = _BAR_MAX_PX if max_gap == 0 else max(_BAR_MIN_PX, round(value / max_gap * _BAR_MAX_PX))
         row_html.append(
             "<tr>"
             f'<td style="padding:5px 28px 0 0;font-size:18px;text-align:left;">'
-            f'<span class="swatch" style="background:{color}"></span>{html.escape(name)}</td>'
+            f'<img class="swatch" src="{swatch_url}" width="14" height="14" alt="">{html.escape(name)}</td>'
             f'<td style="padding:5px 0 0 8px;text-align:right;'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
             f'font-size:28px;color:{_NB_INK};">{html.escape(gap)}</td>'
             "</tr>"
             f'<tr><td colspan="2" style="padding:6px 0 9px;{border}">'
-            f'<div style="width:{bar_px}px;max-width:100%;height:11px;background:{color};'
-            f'border-radius:2px;"></div>'
+            f'<img src="{swatch_url}" width="{bar_px}" height="11" alt="" '
+            f'style="display:block;width:{bar_px}px;max-width:100%;height:11px;border-radius:2px;">'
             "</td></tr>"
         )
     inner = (
@@ -817,7 +834,7 @@ def render_email_neubrutalist(
 
   {_nb_practice_html(practice)}
   {_nb_qualifying_html(quali_insight)}
-  {_nb_pace_spread_html(pace_spread)}
+  {_nb_pace_spread_html(pace_spread, base_url)}
   {cards_html}
 
   {cta}
