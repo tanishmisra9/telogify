@@ -736,6 +736,11 @@ def emailsim_render(
     simulated = apply(html_body, profile)
     Path(out).write_text(simulated)
     console.print(f"[green]Wrote simulated ({profile.name}) digest to[/green] [cyan]{escape(out)}[/cyan]")
+    if profile.viewport_width:
+        console.print(
+            f"[yellow]Screenshot at {profile.viewport_width}px width[/yellow] to match this "
+            "profile's measured viewport, not an arbitrary mobile width."
+        )
 
 
 if __name__ == "__main__":

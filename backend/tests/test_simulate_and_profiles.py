@@ -9,13 +9,23 @@ correctly in isolation.
 import pytest
 
 from telogify.emailsim.darkmode import ColorTransform
-from telogify.emailsim.profiles import Profile, get_profile
+from telogify.emailsim.profiles import GMAIL_IOS_VIEWPORT_PX, Profile, get_profile
 from telogify.emailsim.simulate import apply
 
 
 def test_get_profile_gmail_ios_light_has_no_color_transform():
     profile = get_profile("gmail-ios-light")
     assert profile.color_transform is None
+
+
+def test_gmail_ios_profiles_carry_the_measured_viewport_width():
+    assert get_profile("gmail-ios-light").viewport_width == GMAIL_IOS_VIEWPORT_PX
+    assert get_profile("gmail-ios-dark").viewport_width == GMAIL_IOS_VIEWPORT_PX
+
+
+def test_profile_viewport_width_defaults_to_none():
+    profile = Profile(name="test", color_transform=None, support={})
+    assert profile.viewport_width is None
 
 
 def test_get_profile_gmail_ios_dark_has_a_color_transform():
