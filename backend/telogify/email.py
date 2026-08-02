@@ -480,6 +480,12 @@ _NB_STYLE = f"""
        background in this block. */
     .next-race-inner .stats b {{ color: #ff6b5e !important; }}
     .masthead .wordmark span {{ color: #ff6b5e; }}
+    /* Same explicit-declaration-wins-over-inheritance issue as everything else in this block:
+       .stat-label's own class rule (color:#0a0a0a) has higher specificity than the group
+       .next-race-inner rule's inherited light text, so "days away"/"km circuit" stayed ink-on-
+       dark and nearly vanished. Caught in the same desktop-width dark-mode screenshot check
+       that found the other three. */
+    .next-race-inner .stat-label {{ color: #d8d8c8; }}
     /* The pace-spread gap figure ("+0.238s") sets color:#0a0a0a inline (email.py's own ink
        constant, chosen so it never drifted per-team like the old darkened-team-color version
        did) -- an inline declaration, so it wins over .flat-panel-inner's inherited light text
