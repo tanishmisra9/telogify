@@ -52,10 +52,13 @@ def test_held_out_residual_is_deterministic_for_a_fixed_seed():
 
 
 def test_gmail_ios_support_covers_every_probe_b_test_id():
+    # Superset, not equality: GMAIL_IOS_SUPPORT also carries measured results from standalone
+    # one-off probes (e.g. clip_path) that were never added to the formal probe_b_tests() suite,
+    # so every formal test must have a verdict, but the matrix may legitimately have more.
     from telogify.emailsim.probe import probe_b_tests
 
     ids = {t.id for t in probe_b_tests()}
-    assert ids == set(GMAIL_IOS_SUPPORT)
+    assert ids <= set(GMAIL_IOS_SUPPORT)
 
 
 def test_supported_returns_bool_for_known_id():

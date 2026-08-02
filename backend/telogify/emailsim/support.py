@@ -20,6 +20,12 @@ three once built):
     dropped, so that defect candidate also does not apply on this client.
   - <style> blocks parse, and !important there correctly overrides inline styles -- the exact
     mechanism the real dark-mode block in email.py depends on is confirmed working.
+  - clip-path does NOT work (added 2026-08-02 via a standalone one-off probe, same red/green
+    reveal technique as the rest of Probe B, not part of the original 13 -- verified in Chromium
+    first, then measured across three real surfaces at once: Gmail desktop web light, Gmail iOS
+    light, and Gmail iOS dark, all three reading the "ignored" red). This settles the comp's
+    torn-paper masthead strip (clip-path polygon()): it can't be built this way, and confirms
+    the strip's pre-existing absence from the digest was the right call, not a missed detail.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ GMAIL_IOS_SUPPORT: dict[str, bool] = {
     "radial_gradient_split": True,
     "style_block_bare": True,
     "style_important_over_inline": True,
+    "clip_path": False,
 }
 
 
