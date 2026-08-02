@@ -456,6 +456,20 @@ _NB_STYLE = f"""
        #E10600 straight onto #29291f only reaches ~2.9:1, under the 3:1 large-text floor. */
     .cta-inner {{ background-color: #29291f !important; border-color: #ff6b5e !important; }}
     .cta-inner a {{ color: #ff6b5e !important; }}
+    /* Same brand-red-on-dark contrast problem as the CTA above, caught the same way (real
+       browser dark-mode screenshot, not a hypothetical): #E10600 straight onto a dark panel or
+       the dark page/sheet background computes to roughly 1.2-1.5:1, nowhere near the 3:1 large-
+       text floor -- brand red is simply too dark a red to read on its own against anything this
+       dark. Same brightened red used everywhere else red needs to sit directly on a dark
+       background in this block. */
+    .next-race-inner .stats b {{ color: #ff6b5e !important; }}
+    .masthead .wordmark span {{ color: #ff6b5e; }}
+    /* The pace-spread gap figure ("+0.238s") sets color:#0a0a0a inline (email.py's own ink
+       constant, chosen so it never drifted per-team like the old darkened-team-color version
+       did) -- an inline declaration, so it wins over .flat-panel-inner's inherited light text
+       regardless of @media without !important here. Same real-browser-screenshot catch as the
+       next-race stats above: ink-on-ink was unreadable. */
+    .flat-panel-inner td {{ color: #f2f2ea !important; }}
     /* quali-inner's background stays the light team tint (deliberately unchanged, see the
        comment on the media block's opening) -- but its own text and heading have no color of
        their own in the base stylesheet, so without this reset they'd inherit .page's new
