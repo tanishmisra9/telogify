@@ -425,10 +425,9 @@ _NB_STYLE = f"""
      22/44/30/38px inline run -- that's what let it baseline-align by construction instead of
      wrapping into uneven gaps. */
   .headline {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 28px; line-height: 1.3; margin: 0; }}
-  /* attempt 7 item 2: moved off black -- brand red instead, the same fill already proven
-     legible white-on-red in both light and dark mode (masthead stamp, CTA), so no new
-     dark-mode override is needed here either. */
-  .headline .verdict {{ background: #E10600; color: #fff; padding: 2px 8px; display: inline-block; }}
+  /* attempt 8: the solid highlight box read as loud/bad across every real send regardless of
+     theme -- plain brand-red text instead, no background. */
+  .headline .verdict {{ color: #E10600; }}
   .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
   .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
@@ -522,9 +521,10 @@ _NB_STYLE = f"""
 def _nb_headline_html(winner: dict | None) -> str:
     """attempt 6: replaces the old ransom note (four inline font sizes, one of them a padded
     black box -- can never baseline-align in Gmail-safe CSS, which read as scattered fragments).
-    Now a single line at one uniform size: the driver's full name in the team's real color,
-    immediately followed by the verdict in a black box. Hierarchy comes from color and the box,
-    not from mixing sizes, so the line aligns and wraps evenly by construction."""
+    A single line at one uniform size: the driver's full name in the team's real color,
+    immediately followed by the verdict in plain brand red (attempt 8: a solid highlight box
+    there read as loud/bad on every real send). Hierarchy comes from color alone, not a mix of
+    sizes or boxes, so the line aligns and wraps evenly by construction."""
     raw_team = winner["constructor"] if winner and winner.get("constructor") else None
     full_name = _full_driver_name(winner["driver"]) if winner else None
     name = html.escape(full_name.upper()) if full_name else None

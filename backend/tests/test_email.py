@@ -152,10 +152,11 @@ def test_render_email_neubrutalist_renders_core_content():
     assert "Here&rsquo;s what actually happened!" in html
     assert ", sector by sector" not in html
     # attempt 7 item 2: WINNER stamp is always black/white now (was team-colored, forcing a
-    # per-team ink/white contrast pick), and the verdict box moved off black onto brand red
+    # per-team ink/white contrast pick). attempt 8: the verdict's highlight box read as loud/bad
+    # on real sends, so it's plain brand-red text now, no background.
     assert '>WINNER</' in html
     assert 'background:#0a0a0a' in html and 'color:#fff' in html
-    assert 'background: #E10600; color: #fff; padding: 2px 8px;' in html
+    assert '.headline .verdict { color: #E10600; }' in html
     # attempt 7 item 1: capital T in the wordmark, matching the site's own casing
     assert '<p class="wordmark" style="margin:0;">Telo<span>gify</span></p>' in html
     # masthead icon: a hosted <img> referencing the deployed site's real logo mark, not inline
