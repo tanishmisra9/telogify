@@ -146,7 +146,7 @@ def test_render_email_neubrutalist_renders_core_content():
     # attempt 6: one-line headline, uniform size -- driver name in the winner's team color,
     # verdict in a black box, no more mixed-size ransom-note spans
     assert '<span class="name" style="color:#E8002D">CHARLES LECLERC</span>' in html
-    assert '<span class="verdict">WON FOR FERRARI</span>' in html
+    assert '<span class="verdict">WON FOR FERRARI!</span>' in html
     # sub-line names the faster rival when it differs from the winner's own team
     assert "Though Mercedes had the faster race pace." in html
     assert "Here&rsquo;s what actually happened!" in html

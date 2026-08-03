@@ -540,7 +540,7 @@ def _nb_headline_html(winner: dict | None) -> str:
     if name and team:
         spans = (
             f'<span class="name" style="color:{team_color}">{name}</span> '
-            f'<span class="verdict">WON FOR {team.upper()}</span>'
+            f'<span class="verdict">WON FOR {team.upper()}!</span>'
         )
     else:
         spans = '<span class="verdict">HERE&rsquo;S WHAT THE TELEMETRY FOUND</span>'
@@ -651,7 +651,10 @@ _GAP_VALUE_RE = re.compile(r"[\d.]+")
 # shrink-to-content table cell has nothing stable to be a percentage OF in Gmail, so it would
 # either collapse or silently no-op depending on client. Floored at BAR_MIN_PX so the smallest
 # real gap in a field is still a visible mark, not a sliver that reads as a rendering bug.
-_BAR_MAX_PX = 240
+# 240 (attempt 7) was tuned for the mobile-only 514px card; left a lot of unused width once the
+# card widened to 900px on desktop (the bar's own `max-width:100%` already protects mobile
+# regardless of how big this constant is, so raising it is a free win there, not a tradeoff).
+_BAR_MAX_PX = 420
 _BAR_MIN_PX = 18
 
 
