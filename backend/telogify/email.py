@@ -446,7 +446,7 @@ _NB_STYLE = f"""
   .quali-inner p {{ font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }}
   .insight-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }}
   .insight-inner p {{ font-size: 14px; line-height: 1.65; margin: 0; }}
-  .nb-num {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; padding: 4px 9px; border-radius: 3px; margin-bottom: 10px; }}
+  .nb-num {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; padding: 4px 9px; border-radius: 3px; margin-bottom: 14px; }}
   .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
   .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
@@ -592,7 +592,7 @@ def _nb_practice_html(practice: dict | None) -> str:
     tile_divs = [
         _nb_shadow_box(
             f'<span class="lbl" style="background:{_team_color(constructor)};color:{_on_color(_team_color(constructor))}">{html.escape(label)}</span>'
-            f'<div style="padding:0 14px 16px;">'
+            f'<div style="padding:0 16px 18px;">'
             f'<p class="val">{html.escape(value)}{mph_html}</p>'
             f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p>'
             f'</div>',
@@ -632,7 +632,7 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
     # not honored by real Gmail).
     inner = (
         f'<span class="lbl" style="background:{lbl_color};color:{_on_color(lbl_color)}">QUALIFYING HOUR</span>'
-        f'<div style="padding:10px 22px 26px;"><h3>{header}</h3>'
+        f'<div style="padding:12px 24px 28px;"><h3>{header}</h3>'
         f'<p>{body}</p></div>'
     )
     return _nb_shadow_box(
@@ -739,7 +739,7 @@ def _nb_next_race_html(next_race: dict | None) -> str:
     # why (negative margin verified 0px in Chromium, not honored by real Gmail).
     inner = (
         f'<span class="lbl">NEXT UP &middot; ROUND {next_race["round"]}</span>'
-        f'<div style="padding:10px 22px 24px;"><h3>{html.escape(next_race["name"])}</h3>{place}'
+        f'<div style="padding:12px 24px 26px;"><h3>{html.escape(next_race["name"])}</h3>{place}'
         # Table row, not display:flex+gap (unsupported for most Gmail recipients) -- was
         # collapsing "4 days away" / "4.381 km circuit" into one run-on line with no spacing.
         f'<table role="presentation" cellpadding="0" cellspacing="0" class="stats"><tr>{days_stat}{km_stat}</tr></table></div>'
@@ -794,7 +794,7 @@ def render_email_neubrutalist(
             # headline box's own comment for why (negative margin verified 0px in Chromium, not
             # honored by real Gmail).
             box = _nb_shadow_box(
-                f'{num_tag}<div style="padding:0 20px 24px;"><h3>{header}</h3><p>{body}</p></div>',
+                f'{num_tag}<div style="padding:0 22px 26px;"><h3>{header}</h3><p>{body}</p></div>',
                 border_color=color, border_width="3px", box_class="insight-inner",
                 box_style="padding:0;", offset=5, side="left" if is_even else "right",
                 wrapper_style="margin:0 0 20px;",
