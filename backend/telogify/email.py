@@ -439,18 +439,14 @@ _NB_STYLE = f"""
   .sub b {{ background: #FFE500; padding: 0 3px; }}
   .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 28px; }}
   .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
-  /* A flat percentage cap can't both leave room for the gap value AND preserve each bar's real
-     proportional length: the value's own pixel footprint (measured: ~102px for "+0.594s", up to
-     ~118px for a double-digit gap, at this font/size) doesn't shrink with the container, so a
-     percentage generous enough to avoid clipping the shortest bar isn't tight enough to
-     guarantee room for the value on a narrow phone, and one tight enough for the phone clips
-     every bar (even the shortest) identically, killing the whole point of a proportional chart.
-     calc() reserves a constant ~140px (value + margin, with headroom) regardless of container
-     width, so only a bar that's actually too long to share the row gets clamped -- the short one
-     renders at its real length. The plain 45% before it is a fallback for a client that doesn't
-     parse calc() (invalid values are ignored, keeping the last valid declaration); untested
-     against a real send, unlike everything else in this file's CSS support notes. */
-  .pace-bar {{ max-width: 45%; max-width: calc(100% - 140px); }}
+  /* The real per-row cap is an inline max-width set in Python (see _nb_pace_spread_html: each
+     row's own calc((100% - 140px) * ratio), so a clamped row stays proportional to the others
+     instead of every clamped bar converging on the same flat ceiling regardless of its real
+     value -- measured wrong on a real narrow phone before this). This class is only the fallback
+     for a client that doesn't parse calc() at all, in which case the inline value is also
+     invalid and ignored, falling through to this flat 45%; untested against a real send, unlike
+     everything else in this file's CSS support notes. */
+  .pace-bar {{ max-width: 45%; }}
   .practice-tile-inner {{ font-size: 13px; }}
   .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
   .practice-tile-inner .val {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 20px; margin: 2px 0; }}
@@ -703,12 +699,22 @@ def _nb_pace_spread_html(pace_spread: dict | None, base_url: str) -> str:
         # image does not.
         is_last = i == len(pace_rows) - 1
         border = "" if is_last else "border-bottom:1px dashed #0a0a0a55;"
-        bar_px = _BAR_MAX_PX if max_gap == 0 else max(_BAR_MIN_PX, round(value / max_gap * _BAR_MAX_PX))
+        ratio = 1.0 if max_gap == 0 else value / max_gap
+        bar_px = _BAR_MAX_PX if max_gap == 0 else max(_BAR_MIN_PX, round(ratio * _BAR_MAX_PX))
         # The gap figure sits inline right after its OWN bar, in the same cell -- not a separate
         # right-aligned column. A separate column shares one width across every row (set by the
         # widest bar), so a shorter row's value lands far past where its own bar actually ends;
         # only the longest bar happened to look flush. Inline placement tracks each row's real
         # bar length instead.
+        # max-width is per-row proportional, not a flat cap: a flat calc(100% - 140px) ceiling
+        # (same for every row) measured wrong on a real narrow phone -- once a bar's intrinsic
+        # width (bar_px, scaled for the wide desktop card) exceeds that flat ceiling, EVERY such
+        # row clamps to the identical width, so McLaren (+0.371s) and Red Bull Racing (+0.594s)
+        # rendered as the same-length bar despite a 60% real difference. Scaling the ceiling by
+        # this row's own ratio keeps every clamped row proportional to the others: since bar_px
+        # is itself `ratio * _BAR_MAX_PX`, intrinsic width exceeds this row's ceiling exactly when
+        # it does for every other row (the ratio cancels out of that comparison), so either every
+        # row clamps in unison at its own correct fraction of the available space, or none do.
         row_html.append(
             "<tr>"
             f'<td colspan="2" style="padding:5px 0 0 0;font-size:18px;text-align:left;">'
@@ -716,7 +722,8 @@ def _nb_pace_spread_html(pace_spread: dict | None, base_url: str) -> str:
             "</tr>"
             f'<tr><td colspan="2" style="padding:6px 0 9px;{border}">'
             f'<img class="pace-bar" src="{swatch_url}" width="{bar_px}" height="11" alt="" '
-            f'style="display:inline-block;vertical-align:middle;width:{bar_px}px;height:11px;border-radius:2px;">'
+            f'style="display:inline-block;vertical-align:middle;width:{bar_px}px;height:11px;'
+            f'border-radius:2px;max-width:calc((100% - 140px) * {ratio:.4f});">'
             f'<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
             f'font-size:28px;color:{_NB_INK};">{html.escape(gap)}</span>'
