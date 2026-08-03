@@ -584,13 +584,20 @@ def _nb_practice_html(practice: dict | None) -> str:
     # Table, not CSS grid (email.py:626 header note / project CLAUDE.md): Gmail (desktop,
     # iOS, Android, non-Workspace accounts) doesn't support display:grid, which was collapsing
     # this into one stacked column.
+    # The label sits flush against the tile's own top-left corner (zero padding on the outer
+    # box itself), with the rest of the content padded by an inner wrapper instead -- negative
+    # margin was tried first to pull the label back out through the box's padding, verified at
+    # exactly 0px in Chromium, but real Gmail did not honor it (a gap remained), so the
+    # zero-outer-padding/inner-wrapper structure avoids relying on negative margin at all.
     tile_divs = [
         _nb_shadow_box(
             f'<span class="lbl" style="background:{_team_color(constructor)};color:{_on_color(_team_color(constructor))}">{html.escape(label)}</span>'
+            f'<div style="padding:0 14px 16px;">'
             f'<p class="val">{html.escape(value)}{mph_html}</p>'
-            f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p>',
+            f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p>'
+            f'</div>',
             border_width="1.5px", offset=3.5, box_class="practice-tile-inner",
-            box_style="padding:14px 14px 16px;",
+            box_style="padding:0;",
         )
         for label, value, constructor, driver_bit, mph_html in tiles
     ]
@@ -619,10 +626,14 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
     # tint (already this team's real color) and the QUALIFYING HOUR label's solid fill below,
     # so the inline prose stays plain ink instead of duplicating (and muddying) the color cue.
     lbl_color = _team_color(team)
+    # QUALIFYING HOUR sits flush against the box's own top-left corner (zero padding on the
+    # outer box), with the heading/body padded by an inner wrapper instead -- see the headline
+    # box's own comment for why this avoids negative margin entirely (verified 0px in Chromium,
+    # not honored by real Gmail).
     inner = (
         f'<span class="lbl" style="background:{lbl_color};color:{_on_color(lbl_color)}">QUALIFYING HOUR</span>'
-        f'<h3>{header}</h3>'
-        f'<p>{body}</p>'
+        f'<div style="padding:10px 22px 26px;"><h3>{header}</h3>'
+        f'<p>{body}</p></div>'
     )
     return _nb_shadow_box(
         inner, bg=team_color, box_class="quali-inner",
@@ -630,7 +641,7 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
         # (PACE SPREAD // CONSTRUCTORS) gets the same breathing room the other two headings
         # already had -- this panel used to have none, leaving that one heading flush against
         # the panel above it while its siblings had real space.
-        box_style="padding:22px 22px 26px;", wrapper_style="margin:44px 0 40px;",
+        box_style="padding:0;", wrapper_style="margin:44px 0 40px;",
     )
 
 
@@ -723,15 +734,18 @@ def _nb_next_race_html(next_race: dict | None) -> str:
         f'<p style="margin:0;font-size:13px;">{html.escape(next_race["place"])}</p>'
         if next_race.get("place") else ""
     )
+    # NEXT UP sits flush against the box's own top-left corner (zero padding on the outer box),
+    # with the rest padded by an inner wrapper instead -- see the headline box's own comment for
+    # why (negative margin verified 0px in Chromium, not honored by real Gmail).
     inner = (
         f'<span class="lbl">NEXT UP &middot; ROUND {next_race["round"]}</span>'
-        f'<h3>{html.escape(next_race["name"])}</h3>{place}'
+        f'<div style="padding:10px 22px 24px;"><h3>{html.escape(next_race["name"])}</h3>{place}'
         # Table row, not display:flex+gap (unsupported for most Gmail recipients) -- was
         # collapsing "4 days away" / "4.381 km circuit" into one run-on line with no spacing.
-        f'<table role="presentation" cellpadding="0" cellspacing="0" class="stats"><tr>{days_stat}{km_stat}</tr></table>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" class="stats"><tr>{days_stat}{km_stat}</tr></table></div>'
     )
     return _nb_shadow_box(
-        inner, box_class="next-race-inner", box_style="padding:24px 22px;",
+        inner, box_class="next-race-inner", box_style="padding:0;",
         wrapper_style="margin-bottom:40px;",
     )
 
@@ -775,10 +789,14 @@ def render_email_neubrutalist(
             # confirmed supported, so there's no reason to flatten every card to the same
             # right-side shadow.
             is_even = i % 2 == 0
+            # The number badge sits flush against the card's own top-left corner (zero padding
+            # on the outer box), heading/body padded by an inner wrapper instead -- see the
+            # headline box's own comment for why (negative margin verified 0px in Chromium, not
+            # honored by real Gmail).
             box = _nb_shadow_box(
-                f"{num_tag}<h3>{header}</h3><p>{body}</p>",
+                f'{num_tag}<div style="padding:0 20px 24px;"><h3>{header}</h3><p>{body}</p></div>',
                 border_color=color, border_width="3px", box_class="insight-inner",
-                box_style="padding:22px 20px 24px;", offset=5, side="left" if is_even else "right",
+                box_style="padding:0;", offset=5, side="left" if is_even else "right",
                 wrapper_style="margin:0 0 20px;",
             )
             cards.append(box)
@@ -812,10 +830,18 @@ def render_email_neubrutalist(
         f'<div style="margin-bottom:14px;">{_nb_stamp("WINNER", bg=_NB_INK, fg="#fff", inline=True)}</div>'
         if raw_team else ""
     )
+    # WINNER sits flush against the box's own top-left corner (zero padding on the outer box),
+    # with the rest of the content padded by an inner wrapper instead -- negative margin was
+    # tried first to pull WINNER back through the box's padding, verified at exactly 0px in
+    # Chromium, but real Gmail did not honor it (a visible gap remained), so this avoids relying
+    # on negative margin at all. Without a winner (no team), there's no stamp to supply the top
+    # gap via its own margin, so the wrapper needs the full top padding itself.
+    content_padding_top = "0" if winner_stamp else "22px"
     headline_box = _nb_shadow_box(
-        f'{winner_stamp}{_nb_headline_html(winner)}{_nb_sub_html(winner, pace_spread)}',
+        f'{winner_stamp}<div style="padding:{content_padding_top} 24px 28px 24px;">'
+        f'{_nb_headline_html(winner)}{_nb_sub_html(winner, pace_spread)}</div>',
         box_class="headline-inner",
-        box_style="padding:22px 24px 28px;", wrapper_style="margin-bottom:40px;",
+        box_style="padding:0;", wrapper_style="margin-bottom:40px;",
     )
 
     return f"""<!doctype html>

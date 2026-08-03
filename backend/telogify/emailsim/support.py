@@ -10,7 +10,7 @@ Findings that correct prior assumptions documented as comments in email.py (see 
 plan's "three defect candidates" section, and beyond -- Probe B ended up testing more than those
 three once built):
   - display:flex WORKS. display:grid, float, and position:absolute do NOT.
-  - Negative margins work.
+  - Negative margins WERE claimed to work here. See the 2026-08-02 correction below: they do not.
   - border-radius does NOT work.
   - box-shadow WAS claimed to work here, contradicting email.py's existing comment that it's
     dead on iOS. See the 2026-08-02 correction below: it does not.
@@ -44,10 +44,20 @@ offset) showed the same: a single flat border line, no depth. Every panel in the
 digest relies on box-shadow for its visual depth, so this is a second real regression the same
 class of send shipped with, not a one-off.
 
-Both false positives came from Probe B testing single properties in isolation with synthetic
+CORRECTION (2026-08-02, negative_margin): also WRONG. email.py used a negative margin to pull a
+panel-label chip (e.g. WINNER) back through its card's own padding to sit flush at the top-left
+corner, verified at exactly 0px in Chromium (a real Playwright measurement, not eyeballed) --
+but a real Gmail screenshot showed a visible gap remained, the negative margin not honored. Fixed
+by restructuring instead of relying on the property at all: the outer card's padding drops to 0
+so the label sits flush in normal flow with no margin trick needed, and an inner wrapper div
+around the rest of the content (heading/body) carries the padding instead. Third false positive
+from this matrix, all found the same way -- checking a composed real send against what the
+isolated Probe B test predicted for it.
+
+All three false positives came from Probe B testing single properties in isolation with synthetic
 geometry and never comparing a composed render against reality -- see the emailsim plan. Every
-remaining `True` verdict in this matrix (both gradients, the two <style> tests, negative_margin,
-display_flex) still needs the same direct re-check before being trusted for a design decision.
+remaining `True` verdict in this matrix (both gradients, the two <style> tests, display_flex)
+still needs the same direct re-check before being trusted for a design decision.
 """
 
 from __future__ import annotations
@@ -57,7 +67,7 @@ GMAIL_IOS_SUPPORT: dict[str, bool] = {
     "display_grid": False,
     "float": False,
     "position_absolute": False,
-    "negative_margin": True,
+    "negative_margin": False,  # corrected 2026-08-02, see module docstring
     "transform_rotate": False,  # corrected 2026-08-02, see module docstring
     "box_shadow": False,  # corrected 2026-08-02, see module docstring
     "border_radius": False,
