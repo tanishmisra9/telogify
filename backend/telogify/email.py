@@ -413,6 +413,13 @@ _NB_STYLE = f"""
     color: #0a0a0a;
   }}
   .sheet {{ width: 100%; max-width: 700px; margin: 0 auto; background: #fdfdfb; border: 1px solid #0a0a0a1a; padding: 40px 24px; }}
+  /* Wider on desktop, where a 700px column looks like a narrow island in the message pane's own
+     open space. Only reachable clients: mobile Gmail (the majority) ignores media queries
+     entirely (this whole file's dark-mode saga is about exactly that), so this never affects a
+     phone; a real wide viewport (desktop webmail, Apple Mail) picks it up correctly. */
+  @media (min-width: 720px) {{
+    .sheet {{ max-width: 900px; }}
+  }}
   /* padding-bottom used to reserve room for the torn-strip underline; that's gone, so it was
      pure dead space stacking on top of margin-bottom (86px total) and holding the reader off
      the content. */
@@ -667,18 +674,21 @@ def _nb_pace_spread_html(pace_spread: dict | None, base_url: str) -> str:
         is_last = i == len(pace_rows) - 1
         border = "" if is_last else "border-bottom:1px dashed #0a0a0a55;"
         bar_px = _BAR_MAX_PX if max_gap == 0 else max(_BAR_MIN_PX, round(value / max_gap * _BAR_MAX_PX))
+        # The gap figure sits next to its own bar (row 2), not the team name (row 1) -- reads as
+        # "this many seconds, right there on that line" instead of separating the number from
+        # the visual it's describing.
         row_html.append(
             "<tr>"
-            f'<td style="padding:5px 28px 0 0;font-size:18px;text-align:left;">'
+            f'<td colspan="2" style="padding:5px 0 0 0;font-size:18px;text-align:left;">'
             f'<img class="swatch" src="{swatch_url}" width="14" height="14" alt="">{html.escape(name)}</td>'
-            f'<td style="padding:5px 0 0 8px;text-align:right;'
+            "</tr>"
+            f'<tr><td style="padding:6px 0 9px;{border}">'
+            f'<img src="{swatch_url}" width="{bar_px}" height="11" alt="" '
+            f'style="display:block;width:{bar_px}px;max-width:100%;height:11px;border-radius:2px;">'
+            f'</td><td style="padding:6px 0 9px 8px;text-align:right;{border}'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
             f'font-size:28px;color:{_NB_INK};">{html.escape(gap)}</td>'
             "</tr>"
-            f'<tr><td colspan="2" style="padding:6px 0 9px;{border}">'
-            f'<img src="{swatch_url}" width="{bar_px}" height="11" alt="" '
-            f'style="display:block;width:{bar_px}px;max-width:100%;height:11px;border-radius:2px;">'
-            "</td></tr>"
         )
     inner = (
         f'<p style="font-size:15px;margin:0 0 10px;">{fastest} set the pace this weekend. '
