@@ -654,7 +654,10 @@ _GAP_VALUE_RE = re.compile(r"[\d.]+")
 # 240 (attempt 7) was tuned for the mobile-only 514px card; left a lot of unused width once the
 # card widened to 900px on desktop (the bar's own `max-width:100%` already protects mobile
 # regardless of how big this constant is, so raising it is a free win there, not a tradeoff).
-_BAR_MAX_PX = 420
+# 420 -> 520: the gap figure now sits inline right after its own bar (see row_html below) instead
+# of in a separate right-aligned column, so there's no longer a reserved value column eating into
+# the card's width -- bars can grow further before the figure needs room.
+_BAR_MAX_PX = 520
 _BAR_MIN_PX = 18
 
 
@@ -688,21 +691,23 @@ def _nb_pace_spread_html(pace_spread: dict | None, base_url: str) -> str:
         is_last = i == len(pace_rows) - 1
         border = "" if is_last else "border-bottom:1px dashed #0a0a0a55;"
         bar_px = _BAR_MAX_PX if max_gap == 0 else max(_BAR_MIN_PX, round(value / max_gap * _BAR_MAX_PX))
-        # The gap figure sits next to its own bar (row 2), not the team name (row 1) -- reads as
-        # "this many seconds, right there on that line" instead of separating the number from
-        # the visual it's describing.
+        # The gap figure sits inline right after its OWN bar, in the same cell -- not a separate
+        # right-aligned column. A separate column shares one width across every row (set by the
+        # widest bar), so a shorter row's value lands far past where its own bar actually ends;
+        # only the longest bar happened to look flush. Inline placement tracks each row's real
+        # bar length instead.
         row_html.append(
             "<tr>"
             f'<td colspan="2" style="padding:5px 0 0 0;font-size:18px;text-align:left;">'
             f'<img class="swatch" src="{swatch_url}" width="14" height="14" alt="">{html.escape(name)}</td>'
             "</tr>"
-            f'<tr><td style="padding:6px 0 9px;{border}">'
+            f'<tr><td colspan="2" style="padding:6px 0 9px;{border}">'
             f'<img src="{swatch_url}" width="{bar_px}" height="11" alt="" '
-            f'style="display:block;width:{bar_px}px;max-width:100%;height:11px;border-radius:2px;">'
-            f'</td><td style="padding:6px 0 9px 8px;text-align:right;{border}'
+            f'style="display:inline-block;vertical-align:middle;width:{bar_px}px;max-width:100%;height:11px;border-radius:2px;">'
+            f'<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
-            f'font-size:28px;color:{_NB_INK};">{html.escape(gap)}</td>'
-            "</tr>"
+            f'font-size:28px;color:{_NB_INK};">{html.escape(gap)}</span>'
+            "</td></tr>"
         )
     inner = (
         f'<p style="font-size:15px;margin:0 0 10px;">{fastest} set the pace this weekend. '
