@@ -419,6 +419,7 @@ _NB_STYLE = f"""
      phone; a real wide viewport (desktop webmail, Apple Mail) picks it up correctly. */
   @media (min-width: 720px) {{
     .sheet {{ max-width: 900px; }}
+    .pace-bar {{ max-width: 100%; }}
   }}
   /* padding-bottom used to reserve room for the torn-strip underline; that's gone, so it was
      pure dead space stacking on top of margin-bottom (86px total) and holding the reader off
@@ -438,6 +439,18 @@ _NB_STYLE = f"""
   .sub b {{ background: #FFE500; padding: 0 3px; }}
   .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 28px; }}
   .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
+  /* A flat percentage cap can't both leave room for the gap value AND preserve each bar's real
+     proportional length: the value's own pixel footprint (measured: ~102px for "+0.594s", up to
+     ~118px for a double-digit gap, at this font/size) doesn't shrink with the container, so a
+     percentage generous enough to avoid clipping the shortest bar isn't tight enough to
+     guarantee room for the value on a narrow phone, and one tight enough for the phone clips
+     every bar (even the shortest) identically, killing the whole point of a proportional chart.
+     calc() reserves a constant ~140px (value + margin, with headroom) regardless of container
+     width, so only a bar that's actually too long to share the row gets clamped -- the short one
+     renders at its real length. The plain 45% before it is a fallback for a client that doesn't
+     parse calc() (invalid values are ignored, keeping the last valid declaration); untested
+     against a real send, unlike everything else in this file's CSS support notes. */
+  .pace-bar {{ max-width: 45%; max-width: calc(100% - 140px); }}
   .practice-tile-inner {{ font-size: 13px; }}
   .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
   .practice-tile-inner .val {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 20px; margin: 2px 0; }}
@@ -702,8 +715,8 @@ def _nb_pace_spread_html(pace_spread: dict | None, base_url: str) -> str:
             f'<img class="swatch" src="{swatch_url}" width="14" height="14" alt="">{html.escape(name)}</td>'
             "</tr>"
             f'<tr><td colspan="2" style="padding:6px 0 9px;{border}">'
-            f'<img src="{swatch_url}" width="{bar_px}" height="11" alt="" '
-            f'style="display:inline-block;vertical-align:middle;width:{bar_px}px;max-width:100%;height:11px;border-radius:2px;">'
+            f'<img class="pace-bar" src="{swatch_url}" width="{bar_px}" height="11" alt="" '
+            f'style="display:inline-block;vertical-align:middle;width:{bar_px}px;height:11px;border-radius:2px;">'
             f'<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
             f'font-family:{_NB_DISPLAY_FONT};font-weight:700;'
             f'font-size:28px;color:{_NB_INK};">{html.escape(gap)}</span>'
@@ -712,7 +725,14 @@ def _nb_pace_spread_html(pace_spread: dict | None, base_url: str) -> str:
     inner = (
         f'<p style="font-size:15px;margin:0 0 10px;">{fastest} set the pace this weekend. '
         f"Here&rsquo;s how much time the next three lost, every single lap.</p>"
-        f'<table role="presentation" cellpadding="0" cellspacing="0">{"".join(row_html)}</table>'
+        # width="100%" alone isn't enough: table-layout defaults to auto, which still grows the
+        # table past 100% if a row's content (the unbreakable bar+value run) needs more room --
+        # and the bar's max-width (see .pace-bar) would then resolve against that inflated width
+        # instead of the card's real one, a feedback loop that measured as the table overflowing
+        # the card's own border on a real narrow render. table-layout:fixed makes the 100%
+        # authoritative, so the percentage/calc() cap finally has a real, bounded width to work OF.
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'style="table-layout:fixed;">{"".join(row_html)}</table>'
     )
     return (
         '<span class="section-title">SUNDAY&rsquo;S FRONT RUNNERS</span>'
