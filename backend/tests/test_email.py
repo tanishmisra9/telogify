@@ -159,9 +159,9 @@ def test_render_email_neubrutalist_renders_core_content():
     assert '.headline .verdict { color: #0a0a0a; }' in html
     # attempt 7 item 1: capital T in the wordmark, matching the site's own casing
     assert '<p class="wordmark" style="margin:0;">Telo<span>gify</span></p>' in html
-    # masthead icon: a hosted <img> referencing the deployed site's real logo mark, not inline
-    # <svg> markup -- a far more standard, reliable code path for email clients.
-    assert '<img src="https://telogify.app/favicon.svg"' in html
+    # masthead icon: one hosted flat PNG baking in the whole shadow-box look (immune to Gmail's
+    # dark-mode inversion, unlike the live white-bg/black-border box it replaced).
+    assert '<img src="https://telogify.app/logo-chip.png"' in html
     # attempt 7 item 3: pace-gap figure is plain ink now, not a per-team darkened variant that
     # drifted away from the swatch's true color
     assert f'font-size:28px;color:#0a0a0a;">+0.181s' in html
