@@ -436,7 +436,7 @@ _NB_STYLE = f"""
   .headline .verdict {{ color: #0a0a0a; }}
   .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
-  .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 18px; }}
+  .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 28px; }}
   .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
   .practice-tile-inner {{ font-size: 13px; }}
   .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
