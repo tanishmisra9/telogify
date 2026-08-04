@@ -604,3 +604,19 @@ def test_chip_text_png_rejects_invalid_color(client):
         params={"text": "x", "font_size": 12, "text_color": "not-a-color"},
     )
     assert resp.status_code == 422
+
+
+def test_production_origins_are_always_allowed_for_cors():
+    """Regression: deriving the CORS allowlist from WEB_BASE_URL alone took the live site down.
+
+    Railway had no WEB_BASE_URL set, because digests are sent from a developer machine whose
+    .env does have one, so the allowlist collapsed to localhost and the deployed frontend was
+    refused by every request it made. The site must not depend on an env var nobody knew was
+    load-bearing.
+    """
+    from telogify.config import PRODUCTION_ORIGINS, Settings
+
+    for web_base_url in ("http://localhost:5173", "https://example.invalid", ""):
+        origins = Settings(web_base_url=web_base_url).cors_origins
+        for production_origin in PRODUCTION_ORIGINS:
+            assert production_origin in origins, (web_base_url, origins)

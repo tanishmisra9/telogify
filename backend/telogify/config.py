@@ -3,6 +3,10 @@
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: The deployed frontend's own origins. Always allowed, so the live site cannot be cut off by a
+#: missing or mistyped WEB_BASE_URL. Public hostnames, deliberately not configuration.
+PRODUCTION_ORIGINS = ("https://www.telogify.com", "https://telogify.com")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -55,7 +59,7 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.environment.strip().lower() == "production"
 
-    #: Extra browser origins allowed to call the API, comma separated. Only needed for a origin
+    #: Extra browser origins allowed to call the API, comma separated. Only needed for an origin
     #: that is neither WEB_BASE_URL nor its apex/www sibling (a preview deployment, say).
     extra_cors_origins: str = ""
 
@@ -67,9 +71,16 @@ class Settings(BaseSettings):
         *nearly* right is now a hard failure for every request the site makes, not just signup.
         A reader landing on the apex when WEB_BASE_URL names www (or the reverse) would have seen
         the whole site fail to load. Cheap to accept both; expensive to get wrong.
+
+        The production origins are listed unconditionally rather than derived, because deriving
+        them from WEB_BASE_URL alone took the live site down: Railway had no WEB_BASE_URL set (it
+        never needed one, since digests are sent from a developer machine whose .env does have
+        it), so the allowlist collapsed to localhost and the deployed frontend was refused by
+        every request it made. These are public hostnames, not configuration, and the site should
+        not depend on an env var nobody knew was load-bearing.
         """
         primary = self.web_base_url.rstrip("/")
-        origins = [primary, "http://localhost:5173"]
+        origins = [primary, *PRODUCTION_ORIGINS, "http://localhost:5173"]
         if "://www." in primary:
             origins.append(primary.replace("://www.", "://", 1))
         elif "://" in primary:
