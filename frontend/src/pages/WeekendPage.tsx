@@ -73,7 +73,7 @@ function PracticeSectors({ data }: { data: SectorsData }) {
   }
 
   return (
-    <div className="glass rounded-panel p-6">
+    <div className="glass rounded-[--radius-panel] p-6">
       <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Best sectors</h2>
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-8">
         {[1, 2, 3].map((sector) => (
@@ -110,7 +110,7 @@ function PracticeTopSpeeds({ data }: { data: TopSpeedsData }) {
   const domainMin = Math.min(...sorted.map(speedOf)) - (unit === 'mph' ? 4 : 6)
 
   return (
-    <div className="glass rounded-panel p-6">
+    <div className="glass rounded-[--radius-panel] p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Top speeds</h2>
         <ChartTabs
@@ -163,7 +163,7 @@ function MethodologyDisclosure() {
   }, [])
 
   return (
-    <div className="glass mt-6 rounded-panel p-6">
+    <div className="glass mt-6 rounded-[--radius-panel] p-6">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -216,7 +216,7 @@ function MethodologyDisclosure() {
 
 function Upcoming({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-panel border border-dashed border-border p-6 text-sm text-muted">
+    <p className="rounded-[--radius-panel] border border-dashed border-border p-6 text-sm text-muted">
       {children}
     </p>
   )
@@ -625,7 +625,7 @@ export function WeekendPage() {
             )}
             {results.data ? (
               <ScrollReveal delay={0.1}>
-                <div className="glass mx-auto w-full max-w-4xl rounded-panel p-6 sm:p-8">
+                <div className="glass mx-auto w-full max-w-4xl rounded-[--radius-panel] p-6 sm:p-8">
                   <h3 className="mb-6 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
                     Finishing order
                   </h3>

@@ -153,7 +153,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   }
 
   return (
-    <div className="glass w-full select-none rounded-panel p-5">
+    <div className="glass w-full select-none rounded-[--radius-panel] p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-6">
           <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">The fight to pole</h2>

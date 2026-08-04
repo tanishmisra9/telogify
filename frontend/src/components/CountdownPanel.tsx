@@ -44,7 +44,7 @@ export function CountdownPanel({
   }, [])
 
   return (
-    <div className={`glass rounded-panel ${compact ? 'p-6' : 'p-8 sm:p-12'}`}>
+    <div className={`glass rounded-[--radius-panel] ${compact ? 'p-6' : 'p-8 sm:p-12'}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <p className="kicker text-sm! text-accent">{kicker}</p>
         {/* Same kicker voice as the line above (mono, uppercase, tracked), just muted instead

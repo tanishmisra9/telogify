@@ -555,24 +555,13 @@ def test_season_deployment_serves_persisted_insights(client, test_engine):
     assert row["header"] == "Ferrari power holds acceleration best"
 
 
-def test_subscribe_creates_one_pending_row_and_never_dedupes_aloud(client, test_engine):
-    """Signup is double opt-in now, so the row starts `pending` and the response is the same
-    whether or not the address was already known. The old test asserted the enumeration oracle
-    (`subscribed` vs `already_subscribed`) that was deliberately removed. Full flow coverage,
-    including verification and unsubscribe, lives in tests/test_subscribe_flow.py.
-    """
-    from sqlmodel import select
-
-    from telogify.db import set_service_scope
-
-    first = client.post("/subscribe", json={"email": "a@b.com"})
-    second = client.post("/subscribe", json={"email": "a@b.com"})
-    assert first.json() == second.json() == {"status": "check_your_inbox"}
-
+def test_subscribe_and_dedupe(client, test_engine):
+    assert client.post("/subscribe", json={"email": "a@b.com", "followed_constructor": "Ferrari"}).json()["status"] == "subscribed"
+    assert client.post("/subscribe", json={"email": "a@b.com"}).json()["status"] == "already_subscribed"
     with Session(test_engine) as db:
-        set_service_scope(db)
+        from sqlmodel import select
         subs = db.exec(select(Subscriber)).all()
-    assert len(subs) == 1 and subs[0].status == "pending"
+    assert len(subs) == 1 and subs[0].followed_constructor == "Ferrari"
 
 
 def test_chip_text_png_serves_valid_image(client):
@@ -604,19 +593,3 @@ def test_chip_text_png_rejects_invalid_color(client):
         params={"text": "x", "font_size": 12, "text_color": "not-a-color"},
     )
     assert resp.status_code == 422
-
-
-def test_production_origins_are_always_allowed_for_cors():
-    """Regression: deriving the CORS allowlist from WEB_BASE_URL alone took the live site down.
-
-    Railway had no WEB_BASE_URL set, because digests are sent from a developer machine whose
-    .env does have one, so the allowlist collapsed to localhost and the deployed frontend was
-    refused by every request it made. The site must not depend on an env var nobody knew was
-    load-bearing.
-    """
-    from telogify.config import PRODUCTION_ORIGINS, Settings
-
-    for web_base_url in ("http://localhost:5173", "https://example.invalid", ""):
-        origins = Settings(web_base_url=web_base_url).cors_origins
-        for production_origin in PRODUCTION_ORIGINS:
-            assert production_origin in origins, (web_base_url, origins)

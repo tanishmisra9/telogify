@@ -310,38 +310,6 @@ class Subscriber(SQLModel, table=True):
     __tablename__ = "subscriber"
 
     id: int | None = Field(default=None, primary_key=True)
-    email: str = Field(index=True, unique=True)  # normalized: trimmed + lowercased
+    email: str = Field(index=True, unique=True)
     followed_constructor: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    status: str = Field(default="pending", index=True)  # pending/confirmed/unsubscribed
-    confirmed_at: datetime | None = None
-    # Only the SHA-256 of the verification token is stored, so a DB dump cannot confirm
-    # anyone. Cleared on confirmation, which is what makes the token single-use.
-    verify_token_hash: str | None = Field(default=None, index=True, unique=True)
-    verify_expires_at: datetime | None = None
-
-
-class SubscriberAudit(SQLModel, table=True):
-    """Append-only consent/security log. Written two ways, both intentional:
-
-    a row-change trigger on `subscriber` (see security_sql.py) records inserts/updates/deletes,
-    and the API appends security events that never reach a row at all (rate-limit and captcha
-    rejections). Immutability is enforced in the DB by a BEFORE UPDATE OR DELETE trigger that
-    raises, not by convention here. Doubles as the rate limiter's store, which is why
-    (actor_ip_hash, created_at) and (email, created_at) are indexed.
-    """
-
-    __tablename__ = "subscriber_audit"
-
-    id: int | None = Field(default=None, primary_key=True)
-    # No FK on purpose: the log has to outlive the row it describes.
-    subscriber_id: int | None = Field(default=None, index=True)
-    email: str | None = Field(default=None, index=True)  # snapshot, survives deletion
-    action: str = Field(index=True)
-    old_data: dict | None = Field(default=None, sa_column=Column(JSON))
-    new_data: dict | None = Field(default=None, sa_column=Column(JSON))
-    actor_key: str | None = None  # the app.actor_key GUC at the time
-    actor_ip_hash: str | None = Field(default=None, index=True)  # HMAC, never a raw IP
-    actor_user_agent: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
