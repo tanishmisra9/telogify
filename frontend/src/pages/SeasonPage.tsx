@@ -29,7 +29,7 @@ const CONF_LABEL: Record<string, string> = { low: 'low data', med: 'partial data
 function ConfidenceChip({ confidence }: { confidence: string }) {
   if (confidence === 'high') return null
   return (
-    <span className="whitespace-nowrap rounded-[--radius-panel] border border-border px-2 py-0.5 text-xs text-muted">
+    <span className="whitespace-nowrap rounded-panel border border-border px-2 py-0.5 text-xs text-muted">
       {CONF_LABEL[confidence] ?? confidence}
     </span>
   )
@@ -237,7 +237,7 @@ function SeasonView({ year }: { year: number }) {
           {season.error ? (
             <p className="text-sm text-muted">No season data for {year}.</p>
           ) : rows.length > 0 ? (
-            <div className="glass rounded-[--radius-panel] p-6">
+            <div className="glass rounded-panel p-6">
               <RankingTable rows={rows} />
               <p className="mt-4 text-sm text-muted">
                 Ranked on the season's blend of race and qualifying pace (60/40), weighted so

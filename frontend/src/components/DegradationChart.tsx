@@ -115,7 +115,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
 
   return (
     <m.div
-      className="glass w-full rounded-[--radius-panel] p-5"
+      className="glass w-full rounded-panel p-5"
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={spring}

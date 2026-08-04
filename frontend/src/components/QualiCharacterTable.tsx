@@ -21,7 +21,7 @@ function InsightCard({ item }: { item: QualiInsightItem }) {
   const [open, setOpen] = useState(false)
   return (
     <div
-      className="rounded-[--radius-panel] border border-border p-5"
+      className="rounded-panel border border-border p-5"
       style={item.team ? { backgroundColor: teamColorWithAlpha(item.team, 0.09) } : undefined}
     >
       <button
@@ -136,7 +136,7 @@ export function QualiCharacterTable({
   const throttleRanks = rankDesc(rows.map((r) => r.full_throttle_pct))
 
   return (
-    <div className="glass rounded-[--radius-panel] p-6">
+    <div className="glass rounded-panel p-6">
       <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">Car character</h2>
 
       <CharacterInsights insights={insights} />
@@ -190,7 +190,7 @@ export function QualiCharacterTable({
             {data.sector_dominance.map((d) => (
               <div
                 key={d.sector}
-                className="rounded-[--radius-panel] border border-border p-3"
+                className="rounded-panel border border-border p-3"
                 style={d.constructor ? { backgroundColor: teamColorWithAlpha(d.constructor, 0.09) } : undefined}
               >
                 <div className="flex items-center justify-between gap-2">

@@ -22,7 +22,7 @@ export function SubscribePage() {
       </BlurFade>
 
       <BlurFade delay={0.06}>
-        <p className="glass lift mt-12 rounded-[--radius-panel] p-8 font-display text-3xl tracking-tight text-ink">
+        <p className="glass lift mt-12 rounded-panel p-8 font-display text-3xl tracking-tight text-ink">
           Coming soon!
         </p>
       </BlurFade>
