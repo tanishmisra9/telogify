@@ -37,6 +37,29 @@ class Settings(BaseSettings):
     # Gmail has to fetch that URL from the public internet, not localhost.
     api_base_url: str = "http://localhost:8000"
 
+    # HMAC key for unsubscribe tokens and IP hashing (subscriptions.py). Rotating it invalidates
+    # every outstanding unsubscribe link, which is the intended emergency lever.
+    subscriber_token_secret: str = ""
+
+    # reCAPTCHA v3. Empty secret skips verification, which is only tolerable locally; see
+    # require_signup_secrets() below.
+    recaptcha_secret: str = ""
+
+    # Set ENVIRONMENT=production on Railway. This started out derived from web_base_url, to save
+    # a setting, which was wrong: web_base_url is https://www.telogify.com even in local dev,
+    # because Gmail has to fetch the digest's hosted images from the public internet during a
+    # real test send. Nothing else here distinguishes local from deployed, so it has to be said.
+    environment: str = "development"
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() == "production"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """The frontend origin, plus the Vite dev server so local work keeps functioning."""
+        return list(dict.fromkeys([self.web_base_url.rstrip("/"), "http://localhost:5173"]))
+
     # Fuel-load correction: corrected = raw - fuel_time_cost_s_per_kg * burn_rate_kg_per_lap *
     # (total_laps - lap_number), computed per race in ingest/stints.py since burn rate depends on
     # that circuit's lap count. fuel_kg_per_race is the 2026 FIA race fuel allowance (down from
@@ -48,6 +71,29 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def require_signup_secrets() -> None:
+    """Fail loudly in production rather than serve a signup form with no bot defense.
+
+    Called from the API's startup, not at import, so the CLI and tests (which never expose the
+    form) are unaffected. A silently unprotected signup endpoint is worse than a failed boot.
+    """
+    if not settings.is_production:
+        return
+    missing = [
+        name
+        for name, value in (
+            ("SUBSCRIBER_TOKEN_SECRET", settings.subscriber_token_secret),
+            ("RECAPTCHA_SECRET", settings.recaptcha_secret),
+        )
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            f"{', '.join(missing)} must be set when ENVIRONMENT=production. "
+            "Refusing to start with an unprotected signup endpoint."
+        )
 
 
 def configured_llm_label() -> str:

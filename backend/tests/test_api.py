@@ -555,13 +555,24 @@ def test_season_deployment_serves_persisted_insights(client, test_engine):
     assert row["header"] == "Ferrari power holds acceleration best"
 
 
-def test_subscribe_and_dedupe(client, test_engine):
-    assert client.post("/subscribe", json={"email": "a@b.com", "followed_constructor": "Ferrari"}).json()["status"] == "subscribed"
-    assert client.post("/subscribe", json={"email": "a@b.com"}).json()["status"] == "already_subscribed"
+def test_subscribe_creates_one_pending_row_and_never_dedupes_aloud(client, test_engine):
+    """Signup is double opt-in now, so the row starts `pending` and the response is the same
+    whether or not the address was already known. The old test asserted the enumeration oracle
+    (`subscribed` vs `already_subscribed`) that was deliberately removed. Full flow coverage,
+    including verification and unsubscribe, lives in tests/test_subscribe_flow.py.
+    """
+    from sqlmodel import select
+
+    from telogify.db import set_service_scope
+
+    first = client.post("/subscribe", json={"email": "a@b.com"})
+    second = client.post("/subscribe", json={"email": "a@b.com"})
+    assert first.json() == second.json() == {"status": "check_your_inbox"}
+
     with Session(test_engine) as db:
-        from sqlmodel import select
+        set_service_scope(db)
         subs = db.exec(select(Subscriber)).all()
-    assert len(subs) == 1 and subs[0].followed_constructor == "Ferrari"
+    assert len(subs) == 1 and subs[0].status == "pending"
 
 
 def test_chip_text_png_serves_valid_image(client):
