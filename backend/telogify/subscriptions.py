@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 from datetime import datetime, timedelta
@@ -68,10 +69,37 @@ def normalize_email(raw: str) -> str | None:
     return cleaned
 
 
+_warned_about_fallback_key = False
+
+
+def _signing_key() -> bytes:
+    """The HMAC key, falling back to one derived from DATABASE_URL when none is configured.
+
+    An unset SUBSCRIBER_TOKEN_SECRET used to mean signing with an empty key, which is not a weak
+    secret but no secret at all: anyone could compute a valid unsubscribe token for any
+    subscriber id and unsubscribe a stranger. Deriving from DATABASE_URL instead gives something
+    stable across restarts and instances (so existing links keep working) and genuinely unknown
+    to outsiders in production, where the URL carries a generated password.
+
+    This is a floor, not a substitute. Locally DATABASE_URL has no password and the derived key
+    is guessable, which is fine there and is why the warning fires anyway. Set the real variable
+    before sending anything: switching to it invalidates every token minted under the fallback.
+    """
+    global _warned_about_fallback_key
+    if settings.subscriber_token_secret:
+        return settings.subscriber_token_secret.encode()
+    if not _warned_about_fallback_key:
+        _warned_about_fallback_key = True
+        logging.getLogger(__name__).warning(
+            "SUBSCRIBER_TOKEN_SECRET is unset; deriving a fallback signing key from "
+            "DATABASE_URL. Set a real secret. Doing so later invalidates unsubscribe links "
+            "already sent."
+        )
+    return hashlib.sha256(f"telogify-fallback-key:{settings.database_url}".encode()).digest()
+
+
 def _hmac(message: str) -> str:
-    return hmac.new(
-        settings.subscriber_token_secret.encode(), message.encode(), hashlib.sha256
-    ).hexdigest()
+    return hmac.new(_signing_key(), message.encode(), hashlib.sha256).hexdigest()
 
 
 def hash_ip(ip: str | None) -> str | None:

@@ -75,3 +75,30 @@ def test_ip_hash_is_deterministic_and_not_reversible():
     assert hash_ip("203.0.113.7") != hash_ip("203.0.113.8")
     assert "203.0.113.7" not in (hash_ip("203.0.113.7") or "")
     assert hash_ip(None) is None
+
+
+def test_unset_secret_does_not_sign_with_an_empty_key(monkeypatch):
+    """An empty SUBSCRIBER_TOKEN_SECRET used to mean signing with no secret at all, so anyone
+    could compute a valid unsubscribe token for any subscriber id and unsubscribe a stranger."""
+    import hashlib as _hashlib
+    import hmac as _hmac_mod
+
+    from telogify import subscriptions
+
+    monkeypatch.setattr(subscriptions.settings, "subscriber_token_secret", "")
+
+    forged = _hmac_mod.new(b"", b"unsub:1", _hashlib.sha256).hexdigest()
+    assert parse_unsubscribe_token(f"1.{forged}") is None
+    # and the real token is stable, so links survive a restart
+    assert unsubscribe_token(1) == unsubscribe_token(1)
+    assert parse_unsubscribe_token(unsubscribe_token(1)) == 1
+
+
+def test_a_real_secret_takes_precedence_over_the_fallback(monkeypatch):
+    from telogify import subscriptions
+
+    monkeypatch.setattr(subscriptions.settings, "subscriber_token_secret", "")
+    fallback = unsubscribe_token(1)
+    monkeypatch.setattr(subscriptions.settings, "subscriber_token_secret", "a-real-secret")
+    assert unsubscribe_token(1) != fallback
+    assert parse_unsubscribe_token(fallback) is None
