@@ -23,6 +23,7 @@ langchain-openai
 
 # Email
 resend
+Pillow
 
 # Tests
 pytest

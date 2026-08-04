@@ -14,6 +14,7 @@ across recipients.
 import html
 import re
 from datetime import datetime
+from urllib.parse import urlencode
 
 from sqlmodel import Session
 from sqlmodel import select
@@ -24,6 +25,7 @@ from telogify.analysis.race_pace import constructor_median_gaps
 from telogify.analysis.schedule import fetch_season_schedule, pick_next_event
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
 from telogify.analysis.sessions import pick_session
+from telogify.chipgen import measure_text_chip
 from telogify.config import settings
 from telogify.models import Insight, QualiInsight, RaceWeekend
 from telogify.models import Session as SessionRow
@@ -379,16 +381,6 @@ def _nb_shadow_box(
     )
 
 
-def _nb_stamp(text_html: str, *, bg: str = "#E10600", fg: str | None = None, inline: bool = True) -> str:
-    return _nb_shadow_box(
-        text_html, bg=bg, border_width="1.5px", offset=3, inline=inline,
-        box_style=(
-            f"color:{fg or _on_color(bg)};font-family:{_NB_DISPLAY_FONT};font-weight:700;"
-            "padding:10px 18px;font-size:15px;letter-spacing:0.02em;"
-        ),
-    )
-
-
 def _nb_logo_chip(base_url: str) -> str:
     """The masthead icon: one hosted flat PNG (frontend/public/logo-chip.png) baking in the
     whole shadow-box look (white backdrop, black border, the icon itself), not a live CSS box
@@ -406,11 +398,10 @@ def _nb_logo_chip(base_url: str) -> str:
 # Section-title chips (frontend/public/chips/chip-section-*.png): the three panel headings below
 # are always the exact same word-for-word string with the same fixed black/white color scheme,
 # regardless of weekend, so -- like WINNER and the masthead logo above -- they're safe to
-# pre-bake once and serve as a hosted image, immune to Gmail's dark-mode CSS rewriting. This is
-# NOT a general pattern for every `.section-title`/`.lbl` in this file: sector/qualifying/next-up
-# labels and insight-number badges are excluded because their color and/or text is per-weekend
-# dynamic (team color, round number, driver name), which a static pre-baked image can't reflect;
-# those stay live CSS. See CLAUDE.md's Email digest section for the full background.
+# pre-bake once and serve as a STATIC hosted image, immune to Gmail's dark-mode CSS rewriting.
+# Everything else that's still team-colored or per-weekend text (driver name, event name, sector/
+# qualifying/next-up labels, insight-number badges) can't be pre-baked this way since its text
+# and/or color changes every weekend -- see _dynamic_chip_img below for those instead.
 _SECTION_TITLE_CHIPS = {
     "practice": ("chip-section-practice.png", "FAST OUT THE GATES IN PRACTICE", 414, 38),
     "pace": ("chip-section-pace.png", "SUNDAY&rsquo;S FRONT RUNNERS", 337, 38),
@@ -424,6 +415,43 @@ def _nb_section_title_chip(base_url: str, key: str) -> str:
     return (
         f'<img src="{html.escape(url)}" width="{width}" height="{height}" alt="{alt}" '
         f'style="display:inline-block;vertical-align:middle;margin-bottom:28px;">'
+    )
+
+
+def _dynamic_chip_img(
+    text: str,
+    *,
+    font_size: int,
+    text_color: str,
+    bg_color: str | None = None,
+    padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+    border_radius: int = 0,
+    style_extra: str = "",
+) -> str:
+    """<img> tag for team-colored/per-weekend-dynamic text (driver name, event name, sector/
+    qualifying/next-up labels, insight numbers): served on demand at send time by
+    telogify.api.routes' /chip/text.png (chipgen.py), since unlike WINNER/section-titles above,
+    neither the text nor the color is fixed across weekends, so a one-time static file can't
+    represent it. Width/height come from chipgen.measure_text_chip with the exact same arguments
+    passed in the URL, so what /chip/text.png later serves always matches the size this <img> tag
+    already told Gmail to expect. See chipgen.py's module docstring for the full background."""
+    width, height = measure_text_chip(text, font_size=font_size, padding=padding)
+    params: dict[str, str | int] = {"text": text, "font_size": font_size, "text_color": text_color}
+    if bg_color is not None:
+        params["bg_color"] = bg_color
+    if border_radius:
+        params["border_radius"] = border_radius
+    top, right, bottom, left = padding
+    for name, value in (
+        ("padding_top", top), ("padding_right", right),
+        ("padding_bottom", bottom), ("padding_left", left),
+    ):
+        if value:
+            params[name] = value
+    url = f"{settings.api_base_url.rstrip('/')}/chip/text.png?{urlencode(params)}"
+    return (
+        f'<img src="{html.escape(url)}" width="{width}" height="{height}" '
+        f'alt="{html.escape(text)}" style="display:inline-block;vertical-align:middle;{style_extra}">'
     )
 
 
@@ -471,16 +499,12 @@ _NB_STYLE = f"""
      everything else in this file's CSS support notes. */
   .pace-bar {{ max-width: 45%; }}
   .practice-tile-inner {{ font-size: 13px; }}
-  .practice-tile-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 11px; background: #FFE500; color: #fff; display: inline-block; padding: 1px 6px; margin-bottom: 6px; }}
   .practice-tile-inner .val {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 20px; margin: 2px 0; }}
-  .quali-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; background: #0a0a0a; color: #fff; display: inline-block; padding: 3px 10px; }}
   .quali-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 21px; margin: 12px 0 8px; line-height: 1.15; }}
   .quali-inner p {{ font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }}
   .insight-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 19px; margin: 0 0 8px; line-height: 1.2; }}
   .insight-inner p {{ font-size: 14px; line-height: 1.65; margin: 0; }}
-  .nb-num {{ display: inline-block; font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; padding: 4px 9px; border-radius: 3px; margin-bottom: 14px; }}
   .next-race-inner h3 {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:24px; margin:12px 0 6px; }}
-  .next-race-inner .lbl {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:11px; color:#fff; background:#E10600; padding:3px 9px; display:inline-block; }}
   .next-race-inner .stats {{ margin-top:14px; font-size:13px; }}
   /* item 7: label sits to the right of the number, baseline-aligned ("27 days away" as one
      phrase), not stacked below it -- the old display:block on b pushed the label onto its own
@@ -565,13 +589,17 @@ def _nb_headline_html(winner: dict | None) -> str:
     sizes or boxes, so the line aligns and wraps evenly by construction."""
     raw_team = winner["constructor"] if winner and winner.get("constructor") else None
     full_name = _full_driver_name(winner["driver"]) if winner else None
-    name = html.escape(full_name.upper()) if full_name else None
+    name = full_name.upper() if full_name else None
     team = html.escape(raw_team) if raw_team else None
     team_color = _team_color(raw_team) if raw_team else "#E10600"
 
     if name and team:
+        # Dynamic chip, not live `color:{team_color}` CSS: a real send measured the driver name's
+        # bright team color (e.g. Mercedes teal) crushed by Gmail's dark-mode inversion. See
+        # _dynamic_chip_img's docstring.
+        name_chip = _dynamic_chip_img(name, font_size=28, text_color=team_color)
         spans = (
-            f'<span class="name" style="color:{team_color}">{name}</span> '
+            f'{name_chip} '
             f'<span class="verdict">WON FOR {team.upper()}!</span>'
         )
     else:
@@ -623,8 +651,12 @@ def _nb_practice_html(practice: dict | None, base_url: str) -> str:
     # zero-outer-padding/inner-wrapper structure avoids relying on negative margin at all.
     tile_divs = [
         _nb_shadow_box(
-            f'<span class="lbl" style="background:{_team_color(constructor)};color:{_on_color(_team_color(constructor))}">{html.escape(label)}</span>'
-            f'<div style="padding:0 16px 18px;">'
+            _dynamic_chip_img(
+                label, font_size=11, text_color=_on_color(_team_color(constructor)),
+                bg_color=_team_color(constructor), padding=(1, 6, 1, 6),
+                style_extra="margin-bottom:6px;",
+            )
+            + f'<div style="padding:0 16px 18px;">'
             f'<p class="val">{html.escape(value)}{mph_html}</p>'
             f'<p style="margin:0;">{html.escape(constructor)} &middot; {html.escape(driver_bit)}</p>'
             f'</div>',
@@ -663,8 +695,11 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
     # box's own comment for why this avoids negative margin entirely (verified 0px in Chromium,
     # not honored by real Gmail).
     inner = (
-        f'<span class="lbl" style="background:{lbl_color};color:{_on_color(lbl_color)}">QUALIFYING HOUR</span>'
-        f'<div style="padding:12px 24px 28px;"><h3>{header}</h3>'
+        _dynamic_chip_img(
+            "QUALIFYING HOUR", font_size=12, text_color=_on_color(lbl_color), bg_color=lbl_color,
+            padding=(3, 10, 3, 10),
+        )
+        + f'<div style="padding:12px 24px 28px;"><h3>{header}</h3>'
         f'<p>{body}</p></div>'
     )
     return _nb_shadow_box(
@@ -796,8 +831,11 @@ def _nb_next_race_html(next_race: dict | None) -> str:
     # with the rest padded by an inner wrapper instead -- see the headline box's own comment for
     # why (negative margin verified 0px in Chromium, not honored by real Gmail).
     inner = (
-        f'<span class="lbl">NEXT UP &middot; ROUND {next_race["round"]}</span>'
-        f'<div style="padding:12px 24px 26px;"><h3>{html.escape(next_race["name"])}</h3>{place}'
+        _dynamic_chip_img(
+            f'NEXT UP · ROUND {next_race["round"]}', font_size=11, text_color="#fff",
+            bg_color="#E10600", padding=(3, 9, 3, 9),
+        )
+        + f'<div style="padding:12px 24px 26px;"><h3>{html.escape(next_race["name"])}</h3>{place}'
         # Table row, not display:flex+gap (unsupported for most Gmail recipients) -- was
         # collapsing "4 days away" / "4.381 km circuit" into one run-on line with no spacing.
         f'<table role="presentation" cellpadding="0" cellspacing="0" class="stats"><tr>{days_stat}{km_stat}</tr></table></div>'
@@ -837,11 +875,14 @@ def render_email_neubrutalist(
             # moving part, and it reads as a section marker rather than a stuck-on sticker.
             # Text color was hardcoded white, which fails contrast against light team colors
             # even in light mode (Cadillac gold, ~1.5:1) -- _on_color picks per-team like every
-            # other solid-fill chip already does (stamps, sector labels, quali label). As a side
-            # effect this also fixes the dark-mode simulation: a dark _on_color pick (ink) turns
-            # light under Gmail's measured transform while a medium-light team-color background
-            # turns dark, landing on light-text-on-dark instead of dark-transforming-to-dark.
-            num_tag = f'<span class="nb-num" style="background:{color};color:{_on_color(color)}">{i:02d}</span>'
+            # other solid-fill chip already does (stamps, sector labels, quali label). Now a
+            # dynamic image (like the other team-colored chips), so this renders exactly as
+            # authored in every client regardless of theme -- no dark-mode transform to reason
+            # about at all, unlike when this was still live CSS.
+            num_tag = _dynamic_chip_img(
+                f"{i:02d}", font_size=12, text_color=_on_color(color), bg_color=color,
+                padding=(4, 9, 4, 9), border_radius=3, style_extra="margin-bottom:14px;",
+            )
             # Alternating shadow direction on even cards matches the comp's
             # :nth-child(odd)/:nth-child(even) collage motif -- the shadow's own side is
             # confirmed supported, so there's no reason to flatten every card to the same
@@ -924,7 +965,10 @@ def render_email_neubrutalist(
 <div class="sheet">
 
   <div class="masthead">
-    {_nb_stamp(event_name)}
+    {_dynamic_chip_img(
+        weekend.event_name, font_size=15, text_color=_on_color("#E10600"), bg_color="#E10600",
+        padding=(10, 18, 10, 18),
+    )}
     <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:18px auto 0;"><tr>
       <td style="padding-right:10px;vertical-align:middle;">{_nb_logo_chip(base_url)}</td>
       <td style="vertical-align:middle;"><p class="wordmark" style="margin:0;">Telo<span>gify</span></p></td>

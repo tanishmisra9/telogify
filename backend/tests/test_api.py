@@ -562,3 +562,34 @@ def test_subscribe_and_dedupe(client, test_engine):
         from sqlmodel import select
         subs = db.exec(select(Subscriber)).all()
     assert len(subs) == 1 and subs[0].followed_constructor == "Ferrari"
+
+
+def test_chip_text_png_serves_valid_image(client):
+    resp = client.get(
+        "/chip/text.png",
+        params={"text": "GEORGE RUSSELL", "font_size": 28, "text_color": "#27F4D2"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"  # PNG magic bytes
+
+
+def test_chip_text_png_with_background_serves_valid_image(client):
+    resp = client.get(
+        "/chip/text.png",
+        params={
+            "text": "Australian Grand Prix", "font_size": 15, "text_color": "#fff",
+            "bg_color": "#E10600", "padding_top": 10, "padding_right": 18,
+            "padding_bottom": 10, "padding_left": 18,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_chip_text_png_rejects_invalid_color(client):
+    resp = client.get(
+        "/chip/text.png",
+        params={"text": "x", "font_size": 12, "text_color": "not-a-color"},
+    )
+    assert resp.status_code == 422

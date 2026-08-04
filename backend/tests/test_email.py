@@ -142,10 +142,15 @@ def test_render_email_neubrutalist_renders_core_content():
     # practice headlines the real absolute sector time (28.094s), not the margin (0.019s)
     assert "28.094s" in html
     assert "0.019s" not in html
-    assert "#E8002D" in html  # Ferrari team color present (top speed row)
+    assert "%23E8002D" in html  # Ferrari team color present (top speed row, URL-encoded #E8002D)
     # attempt 6: one-line headline, uniform size -- driver name in the winner's team color,
-    # verdict in a black box, no more mixed-size ransom-note spans
-    assert '<span class="name" style="color:#E8002D">CHARLES LECLERC</span>' in html
+    # verdict in a black box, no more mixed-size ransom-note spans.
+    # Driver name is a dynamic chip image now (like the pace-spread swatches and WINNER above),
+    # not live `color:` CSS -- a real send measured the bright team color (Mercedes teal) crushed
+    # by Gmail's dark-mode inversion. font_size=28 matches .headline's own font-size.
+    assert (
+        "chip/text.png?text=CHARLES+LECLERC&amp;font_size=28&amp;text_color=%23E8002D" in html
+    )
     assert '<span class="verdict">WON FOR FERRARI!</span>' in html
     # sub-line names the faster rival when it differs from the winner's own team
     assert "Though Mercedes had the faster race pace." in html

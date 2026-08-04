@@ -31,6 +31,12 @@ class Settings(BaseSettings):
 
     web_base_url: str = "http://localhost:5173"
 
+    # The deployed API's own public URL (Railway) -- distinct from web_base_url (the frontend,
+    # Vercel). Real email sends need this because the dynamic chip images (chipgen.py: driver
+    # name, event name, team-colored labels) are served BY this backend at /chip/text.png, and
+    # Gmail has to fetch that URL from the public internet, not localhost.
+    api_base_url: str = "http://localhost:8000"
+
     # Fuel-load correction: corrected = raw - fuel_time_cost_s_per_kg * burn_rate_kg_per_lap *
     # (total_laps - lap_number), computed per race in ingest/stints.py since burn rate depends on
     # that circuit's lap count. fuel_kg_per_race is the 2026 FIA race fuel allowance (down from

@@ -1,12 +1,15 @@
 """Read endpoints for the weekend page (insights, pace, sectors, top speeds, qualifying
 car character, tyre degradation, finishing order, session progress), plus subscribe."""
 
+import re
 from datetime import datetime, timezone
 from functools import lru_cache
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlmodel import Session, select
+
+from telogify.chipgen import render_text_chip_png
 
 from telogify.analysis.schedule import Event, fetch_season_schedule, pick_next_event
 from telogify.ingest.loader import _STALE_AFTER, session_schedule
@@ -748,3 +751,36 @@ def subscribe(body: SubscribeIn, db: Session = Depends(get_session)):
     db.add(Subscriber(email=body.email, followed_constructor=body.followed_constructor))
     db.commit()
     return {"status": "subscribed"}
+
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$")
+
+
+def _validate_hex_color(value: str, param: str) -> None:
+    # email.py's _on_color returns the 3-digit "#fff" shorthand for white, alongside 6-digit
+    # team-color hexes -- both are valid CSS/PIL colors, so both are accepted here.
+    if not _HEX_COLOR_RE.match(value):
+        raise HTTPException(422, f"{param} must be a #rgb or #rrggbb hex color, got {value!r}")
+
+
+# Serves the dynamic (per-weekend text/color) chips email.py's render functions reference by URL
+# -- see telogify/chipgen.py's module docstring for why this exists (Gmail's dark-mode CSS
+# rewriting crushes bright team colors; a hosted image is immune). Every parameter is threaded
+# straight through: email.py builds the URL with the SAME arguments it fed to
+# chipgen.measure_text_chip for the <img width/height> attributes, so what's served here always
+# matches what the email already told Gmail to expect the size of.
+@router.get("/chip/text.png")
+def chip_text_png(
+    text: str, font_size: int, text_color: str,
+    bg_color: str | None = None, border_radius: int = 0,
+    padding_top: int = 0, padding_right: int = 0, padding_bottom: int = 0, padding_left: int = 0,
+):
+    _validate_hex_color(text_color, "text_color")
+    if bg_color is not None:
+        _validate_hex_color(bg_color, "bg_color")
+    png = render_text_chip_png(
+        text, font_size=font_size, text_color=text_color, bg_color=bg_color,
+        padding=(padding_top, padding_right, padding_bottom, padding_left),
+        border_radius=border_radius,
+    )
+    return Response(content=png, media_type="image/png")
