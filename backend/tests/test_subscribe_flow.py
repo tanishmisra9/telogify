@@ -171,6 +171,44 @@ def test_rate_limit_blocks_and_is_audited(client, test_engine, sent, monkeypatch
     assert not sent["verify"]
 
 
+def test_trigger_written_rows_carry_user_context(client, test_engine, sent):
+    """The requirement is triggers that log changes AND user context. The trigger reads the GUCs,
+    which are transaction-local, so they have to be re-applied before every commit. Caught by
+    inspecting a real request's audit trail: row_inserted had a null IP and user agent."""
+    client.post("/subscribe", json={"email": "ctx@x.com"}, headers={"user-agent": "probe/2.0"})
+
+    with Session(test_engine) as s:
+        set_service_scope(s)
+        rows = s.execute(
+            text(
+                "SELECT action, actor_ip_hash, actor_user_agent FROM subscriber_audit"
+                " WHERE email = :e ORDER BY id"
+            ),
+            {"e": "ctx@x.com"},
+        ).mappings()
+        by_action = {r["action"]: r for r in rows}
+
+    assert "row_inserted" in by_action, "the trigger should have fired"
+    assert by_action["row_inserted"]["actor_user_agent"] == "probe/2.0"
+    assert by_action["row_inserted"]["actor_ip_hash"], "trigger row must carry the hashed IP"
+
+
+def test_a_failing_send_reports_cleanly_instead_of_500ing(client, test_engine, monkeypatch):
+    """Found by driving the real form, not by a test: Resend raised, and the whole request 500'd
+    after the row was already written. A provider outage must not take signup down."""
+    def boom(*a, **k):
+        raise RuntimeError("resend is unhappy")
+
+    monkeypatch.setattr("telogify.api.routes.send_verification_email", boom)
+    r = client.post("/subscribe", json={"email": "sendfail@x.com"})
+
+    assert r.status_code == 503
+    assert "try again" in r.json()["detail"].lower()
+    actions = _audit_actions(test_engine, "sendfail@x.com")
+    assert "verification_send_failed" in actions
+    assert "verification_sent" not in actions
+
+
 def test_unsubscribed_address_can_opt_in_again(client, test_engine, sent):
     client.post("/subscribe", json={"email": "again@x.com"})
     client.post("/subscribe/verify", json={"token": sent["verify"][0][1]})

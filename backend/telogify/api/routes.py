@@ -38,7 +38,7 @@ from telogify.ingest.results import (
     points_for_session,
     strategy_string,
 )
-from telogify.db import get_session, set_subscriber_context
+from telogify.db import get_session, set_db_context, set_subscriber_context
 from telogify.email import send_verification_email, send_welcome_email
 from telogify.subscriptions import (
     hash_ip,
@@ -781,7 +781,17 @@ def subscribe(body: SubscribeIn, request: Request, db: Session = Depends(get_ses
         # The only case worth a real error: the visitor mistyped and can fix it.
         raise HTTPException(422, "That does not look like an email address.")
 
+    def set_ctx() -> None:
+        # Re-applied before every commit, not set once: the GUCs are transaction-local, so each
+        # commit discards them. Without this the audit TRIGGER's own rows (row_inserted /
+        # row_updated) land with a null IP and user agent, since only the app-written rows carry
+        # those columns explicitly. Keeps scope=service, which this endpoint needs for the audit
+        # table; the actor fields are context for the log, not an access grant.
+        set_db_context(db, scope="service", actor_key=f"email:{email}",
+                       actor_ip_hash=ip_hash, actor_user_agent=user_agent)
+
     def audit(action: str) -> None:
+        set_ctx()
         db.add(SubscriberAudit(email=email, action=action, actor_ip_hash=ip_hash,
                                actor_user_agent=user_agent, actor_key=f"email:{email}"))
         db.commit()
@@ -811,7 +821,19 @@ def subscribe(body: SubscribeIn, request: Request, db: Session = Depends(get_ses
                           verify_expires_at=expires))
     audit("signup_requested")
 
-    send_verification_email(email, token)
+    # A send failure must not 500 the endpoint. Found by driving the real form: Resend rejected
+    # an address and the whole request raised, after the row had already been written, leaving a
+    # pending subscriber, a stack trace in the response, and signup down for as long as Resend
+    # was unhappy. Reported honestly instead of claiming the mail is on its way, because the
+    # visitor would otherwise be waiting on an inbox that will never receive. Retrying is safe:
+    # the row already exists, and a second attempt reissues the token and sends again.
+    try:
+        send_verification_email(email, token)
+    except Exception:
+        db.rollback()
+        audit("verification_send_failed")
+        raise HTTPException(503, "We could not send the confirmation email. Please try again.")
+
     audit("verification_sent")
     return same_answer
 
