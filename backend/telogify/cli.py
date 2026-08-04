@@ -562,16 +562,79 @@ def list_insights(
 
 
 @app.command("send-digest")
-def send_digest(year: int, round: int) -> None:
-    """Email the 3 insights for a weekend via Resend."""
-    from sqlmodel import Session
+def send_digest(
+    year: int,
+    round: int,
+    to_subscribers: bool = typer.Option(
+        False, "--to-subscribers", help="Send to every confirmed subscriber."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="List who would receive it, send nothing."
+    ),
+) -> None:
+    """Email the 3 insights for a weekend via Resend.
 
-    from telogify.db import engine
+    Default behaviour is unchanged. --to-subscribers is opt-in and asks for confirmation before
+    a real mass send, because the subscriber list is new and a mistaken blast cannot be undone.
+    """
+    from sqlmodel import Session
+    from sqlmodel import select
+
+    from telogify.db import engine, set_service_scope
     from telogify.email import send_digest as run_send
+    from telogify.models import Subscriber
 
     with Session(engine) as db:
+        if to_subscribers or dry_run:
+            set_service_scope(db)
+            recipients = [
+                s.email
+                for s in db.exec(
+                    select(Subscriber).where(Subscriber.status == "confirmed")
+                ).all()
+            ]
+            if not recipients:
+                console.print("[yellow]No confirmed subscribers.[/yellow]")
+                return
+            console.print(f"{len(recipients)} confirmed subscriber(s):")
+            for email in recipients:
+                console.print(f"  {email}")
+            if dry_run:
+                console.print("[yellow]Dry run: nothing sent.[/yellow]")
+                return
+            if not typer.confirm(f"Send the {year} round {round} digest to all {len(recipients)}?"):
+                console.print("[yellow]Aborted.[/yellow]")
+                return
+
         sent = run_send(year, round, db)
     console.print(f"[green]Sent digest to {sent} recipient(s).[/green]")
+
+
+@app.command("preview-optin-email")
+def preview_optin_email(
+    kind: str = typer.Argument(..., help="verify | welcome"),
+    out: str = typer.Option("", "--out", help="Path to write. Defaults to optin-<kind>.html."),
+) -> None:
+    """Render a verification or welcome email to a local HTML file. No send, no API key.
+
+    Same role as preview-digest: these have to be checked against a real Gmail screenshot at
+    the calibrated 514px viewport, never trusted from how Chromium renders them.
+    """
+    from pathlib import Path
+
+    from telogify.email import render_verification_email, render_welcome_email
+
+    renderers = {
+        "verify": lambda: render_verification_email("PREVIEW_TOKEN"),
+        "welcome": lambda: render_welcome_email("1.previewsignature"),
+    }
+    if kind not in renderers:
+        console.print(f"[red]kind must be one of: {', '.join(renderers)}[/red]")
+        raise typer.Exit(1)
+
+    path = Path(out or f"optin-{kind}.html")
+    path.write_text(renderers[kind]())
+    console.print(f"[green]Wrote {path}[/green]")
 
 
 @app.command("preview-digest")
