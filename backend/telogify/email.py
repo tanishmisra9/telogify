@@ -27,6 +27,7 @@ from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sec
 from telogify.analysis.sessions import pick_session
 from telogify.chipgen import measure_text_chip
 from telogify.config import settings
+from telogify.db import set_service_scope
 from telogify.models import Insight, QualiInsight, RaceWeekend
 from telogify.models import Session as SessionRow
 from telogify.models import SectorBest, SessionResult, StraightSegment, Subscriber
@@ -1160,7 +1161,13 @@ def send_digest(year: int, round: int, db: Session, recipients: list[str] | None
     weekend, insights = _load_weekend_and_insights(year, round, db)
 
     if recipients is None:
-        recipients = [s.email for s in db.exec(select(Subscriber)).all()]
+        # subscriber is under FORCE row level security (security_sql.py); without service scope
+        # this select returns zero rows and the digest would silently send to nobody.
+        set_service_scope(db)
+        recipients = [
+            s.email
+            for s in db.exec(select(Subscriber).where(Subscriber.status == "confirmed")).all()
+        ]
     if not recipients:
         return 0
 
