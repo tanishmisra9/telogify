@@ -16,6 +16,7 @@ venv/
 # FastF1 cache
 backend/.fastf1_cache/
 backend/.fastf1-cache/
+.fastf1_cache/
 *.ff1pkl
 
 # Insight / model comparison snapshots (local exports, not product source)
