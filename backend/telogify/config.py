@@ -55,10 +55,29 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.environment.strip().lower() == "production"
 
+    #: Extra browser origins allowed to call the API, comma separated. Only needed for a origin
+    #: that is neither WEB_BASE_URL nor its apex/www sibling (a preview deployment, say).
+    extra_cors_origins: str = ""
+
     @property
     def cors_origins(self) -> list[str]:
-        """The frontend origin, plus the Vite dev server so local work keeps functioning."""
-        return list(dict.fromkeys([self.web_base_url.rstrip("/"), "http://localhost:5173"]))
+        """The frontend origin, its apex/www sibling, the Vite dev server, and any extras.
+
+        The sibling matters: this replaced allow_origins=["*"], so an origin that is merely
+        *nearly* right is now a hard failure for every request the site makes, not just signup.
+        A reader landing on the apex when WEB_BASE_URL names www (or the reverse) would have seen
+        the whole site fail to load. Cheap to accept both; expensive to get wrong.
+        """
+        primary = self.web_base_url.rstrip("/")
+        origins = [primary, "http://localhost:5173"]
+        if "://www." in primary:
+            origins.append(primary.replace("://www.", "://", 1))
+        elif "://" in primary:
+            scheme, _, host = primary.partition("://")
+            if host and not host.startswith("localhost"):
+                origins.append(f"{scheme}://www.{host}")
+        origins.extend(o.strip() for o in self.extra_cors_origins.split(",") if o.strip())
+        return list(dict.fromkeys(origins))
 
     # Fuel-load correction: corrected = raw - fuel_time_cost_s_per_kg * burn_rate_kg_per_lap *
     # (total_laps - lap_number), computed per race in ingest/stints.py since burn rate depends on

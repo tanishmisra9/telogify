@@ -1,5 +1,6 @@
 """Engine + session factory."""
 
+import logging
 from collections.abc import Iterator
 
 import numpy as np
@@ -55,6 +56,35 @@ def set_service_scope(session: Session) -> None:
     set_db_context(session, scope="service")
 
 
+_rls_role_present: bool | None = None
+
+
+def _rls_role_exists(session: Session) -> bool:
+    """Whether the RLS role was creatable on this database, cached per process.
+
+    It may not have been: CREATE ROLE needs CREATEROLE or superuser, and security_sql.py
+    deliberately warns and continues rather than crash-looping the API over it. When absent,
+    the request still runs correctly, RLS simply does not bite, and the audit trigger plus the
+    append-only guarantee (which never depended on the role) carry on unaffected. Logged once so
+    the degradation is visible rather than silent.
+    """
+    global _rls_role_present
+    if _rls_role_present is None:
+        _rls_role_present = bool(
+            session.execute(
+                text("SELECT 1 FROM pg_roles WHERE rolname = :name"),
+                {"name": SUBSCRIBER_RLS_ROLE},
+            ).scalar()
+        )
+        if not _rls_role_present:
+            logging.getLogger(__name__).warning(
+                "%s is missing, so row level security is not enforced on subscriber. "
+                "Create it with CREATEROLE privileges to enable it.",
+                SUBSCRIBER_RLS_ROLE,
+            )
+    return _rls_role_present
+
+
 def set_subscriber_context(
     session: Session,
     *,
@@ -77,7 +107,8 @@ def set_subscriber_context(
     """
     set_db_context(session, actor_key=actor_key, actor_ip_hash=ip_hash,
                    actor_user_agent=user_agent, scope="")
-    session.execute(text(f"SET LOCAL ROLE {SUBSCRIBER_RLS_ROLE}"))
+    if _rls_role_exists(session):
+        session.execute(text(f"SET LOCAL ROLE {SUBSCRIBER_RLS_ROLE}"))
 
 
 def get_session() -> Iterator[Session]:

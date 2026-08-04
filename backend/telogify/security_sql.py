@@ -40,11 +40,21 @@ What it enforces, and what it honestly does not:
 #: are cluster-wide so this must tolerate already existing from another database.
 SUBSCRIBER_RLS_ROLE = "telogify_subscriber_rls"
 
+# CREATE ROLE needs CREATEROLE or superuser, which the deploy's DB user may not have. This
+# migration runs inside railway.toml's start command, so raising here would crash-loop the API
+# and take the whole site down over a hardening feature. Degrade instead: warn, skip, and let
+# db.py notice the role is missing at runtime. The audit trigger and append-only guarantee,
+# which are the stronger of the two protections, do not depend on this role at all.
 _RLS_ROLE = f"""
 DO $do$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{SUBSCRIBER_RLS_ROLE}') THEN
-        CREATE ROLE {SUBSCRIBER_RLS_ROLE} NOSUPERUSER NOLOGIN NOINHERIT;
+        BEGIN
+            CREATE ROLE {SUBSCRIBER_RLS_ROLE} NOSUPERUSER NOLOGIN NOINHERIT;
+        EXCEPTION WHEN insufficient_privilege THEN
+            RAISE WARNING 'Could not create {SUBSCRIBER_RLS_ROLE} (needs CREATEROLE). Row level '
+                          'security will not be enforced; audit triggers are unaffected.';
+        END;
     END IF;
 END $do$;
 """
@@ -52,9 +62,15 @@ END $do$;
 # No DELETE: unsubscribing flips `status`, it never removes the consent record. The audit table
 # is deliberately absent here, so a restricted session cannot read or write the log at all --
 # rate limiting and security-event logging run in service scope before the drop into this role.
+# Guarded by the same existence check, since the role may not have been creatable above.
 _RLS_ROLE_GRANTS = f"""
-GRANT SELECT, INSERT, UPDATE ON subscriber TO {SUBSCRIBER_RLS_ROLE};
-GRANT USAGE, SELECT ON SEQUENCE subscriber_id_seq TO {SUBSCRIBER_RLS_ROLE};
+DO $do$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{SUBSCRIBER_RLS_ROLE}') THEN
+        GRANT SELECT, INSERT, UPDATE ON subscriber TO {SUBSCRIBER_RLS_ROLE};
+        GRANT USAGE, SELECT ON SEQUENCE subscriber_id_seq TO {SUBSCRIBER_RLS_ROLE};
+    END IF;
+END $do$;
 """
 
 # A request may touch a subscriber row only if it proves it knows that row's email (signup),
