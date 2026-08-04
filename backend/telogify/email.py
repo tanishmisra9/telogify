@@ -1316,31 +1316,39 @@ def render_verification_email(token: str) -> str:
     with the only action that matters. The product story belongs in the welcome email, which is
     read by someone who has already committed."""
     link = verify_url(token)
-    site = html.escape(settings.web_base_url.rstrip("/"))
+    # Bare host, no scheme: this line is read as prose, and "https://" in the middle of a
+    # sentence is machine address rather than something a person says.
+    site = html.escape(settings.web_base_url.split("://", 1)[-1].rstrip("/"))
+    # One treatment for every line below the heading. The block used to split into a 16px ink
+    # lead and 13px grey small print, which ranked the sentences against each other; they are
+    # all things the reader needs before clicking, so none of them is fine print.
+    para = (
+        f"font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;"
+    )
     body = f"""
   <p style="font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:26px;line-height:1.15;color:#0a0a0a;margin:26px 0 0;">
     Confirm your seat.
   </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;margin:14px 0 0;">
-    One click and you are on the grid.
+  <p style="{para}margin:14px 0 0;">
+    One click and you're on the grid.
   </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.5;color:#555;margin:18px 0 0;">
+  <p style="{para}margin:14px 0 0;">
     Button not working? Paste this into your browser:<br>
     <a href="{html.escape(link)}" style="color:#0a0a0a;word-break:break-all;">{html.escape(link)}</a>
   </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.6;color:#555;margin:14px 0 0;">
+  <p style="{para}margin:14px 0 0;">
     This link expires in {VERIFY_TOKEN_TTL_HOURS} hours. If you did not ask for this, ignore it
-    and nothing happens. Nobody joins the grid without this click.
+    and nothing happens.
   </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.6;color:#555;margin:14px 0 0;">
-    You are receiving this because this address was entered at {site}.
+  <p style="{para}margin:14px 0 0;">
+    You are receiving this because this email address was entered at {site}.
   </p>
 
-  <div style="text-align:center;">{_nb_cta(link, "SIGN THE CONTRACT")}</div>
+{_nb_cta(link, "SIGN THE CONTRACT")}
 """
     # Footer is the copyright alone. The provenance line and the expiry notice both moved up into
     # the body: they are the two things a reader deciding whether to trust this needs, and
@@ -1359,15 +1367,15 @@ def render_verification_plaintext(token: str) -> str:
     return "\n".join([
         "CONFIRM YOUR SEAT",
         "",
-        "One click and you are on the grid:",
+        "One click and you're on the grid:",
         "",
         verify_url(token),
         "",
         f"This link expires in {VERIFY_TOKEN_TTL_HOURS} hours. If you did not ask for this,",
-        "ignore it and nothing happens. Nobody joins the grid without this click.",
+        "ignore it and nothing happens.",
         "",
-        f"You are receiving this because this address was entered at "
-        f"{settings.web_base_url.rstrip('/')}.",
+        "You are receiving this because this email address was entered at "
+        f"{settings.web_base_url.split('://', 1)[-1].rstrip('/')}.",
     ])
 
 
