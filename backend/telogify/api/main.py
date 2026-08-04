@@ -18,6 +18,9 @@ app = FastAPI(title="Telogify")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    # Vercel mints a new hostname per deployment, so a preview cannot be listed ahead of time.
+    # Unset in production; see config.cors_origin_regex for why it must stay project-scoped.
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )

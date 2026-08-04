@@ -620,3 +620,22 @@ def test_production_origins_are_always_allowed_for_cors():
         origins = Settings(web_base_url=web_base_url).cors_origins
         for production_origin in PRODUCTION_ORIGINS:
             assert production_origin in origins, (web_base_url, origins)
+
+
+def test_cors_origin_regex_scopes_preview_deployments():
+    """Vercel mints a new hostname per deployment, so previews cannot be listed ahead of time.
+
+    The regex must stay project-scoped: a bare `.*\\.vercel\\.app` would let any site hosted on
+    Vercel call this API. Unset by default, so production matches no wildcard at all.
+    """
+    import re
+
+    from telogify.config import Settings
+
+    assert Settings().cors_origin_regex == "", "previews must be opt-in"
+
+    pattern = re.compile(r"https://telogify-[a-z0-9-]+\.vercel\.app")
+    assert pattern.fullmatch("https://telogify-git-pre-prod-tanish.vercel.app")
+    assert pattern.fullmatch("https://telogify-abc123.vercel.app")
+    assert not pattern.fullmatch("https://evil.vercel.app")
+    assert not pattern.fullmatch("https://telogify-x.vercel.app.evil.dev")

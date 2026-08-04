@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     #: that is neither WEB_BASE_URL nor its apex/www sibling (a preview deployment, say).
     extra_cors_origins: str = ""
 
+    #: Regex for origins allowed in addition to the list above, for hosts whose name is not
+    #: fixed. Vercel mints a new URL per deployment, so a preview cannot be enumerated ahead of
+    #: time; only the per-branch alias is stable. Set this to something scoped to the project,
+    #: e.g. `https://telogify-[a-z0-9-]+\.vercel\.app`, never a bare `.*\.vercel\.app`, which
+    #: would let any site hosted on Vercel call this API.
+    #: Empty by default: previews are opt-in, and production should not be matching wildcards.
+    cors_origin_regex: str = ""
+
     @property
     def cors_origins(self) -> list[str]:
         """The frontend origin, its apex/www sibling, the Vite dev server, and any extras.
