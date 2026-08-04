@@ -14,6 +14,8 @@ const Weekends = lazy(() => import('@/pages/Weekends').then((m) => ({ default: m
 const WeekendPage = lazy(() => import('@/pages/WeekendPage').then((m) => ({ default: m.WeekendPage })))
 const SeasonPage = lazy(() => import('@/pages/SeasonPage').then((m) => ({ default: m.SeasonPage })))
 const SubscribePage = lazy(() => import('@/pages/SubscribePage').then((m) => ({ default: m.SubscribePage })))
+const VerifyPage = lazy(() => import('@/pages/VerifyPage').then((m) => ({ default: m.VerifyPage })))
+const UnsubscribePage = lazy(() => import('@/pages/UnsubscribePage').then((m) => ({ default: m.UnsubscribePage })))
 
 // Route changes keep the previous scroll offset by default; reset to the top so a weekend
 // clicked from partway down the list opens at its heading, not mid-page.
@@ -55,6 +57,10 @@ export default function App() {
                 <Route path="/season" element={<SeasonPage />} />
                 <Route path="/season/:year" element={<SeasonPage />} />
                 <Route path="/subscribe" element={<SubscribePage />} />
+                {/* Nav highlights by pathname.startsWith, so /subscribe/verify keeps the
+                    Subscribe tab active. /unsubscribe matches no nav entry, which is right. */}
+                <Route path="/subscribe/verify" element={<VerifyPage />} />
+                <Route path="/unsubscribe" element={<UnsubscribePage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Suspense>

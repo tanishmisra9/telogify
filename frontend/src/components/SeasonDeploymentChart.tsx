@@ -109,7 +109,7 @@ export function SeasonDeploymentChart({
     {/* Mobile only gets the plain desktop-only note below (no tab selector, no outer panel
         chrome around an interactive chart that isn't there) -- this whole panel, tabs
         included, is desktop-only. */}
-    <div className="glass hidden w-full rounded-[--radius-panel] p-5 md:block">
+    <div className="glass hidden w-full rounded-panel p-5 md:block">
       {/* Right-aligned, no title beside it: same shape as SeasonTrendChart's tab row (the
           other title-less chart on this page), not the title+tabs justify-between pairing
           DegradationChart/FightToPoleChart/PaceSpreadChart use. */}

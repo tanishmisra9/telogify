@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timezone
 from functools import lru_cache
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -38,7 +38,18 @@ from telogify.ingest.results import (
     points_for_session,
     strategy_string,
 )
-from telogify.db import get_session
+from telogify.db import get_session, set_db_context, set_subscriber_context
+from telogify.email import send_verification_email, send_welcome_email
+from telogify.subscriptions import (
+    hash_ip,
+    hash_token,
+    new_verify_token,
+    normalize_email,
+    parse_unsubscribe_token,
+    signup_rate_limited,
+    unsubscribe_token,
+    verify_recaptcha,
+)
 from telogify.models import (
     Insight,
     QualiCharacter,
@@ -52,6 +63,7 @@ from telogify.models import (
     StraightSegment,
     Stint,
     Subscriber,
+    SubscriberAudit,
 )
 
 router = APIRouter()
@@ -65,7 +77,11 @@ INDICATIVE_SESSIONS = ("FP1", "FP2", "FP3", "SQ")
 
 class SubscribeIn(BaseModel):
     email: str
-    followed_constructor: str | None = None
+    recaptcha_token: str = ""
+
+
+class TokenIn(BaseModel):
+    token: str = ""
 
 
 def _weekend(db: Session, year: int, round: int) -> RaceWeekend:
@@ -744,13 +760,173 @@ def season_deployment_scatter(year: int, db: Session = Depends(get_session)):
 
 
 @router.post("/subscribe")
-def subscribe(body: SubscribeIn, db: Session = Depends(get_session)):
-    existing = db.exec(select(Subscriber).where(Subscriber.email == body.email)).first()
+def subscribe(body: SubscribeIn, request: Request, db: Session = Depends(get_session)):
+    """Start double opt-in. Always answers the same thing, whatever the address's real state.
+
+    The old handler returned `already_subscribed`, which let anyone test whether a given address
+    was on the list. Every branch below returns the identical 202 instead, so the response
+    carries no information about who is subscribed.
+
+    Runs entirely in service scope, unlike the three token-driven endpoints, because rate
+    limiting and audit logging both read and write the audit table, which the restricted RLS
+    role deliberately cannot touch. That is a deliberate asymmetry: the endpoints worth
+    restricting are the ones an attacker probes with guessed tokens, and those are restricted.
+    """
+    same_answer = {"status": "check_your_inbox"}
+    ip_hash = hash_ip(request.client.host if request.client else None)
+    user_agent = request.headers.get("user-agent")
+    email = normalize_email(body.email)
+
+    if email is None:
+        # The only case worth a real error: the visitor mistyped and can fix it.
+        raise HTTPException(422, "That does not look like an email address.")
+
+    def set_ctx() -> None:
+        # Re-applied before every commit, not set once: the GUCs are transaction-local, so each
+        # commit discards them. Without this the audit TRIGGER's own rows (row_inserted /
+        # row_updated) land with a null IP and user agent, since only the app-written rows carry
+        # those columns explicitly. Keeps scope=service, which this endpoint needs for the audit
+        # table; the actor fields are context for the log, not an access grant.
+        set_db_context(db, scope="service", actor_key=f"email:{email}",
+                       actor_ip_hash=ip_hash, actor_user_agent=user_agent)
+
+    def audit(action: str) -> None:
+        set_ctx()
+        db.add(SubscriberAudit(email=email, action=action, actor_ip_hash=ip_hash,
+                               actor_user_agent=user_agent, actor_key=f"email:{email}"))
+        db.commit()
+
+    if signup_rate_limited(db, ip_hash=ip_hash, email=email):
+        audit("blocked_rate_limit")
+        raise HTTPException(429, "Too many signup attempts. Try again later.")
+
+    if not verify_recaptcha(body.recaptcha_token, request.client.host if request.client else None):
+        audit("blocked_captcha")
+        raise HTTPException(400, "Could not verify that you are human. Please try again.")
+
+    existing = db.exec(select(Subscriber).where(Subscriber.email == email)).first()
+    if existing and existing.status == "confirmed":
+        # Deliberately silent: no second email, and the same response as everyone else.
+        audit("signup_requested")
+        return same_answer
+
+    token, token_hash, expires = new_verify_token()
     if existing:
-        return {"status": "already_subscribed"}
-    db.add(Subscriber(email=body.email, followed_constructor=body.followed_constructor))
+        existing.status = "pending"
+        existing.verify_token_hash = token_hash
+        existing.verify_expires_at = expires
+        db.add(existing)
+    else:
+        db.add(Subscriber(email=email, status="pending", verify_token_hash=token_hash,
+                          verify_expires_at=expires))
+    audit("signup_requested")
+
+    # A send failure must not 500 the endpoint. Found by driving the real form: Resend rejected
+    # an address and the whole request raised, after the row had already been written, leaving a
+    # pending subscriber, a stack trace in the response, and signup down for as long as Resend
+    # was unhappy. Reported honestly instead of claiming the mail is on its way, because the
+    # visitor would otherwise be waiting on an inbox that will never receive. Retrying is safe:
+    # the row already exists, and a second attempt reissues the token and sends again.
+    try:
+        send_verification_email(email, token)
+    except Exception:
+        db.rollback()
+        audit("verification_send_failed")
+        raise HTTPException(503, "We could not send the confirmation email. Please try again.")
+
+    audit("verification_sent")
+    return same_answer
+
+
+@router.post("/subscribe/verify")
+def subscribe_verify(body: TokenIn, request: Request, db: Session = Depends(get_session)):
+    """Confirm an address. POST-only on purpose: a mail scanner's GET cannot opt anyone in."""
+    if not body.token:
+        return {"status": "invalid"}
+    token_hash = hash_token(body.token)
+
+    set_subscriber_context(
+        db,
+        actor_key=f"vtok:{token_hash}",
+        ip_hash=hash_ip(request.client.host if request.client else None),
+        user_agent=request.headers.get("user-agent"),
+    )
+    subscriber = db.exec(
+        select(Subscriber).where(Subscriber.verify_token_hash == token_hash)
+    ).first()
+    if subscriber is None:
+        # Covers both a forged token and one already spent, since confirming clears the hash.
+        return {"status": "invalid"}
+    if subscriber.verify_expires_at and subscriber.verify_expires_at < datetime.utcnow():
+        return {"status": "expired"}
+
+    # Re-scope from the token to the row it identified, before clearing the token. Confirming
+    # nulls verify_token_hash, so the updated row no longer matches `vtok:`, and the policy's
+    # WITH CHECK would reject its own legitimate update. Switching to `sub:` is safe: the
+    # session already proved knowledge of this row's token to locate it at all.
+    set_subscriber_context(db, actor_key=f"sub:{subscriber.id}")
+
+    subscriber.status = "confirmed"
+    subscriber.confirmed_at = datetime.utcnow()
+    subscriber.verify_token_hash = None  # single use
+    subscriber.verify_expires_at = None
+    email = subscriber.email
+    db.add(subscriber)
     db.commit()
-    return {"status": "subscribed"}
+
+    send_welcome_email(email, unsubscribe_token(subscriber.id))
+    return {"status": "confirmed"}
+
+
+def _load_by_unsubscribe_token(db: Session, token: str, request: Request) -> Subscriber | None:
+    subscriber_id = parse_unsubscribe_token(token)
+    if subscriber_id is None:
+        return None
+    set_subscriber_context(
+        db,
+        actor_key=f"sub:{subscriber_id}",
+        ip_hash=hash_ip(request.client.host if request.client else None),
+        user_agent=request.headers.get("user-agent"),
+    )
+    return db.get(Subscriber, subscriber_id)
+
+
+@router.post("/unsubscribe")
+def unsubscribe(request: Request, t: str = "", db: Session = Depends(get_session)):
+    """Also the RFC 8058 List-Unsubscribe target.
+
+    One endpoint serves both the page and the mail provider: the token is a query parameter and
+    no body is required, so Gmail's `List-Unsubscribe=One-Click` form POST and the page's JSON
+    POST both land here. Mail providers ignore the response body.
+    """
+    subscriber = _load_by_unsubscribe_token(db, t, request)
+    if subscriber is None:
+        return {"status": "invalid"}
+    if subscriber.status == "unsubscribed":
+        return {"status": "already_unsubscribed"}
+
+    subscriber.status = "unsubscribed"
+    db.add(subscriber)
+    db.commit()
+    return {"status": "unsubscribed"}
+
+
+@router.post("/subscribe/resubscribe")
+def resubscribe(request: Request, t: str = "", db: Session = Depends(get_session)):
+    """Undo a misclicked unsubscribe in one tap.
+
+    No re-verification: the signed token already proves control of the address, and it was
+    proven once at confirmation. Requiring a second round trip would punish the mistake.
+    """
+    subscriber = _load_by_unsubscribe_token(db, t, request)
+    if subscriber is None:
+        return {"status": "invalid"}
+
+    subscriber.status = "confirmed"
+    subscriber.confirmed_at = subscriber.confirmed_at or datetime.utcnow()
+    db.add(subscriber)
+    db.commit()
+    return {"status": "resubscribed"}
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$")

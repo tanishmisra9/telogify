@@ -240,7 +240,7 @@ export function Insight({
 
   return (
     <article
-      className="glass lift relative rounded-[--radius-panel] p-7 sm:p-8"
+      className="glass lift relative rounded-panel p-7 sm:p-8"
       style={tintColor ? { backgroundColor: tintColor } : undefined}
       aria-labelledby={titleId}
     >
@@ -253,7 +253,7 @@ export function Insight({
           // rather than the click falling through to this link underneath it. Not rendered when
           // collapsible is also set -- see `heading`'s own comment for why that combination
           // uses a real in-flow link on the heading text instead of this stretched overlay.
-          className="absolute inset-0 z-0 rounded-[--radius-panel]"
+          className="absolute inset-0 z-0 rounded-panel"
         />
       )}
       {/* Pinned to the card's own top-right corner (not the heading's row): without a slot

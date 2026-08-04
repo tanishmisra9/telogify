@@ -27,6 +27,8 @@ from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sec
 from telogify.analysis.sessions import pick_session
 from telogify.chipgen import measure_text_chip
 from telogify.config import settings
+from telogify.db import set_service_scope
+from telogify.subscriptions import VERIFY_TOKEN_TTL_HOURS, unsubscribe_token
 from telogify.models import Insight, QualiInsight, RaceWeekend
 from telogify.models import Session as SessionRow
 from telogify.models import SectorBest, SessionResult, StraightSegment, Subscriber
@@ -194,6 +196,14 @@ def _opener_html(winner: dict | None, pace_spread: dict | None = None) -> str:
     return text
 
 
+def _unsub_link(base_url: str, unsub_token: str | None) -> str:
+    """Per-recipient unsubscribe URL, or the bare page when there is no subscriber row behind
+    the address (an ad-hoc --to send, or a preview render). The bare form lands on the page's
+    "missing code" state, which tells the reader to use the link from a real digest."""
+    base = f"{base_url.rstrip('/')}/unsubscribe"
+    return f"{base}?t={unsub_token}" if unsub_token else base
+
+
 def render_email_plaintext(
     weekend: RaceWeekend,
     insights: list[Insight],
@@ -204,6 +214,7 @@ def render_email_plaintext(
     pace_spread: dict | None = None,
     practice: dict | None = None,
     quali_insight: QualiInsight | None = None,
+    unsub_token: str | None = None,
 ) -> str:
     """Plain-text sibling of render_email_neubrutalist for the multipart/alternative text part
     sending infrastructure (and some spam filters) expect alongside the HTML. Real driver/team/
@@ -283,7 +294,7 @@ def render_email_plaintext(
     lines.append("See you after the next session.")
     lines.append("")
     lines.append(f"© {weekend.year} Tanish Misra")
-    lines.append(f"Unsubscribe: {base_url.rstrip('/')}/unsubscribe")
+    lines.append(f"Unsubscribe: {_unsub_link(base_url, unsub_token)}")
 
     return "\n".join(lines)
 
@@ -856,6 +867,7 @@ def render_email_neubrutalist(
     pace_spread: dict | None = None,
     practice: dict | None = None,
     quali_insight: QualiInsight | None = None,
+    unsub_token: str | None = None,
 ) -> str:
     cta_url = f"{base_url.rstrip('/')}/weekends/{weekend.year}/{weekend.round}"
     event_name = html.escape(weekend.event_name)
@@ -991,7 +1003,7 @@ def render_email_neubrutalist(
   <footer>
     Methodology inputs come from <a href="https://www.instagram.com/fdataanalysis/" style="color:#0a0a0a">Mirco Bartolozzi (@fdataanalysis)</a>, covering clean-air filtering, fuel correction, and the ERS depletion signal. Timing data comes from FastF1.<br>
     &copy; {weekend.year} Tanish Misra<br>
-    <a href="{html.escape(base_url.rstrip('/'))}/unsubscribe" style="color:#0a0a0a">Unsubscribe</a>
+    <a href="{html.escape(_unsub_link(base_url, unsub_token))}" style="color:#0a0a0a">Unsubscribe</a>
   </footer>
 
 </div>
@@ -1160,7 +1172,13 @@ def send_digest(year: int, round: int, db: Session, recipients: list[str] | None
     weekend, insights = _load_weekend_and_insights(year, round, db)
 
     if recipients is None:
-        recipients = [s.email for s in db.exec(select(Subscriber)).all()]
+        # subscriber is under FORCE row level security (security_sql.py); without service scope
+        # this select returns zero rows and the digest would silently send to nobody.
+        set_service_scope(db)
+        recipients = [
+            s.email
+            for s in db.exec(select(Subscriber).where(Subscriber.status == "confirmed")).all()
+        ]
     if not recipients:
         return 0
 
@@ -1168,18 +1186,255 @@ def send_digest(year: int, round: int, db: Session, recipients: list[str] | None
 
     resend.api_key = settings.resend_api_key
     extras = _load_extras(db, weekend)
-    html_body = render_email_neubrutalist(weekend, insights, settings.web_base_url, **extras)
-    text_body = render_email_plaintext(weekend, insights, settings.web_base_url, **extras)
     subject = f"{weekend.event_name}: your 3 insights"
 
+    # Per-recipient unsubscribe: the token identifies the row, so it cannot be shared or reused
+    # across addresses. Looked up here rather than threaded through the renderers, which stay
+    # pure. Falls back to an untokenized link only for an ad-hoc --to address that is not a
+    # subscriber at all, where there is nothing to unsubscribe.
+    set_service_scope(db)
+    ids_by_email = {
+        s.email: s.id for s in db.exec(select(Subscriber).where(Subscriber.email.in_(recipients))).all()
+    }
+
     for email in recipients:
-        resend.Emails.send(
-            {
-                "from": settings.resend_from,
-                "to": [email],
-                "subject": subject,
-                "html": html_body,
-                "text": text_body,
-            }
-        )
+        subscriber_id = ids_by_email.get(email)
+        token = unsubscribe_token(subscriber_id) if subscriber_id is not None else None
+        # Rendered per recipient because the unsubscribe link is per recipient. The expensive
+        # part (_load_extras, which hits the DB) is already hoisted out of this loop.
+        payload: dict = {
+            "from": settings.resend_from,
+            "to": [email],
+            "subject": subject,
+            "html": render_email_neubrutalist(
+                weekend, insights, settings.web_base_url, unsub_token=token, **extras
+            ),
+            "text": render_email_plaintext(
+                weekend, insights, settings.web_base_url, unsub_token=token, **extras
+            ),
+        }
+        if token is not None:
+            payload["headers"] = list_unsubscribe_headers(token)
+        resend.Emails.send(payload)
     return len(recipients)
+
+
+# ---------------------------------------------------------------------------
+# Transactional opt-in emails (verification + welcome).
+#
+# These live here, not in a module of their own, because every primitive they need is already
+# module-level in this file: _nb_shadow_box, _nb_logo_chip, _dynamic_chip_img and _NB_STYLE.
+# A separate module would have meant either duplicating the document shell or extracting a
+# shared kit, and extracting it would have meant re-deriving the digest's shell to serve two
+# very different layouts. The digest's own f-string is deliberately left untouched.
+#
+# Same Gmail constraints as the digest, from emailsim/support.py: no box-shadow (the nested-div
+# fake in _nb_shadow_box), no border-radius, no transform, no negative margin, no data: URIs,
+# tables for layout, and anchor color inline rather than by class because Gmail's default
+# link-blue beats a class-only rule.
+# ---------------------------------------------------------------------------
+
+
+def list_unsubscribe_headers(unsub_token: str) -> dict[str, str]:
+    """RFC 8058 one-click headers, so Gmail and Apple Mail render their native Unsubscribe
+    button. Required for bulk senders and a real deliverability signal.
+
+    The URL points at the API, not the frontend: mail providers POST to it server side, so it
+    has to be an endpoint rather than a page. `/unsubscribe` accepts the token as a query
+    parameter with no body, which is what lets one endpoint serve both this and the page.
+    """
+    return {
+        "List-Unsubscribe": (
+            f"<{settings.api_base_url.rstrip('/')}/unsubscribe?t={unsub_token}>"
+        ),
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def _nb_cta(url: str, label: str) -> str:
+    """The digest's CTA treatment, as a helper, for the two opt-in emails."""
+    return _nb_shadow_box(
+        f'<a href="{html.escape(url)}" style="display:block;text-align:center;'
+        f'font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:15px;color:#E10600;'
+        f'text-decoration:none;padding:11px 18px;">{html.escape(label)}</a>',
+        border_color="#E10600", inline=True, box_class="cta-inner",
+        wrapper_style="margin:24px 0 28px;",
+    )
+
+
+def _optin_shell(*, title: str, stamp_text: str, body_html: str, footer_html: str) -> str:
+    """Masthead + sheet + footer for a transactional email. Narrower than the digest's shell
+    because these carry one message and one action, not eight sections."""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+{_META_COLOR_SCHEME}
+<title>{html.escape(title)}</title>
+{_NB_FONTS_LINK}
+<style>{_NB_STYLE}</style>
+</head>
+<body>
+<div class="page">
+<div class="sheet">
+
+  <div class="masthead">
+    {_dynamic_chip_img(
+        stamp_text, font_size=15, text_color=_on_color("#E10600"), bg_color="#E10600",
+        padding=(10, 18, 10, 18),
+    )}
+    <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:18px auto 0;"><tr>
+      <td style="padding-right:10px;vertical-align:middle;">{_nb_logo_chip(settings.web_base_url)}</td>
+      <td style="vertical-align:middle;"><p class="wordmark" style="margin:0;">Telo<span>gify</span></p></td>
+    </tr></table>
+  </div>
+
+{body_html}
+
+  <footer>
+{footer_html}
+  </footer>
+
+</div>
+</div>
+</body>
+</html>"""
+
+
+def verify_url(token: str) -> str:
+    return f"{settings.web_base_url.rstrip('/')}/subscribe/verify?t={token}"
+
+
+def unsubscribe_url(unsub_token: str) -> str:
+    return f"{settings.web_base_url.rstrip('/')}/unsubscribe?t={unsub_token}"
+
+
+def render_verification_email(token: str) -> str:
+    link = verify_url(token)
+    body = f"""
+  <p style="font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;margin:26px 0 0;">
+    You asked for three telemetry-grounded insights after every race weekend.
+    Confirm this address and your seat is locked in.
+  </p>
+
+{_nb_cta(link, "CONFIRM MY SEAT")}
+
+  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.5;color:#555;margin:0 0 22px;">
+    Button not working? Paste this into your browser:<br>
+    <a href="{html.escape(link)}" style="color:#0a0a0a;word-break:break-all;">{html.escape(link)}</a>
+  </p>
+
+  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.5;color:#555;margin:0;">
+    This link expires in {VERIFY_TOKEN_TTL_HOURS} hours. If you did not ask for this, ignore it
+    and nothing happens. Nobody joins the grid without this click.
+  </p>
+"""
+    # No unsubscribe link: there is nothing to unsubscribe from until this is confirmed.
+    footer = (
+        "    You are receiving this because this address was entered at "
+        f"{html.escape(settings.web_base_url.rstrip('/'))}.<br>\n"
+        f"    &copy; {datetime.utcnow().year} Tanish Misra"
+    )
+    return _optin_shell(
+        title="Confirm your seat on the grid",
+        stamp_text="CONFIRM YOUR SEAT",
+        body_html=body,
+        footer_html=footer,
+    )
+
+
+def render_verification_plaintext(token: str) -> str:
+    return "\n".join([
+        "CONFIRM YOUR SEAT",
+        "",
+        "You asked for three telemetry-grounded insights after every race weekend.",
+        "Confirm this address and your seat is locked in:",
+        "",
+        verify_url(token),
+        "",
+        f"This link expires in {VERIFY_TOKEN_TTL_HOURS} hours. If you did not ask for this,",
+        "ignore it and nothing happens. Nobody joins the grid without this click.",
+    ])
+
+
+def render_welcome_email(unsub_token: str) -> str:
+    body = f"""
+  <p style="font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:26px;line-height:1.15;color:#0a0a0a;margin:26px 0 0;">
+    Your seat is confirmed.
+  </p>
+
+  <p style="font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;margin:14px 0 0;">
+    After every race weekend you get three insights built from the session telemetry, not from
+    the broadcast: what the cars actually did through the corners, on the straights, and over a
+    stint. Plus two reads on qualifying pace and the constructor pace spread.
+  </p>
+
+{_nb_cta(f"{settings.web_base_url.rstrip('/')}/weekends", "SEE THE LATEST WEEKEND")}
+"""
+    footer = (
+        f"    &copy; {datetime.utcnow().year} Tanish Misra<br>\n"
+        f'    <a href="{html.escape(unsubscribe_url(unsub_token))}" style="color:#0a0a0a">Unsubscribe</a>'
+    )
+    return _optin_shell(
+        title="Lights out. You are on the grid.",
+        stamp_text="LIGHTS OUT",
+        body_html=body,
+        footer_html=footer,
+    )
+
+
+def render_welcome_plaintext(unsub_token: str) -> str:
+    return "\n".join([
+        "LIGHTS OUT. YOU ARE ON THE GRID.",
+        "",
+        "Your seat is confirmed.",
+        "",
+        "After every race weekend you get three insights built from the session telemetry,",
+        "not from the broadcast: what the cars actually did through the corners, on the",
+        "straights, and over a stint. Plus two reads on qualifying pace and the constructor",
+        "pace spread.",
+        "",
+        f"See the latest weekend: {settings.web_base_url.rstrip('/')}/weekends",
+        "",
+        f"Unsubscribe: {unsubscribe_url(unsub_token)}",
+    ])
+
+
+def _send(to: str, subject: str, html_body: str, text_body: str,
+          headers: dict[str, str] | None = None) -> None:
+    """Single Resend call. No-ops without an API key so local signup works end to end without
+    one, and so tests never need to reach the network."""
+    if not settings.resend_api_key:
+        return
+    import resend
+
+    resend.api_key = settings.resend_api_key
+    payload: dict = {
+        "from": settings.resend_from,
+        "to": [to],
+        "subject": subject,
+        "html": html_body,
+        "text": text_body,
+    }
+    if headers:
+        payload["headers"] = headers
+    resend.Emails.send(payload)
+
+
+def send_verification_email(to: str, token: str) -> None:
+    _send(
+        to,
+        "Confirm your seat on the grid",
+        render_verification_email(token),
+        render_verification_plaintext(token),
+    )
+
+
+def send_welcome_email(to: str, unsub_token: str) -> None:
+    _send(
+        to,
+        "Lights out. You are on the grid.",
+        render_welcome_email(unsub_token),
+        render_welcome_plaintext(unsub_token),
+        headers=list_unsubscribe_headers(unsub_token),
+    )

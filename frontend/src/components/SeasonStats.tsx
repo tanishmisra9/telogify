@@ -27,7 +27,7 @@ export function SeasonStats() {
   return (
     <BlurFade delay={0.12}>
       <section className="mt-24 sm:mt-32">
-        <div className="glass rounded-[--radius-panel] p-8 sm:p-12">
+        <div className="glass rounded-panel p-8 sm:p-12">
           <p className="kicker text-sm! text-accent">Telogify&apos;s telemetry so far</p>
           {/* mt-4, not mt-6: matches Countdown's kicker-to-heading gap and Insight's kicker's own
               mb-4, so the kicker-to-content rhythm is one shared token across all three panels. */}

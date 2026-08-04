@@ -271,6 +271,20 @@ export async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+// Same error contract as apiGet on purpose: `error.message` is the bare status string. The
+// subscribe endpoints answer every semantic outcome as 200 + {status}, matching how /subscribe
+// has always replied, so the only cases that throw here are the genuinely exceptional ones
+// (429, 5xx) and the caller needs exactly one error state for them, not a typed error class.
+export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!res.ok) throw new Error(`${res.status}`)
+  return res.json() as Promise<T>
+}
+
 // Global in-flight count across every useApi call, so the Footer/BackToTopButton (lib/api.ts is
 // the one choke point every page's fetches already go through) can hide themselves while
 // anything on the page is still loading, without each page having to opt in individually.
