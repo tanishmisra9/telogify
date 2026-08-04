@@ -1262,9 +1262,14 @@ def _nb_cta(url: str, label: str) -> str:
     )
 
 
-def _optin_shell(*, title: str, stamp_text: str, body_html: str, footer_html: str) -> str:
+def _optin_shell(*, title: str, body_html: str, footer_html: str) -> str:
     """Masthead + sheet + footer for a transactional email. Narrower than the digest's shell
-    because these carry one message and one action, not eight sections."""
+    because these carry one message and one action, not eight sections.
+
+    No stamp chip above the wordmark, unlike the digest. The digest's stamp names which race
+    weekend it covers, which is real information; on a transactional email it only restated the
+    heading directly beneath it, so the reader met the same three words twice before any content.
+    """
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1279,11 +1284,7 @@ def _optin_shell(*, title: str, stamp_text: str, body_html: str, footer_html: st
 <div class="sheet">
 
   <div class="masthead">
-    {_dynamic_chip_img(
-        stamp_text, font_size=15, text_color=_on_color("#E10600"), bg_color="#E10600",
-        padding=(10, 18, 10, 18),
-    )}
-    <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:18px auto 0;"><tr>
+    <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;"><tr>
       <td style="padding-right:10px;vertical-align:middle;">{_nb_logo_chip(settings.web_base_url)}</td>
       <td style="vertical-align:middle;"><p class="wordmark" style="margin:0;">Telo<span>gify</span></p></td>
     </tr></table>
@@ -1310,34 +1311,45 @@ def unsubscribe_url(unsub_token: str) -> str:
 
 
 def render_verification_email(token: str) -> str:
+    """Its whole job is one click. Deliberately says almost nothing about what the digest
+    contains: the reader already chose that on the signup page, and re-pitching it here competes
+    with the only action that matters. The product story belongs in the welcome email, which is
+    read by someone who has already committed."""
     link = verify_url(token)
+    site = html.escape(settings.web_base_url.rstrip("/"))
     body = f"""
-  <p style="font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;margin:26px 0 0;">
-    You asked for three telemetry-grounded insights after every race weekend.
-    Confirm this address and your seat is locked in.
+  <p style="font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:26px;line-height:1.15;color:#0a0a0a;margin:26px 0 0;">
+    Confirm your seat.
   </p>
 
-{_nb_cta(link, "CONFIRM MY SEAT")}
+  <p style="font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;margin:14px 0 0;">
+    One click and you are on the grid.
+  </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.5;color:#555;margin:0 0 22px;">
+{_nb_cta(link, "SIGN THE CONTRACT")}
+
+  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.5;color:#555;margin:0 0 18px;">
     Button not working? Paste this into your browser:<br>
     <a href="{html.escape(link)}" style="color:#0a0a0a;word-break:break-all;">{html.escape(link)}</a>
   </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.5;color:#555;margin:0;">
+  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.6;color:#555;margin:0 0 10px;">
     This link expires in {VERIFY_TOKEN_TTL_HOURS} hours. If you did not ask for this, ignore it
     and nothing happens. Nobody joins the grid without this click.
   </p>
+
+  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.6;color:#555;margin:0 0 44px;">
+    You are receiving this because this address was entered at {site}.
+  </p>
 """
+    # Footer is the copyright alone. The provenance line and the expiry notice both moved up into
+    # the body: they are the two things a reader deciding whether to trust this needs, and
+    # small-print under a rule is where text goes to be skipped. The 44px margin above buys the
+    # footer rule room to read as a close rather than as another paragraph break.
     # No unsubscribe link: there is nothing to unsubscribe from until this is confirmed.
-    footer = (
-        "    You are receiving this because this address was entered at "
-        f"{html.escape(settings.web_base_url.rstrip('/'))}.<br>\n"
-        f"    &copy; {datetime.utcnow().year} Tanish Misra"
-    )
+    footer = f"    &copy; {datetime.utcnow().year} Tanish Misra"
     return _optin_shell(
         title="Confirm your seat on the grid",
-        stamp_text="CONFIRM YOUR SEAT",
         body_html=body,
         footer_html=footer,
     )
@@ -1347,37 +1359,54 @@ def render_verification_plaintext(token: str) -> str:
     return "\n".join([
         "CONFIRM YOUR SEAT",
         "",
-        "You asked for three telemetry-grounded insights after every race weekend.",
-        "Confirm this address and your seat is locked in:",
+        "One click and you are on the grid:",
         "",
         verify_url(token),
         "",
         f"This link expires in {VERIFY_TOKEN_TTL_HOURS} hours. If you did not ask for this,",
         "ignore it and nothing happens. Nobody joins the grid without this click.",
+        "",
+        f"You are receiving this because this address was entered at "
+        f"{settings.web_base_url.rstrip('/')}.",
     ])
 
 
 def render_welcome_email(unsub_token: str) -> str:
+    """One 43-word sentence used to carry the whole explanation, and it read as a wall. Split
+    into a short lead plus three labelled lines: the same information, but scannable, and the
+    labels let someone who is skimming still come away knowing when it arrives and what is in
+    it. No CTA, because there is no action left to take, and a button with nothing behind it
+    invites a click that leads nowhere in particular."""
+    rows = [
+        ("WHEN", "After every race weekend, once the session data lands."),
+        ("WHAT", "Three insights from the telemetry, not the broadcast."),
+        ("PLUS", "Qualifying pace and the constructor pace spread."),
+    ]
+    lines = "".join(
+        f"""
+    <tr>
+      <td style="padding:0 14px 10px 0;vertical-align:top;white-space:nowrap;
+                 font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:12px;
+                 letter-spacing:0.08em;color:#E10600;">{label}</td>
+      <td style="padding:0 0 10px 0;vertical-align:top;
+                 font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.45;color:#0a0a0a;">{text}</td>
+    </tr>"""
+        for label, text in rows
+    )
     body = f"""
   <p style="font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:26px;line-height:1.15;color:#0a0a0a;margin:26px 0 0;">
     Your seat is confirmed.
   </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;margin:14px 0 0;">
-    After every race weekend you get three insights built from the session telemetry, not from
-    the broadcast: what the cars actually did through the corners, on the straights, and over a
-    stint. Plus two reads on qualifying pace and the constructor pace spread.
-  </p>
-
-{_nb_cta(f"{settings.web_base_url.rstrip('/')}/weekends", "SEE THE LATEST WEEKEND")}
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 44px;">{lines}
+  </table>
 """
     footer = (
         f"    &copy; {datetime.utcnow().year} Tanish Misra<br>\n"
         f'    <a href="{html.escape(unsubscribe_url(unsub_token))}" style="color:#0a0a0a">Unsubscribe</a>'
     )
     return _optin_shell(
-        title="Lights out. You are on the grid.",
-        stamp_text="LIGHTS OUT",
+        title="Lights out! You're on the grid.",
         body_html=body,
         footer_html=footer,
     )
@@ -1385,16 +1414,13 @@ def render_welcome_email(unsub_token: str) -> str:
 
 def render_welcome_plaintext(unsub_token: str) -> str:
     return "\n".join([
-        "LIGHTS OUT. YOU ARE ON THE GRID.",
+        "LIGHTS OUT! YOU'RE ON THE GRID.",
         "",
         "Your seat is confirmed.",
         "",
-        "After every race weekend you get three insights built from the session telemetry,",
-        "not from the broadcast: what the cars actually did through the corners, on the",
-        "straights, and over a stint. Plus two reads on qualifying pace and the constructor",
-        "pace spread.",
-        "",
-        f"See the latest weekend: {settings.web_base_url.rstrip('/')}/weekends",
+        "WHEN  After every race weekend, once the session data lands.",
+        "WHAT  Three insights from the telemetry, not the broadcast.",
+        "PLUS  Qualifying pace and the constructor pace spread.",
         "",
         f"Unsubscribe: {unsubscribe_url(unsub_token)}",
     ])
@@ -1433,7 +1459,7 @@ def send_verification_email(to: str, token: str) -> None:
 def send_welcome_email(to: str, unsub_token: str) -> None:
     _send(
         to,
-        "Lights out. You are on the grid.",
+        "Lights out! You're on the grid.",
         render_welcome_email(unsub_token),
         render_welcome_plaintext(unsub_token),
         headers=list_unsubscribe_headers(unsub_token),
