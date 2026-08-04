@@ -99,8 +99,19 @@ export function UnsubscribePage() {
     )
   }
 
-  // Digests sent before unsubscribe links carried a token land here.
-  return (
+  // Two genuinely different situations, and telling someone their code is "missing" when they
+  // can see it in the address bar reads as the site being broken rather than the link being bad.
+  // No token at all is the older-digest case; a token that fails to verify is a bad link.
+  return token ? (
+    <StatusPage
+      marker="Invalid link"
+      heading="That link does not check out."
+      actions={<StatusLink to="/">Go home</StatusLink>}
+    >
+      This unsubscribe link is not valid. Use the Unsubscribe link at the bottom of any recent
+      Telogify email and it will work.
+    </StatusPage>
+  ) : (
     <StatusPage
       marker="Missing code"
       heading="This link is missing its code."
