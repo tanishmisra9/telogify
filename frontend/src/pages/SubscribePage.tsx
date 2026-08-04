@@ -57,16 +57,23 @@ export function SubscribePage() {
     // Outer container matches every other page so the heading's left edge lines up
     // sitewide; the lg cap keeps the content itself at a comfortable reading width.
     <main className="mx-auto max-w-[1312px] px-6 py-24">
+      {/* The heading sits outside the reading-width cap below. At 86.4px the wordmark line
+          measures 854px, so the 672px cap was breaking it across two lines with most of the
+          page still empty beside it. A max-width exists to hold body copy to a comfortable
+          measure, which a one-line display heading does not need. */}
+      <BlurFade>
+        <div className="mb-6">
+          <BackHomeButton />
+        </div>
+        {/* 0.9x text-7xl/text-8xl -- the same scale factor applied to the Weekends/Season
+            headings, so this stays one ramp step above them exactly as it did before. */}
+        <h1 className="select-none font-display text-[4.05rem] leading-[1.05] tracking-tight sm:text-[5.4rem]">
+          Telo<span className="text-accent">gify</span> your weekend
+        </h1>
+      </BlurFade>
+
       <div className="max-w-2xl">
         <BlurFade>
-          <div className="mb-6">
-            <BackHomeButton />
-          </div>
-          {/* 0.9x text-7xl/text-8xl -- the same scale factor applied to the Weekends/Season
-              headings, so this stays one ramp step above them exactly as it did before. */}
-          <h1 className="select-none font-display text-[4.05rem] leading-[1.05] tracking-tight sm:text-[5.4rem]">
-            Telo<span className="text-accent">gify</span> your weekend
-          </h1>
           <p className="mt-4 text-lg text-muted">
             Three insights per race weekend, speeding to your inbox.
           </p>
