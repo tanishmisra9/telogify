@@ -1251,6 +1251,12 @@ def list_unsubscribe_headers(unsub_token: str) -> dict[str, str]:
     }
 
 
+#: Subject lines, named so the renderers, the send functions and any test harness cannot
+#: drift apart. A test script that hardcoded its own copy once shipped a stale subject.
+VERIFICATION_SUBJECT = "Confirm your seat on the grid"
+WELCOME_SUBJECT = "You're on the grid!"
+
+
 def _nb_cta(url: str, label: str) -> str:
     """The digest's CTA treatment, as a helper, for the two opt-in emails."""
     return _nb_shadow_box(
@@ -1357,7 +1363,7 @@ def render_verification_email(token: str) -> str:
     # No unsubscribe link: there is nothing to unsubscribe from until this is confirmed.
     footer = f"    &copy; {datetime.utcnow().year} Tanish Misra"
     return _optin_shell(
-        title="Confirm your seat on the grid",
+        title=VERIFICATION_SUBJECT,
         body_html=body,
         footer_html=footer,
     )
@@ -1384,7 +1390,7 @@ def render_welcome_email(unsub_token: str) -> str:
     click that leads nowhere in particular."""
     body = f"""
   <p style="font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:26px;line-height:1.15;color:#0a0a0a;margin:26px 0 0;">
-    Your seat is confirmed.
+    Welcome to the paddock!
   </p>
 
   <p style="font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;margin:14px 0 44px;">
@@ -1398,7 +1404,7 @@ def render_welcome_email(unsub_token: str) -> str:
         f'    <a href="{html.escape(unsubscribe_url(unsub_token))}" style="color:#0a0a0a">Unsubscribe</a>'
     )
     return _optin_shell(
-        title="Lights out! You're on the grid.",
+        title=WELCOME_SUBJECT,
         body_html=body,
         footer_html=footer,
     )
@@ -1406,9 +1412,7 @@ def render_welcome_email(unsub_token: str) -> str:
 
 def render_welcome_plaintext(unsub_token: str) -> str:
     return "\n".join([
-        "LIGHTS OUT! YOU'RE ON THE GRID.",
-        "",
-        "Your seat is confirmed.",
+        "WELCOME TO THE PADDOCK!",
         "",
         "After every race weekend you get three insights built from the session telemetry,",
         "not from the broadcast: what the cars actually did through the corners, on the",
@@ -1443,7 +1447,7 @@ def _send(to: str, subject: str, html_body: str, text_body: str,
 def send_verification_email(to: str, token: str) -> None:
     _send(
         to,
-        "Confirm your seat on the grid",
+        VERIFICATION_SUBJECT,
         render_verification_email(token),
         render_verification_plaintext(token),
     )
@@ -1452,7 +1456,7 @@ def send_verification_email(to: str, token: str) -> None:
 def send_welcome_email(to: str, unsub_token: str) -> None:
     _send(
         to,
-        "Lights out! You're on the grid.",
+        WELCOME_SUBJECT,
         render_welcome_email(unsub_token),
         render_welcome_plaintext(unsub_token),
         headers=list_unsubscribe_headers(unsub_token),
