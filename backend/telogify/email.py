@@ -1326,21 +1326,21 @@ def render_verification_email(token: str) -> str:
     One click and you are on the grid.
   </p>
 
-{_nb_cta(link, "SIGN THE CONTRACT")}
-
-  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.5;color:#555;margin:0 0 18px;">
+  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.5;color:#555;margin:18px 0 0;">
     Button not working? Paste this into your browser:<br>
     <a href="{html.escape(link)}" style="color:#0a0a0a;word-break:break-all;">{html.escape(link)}</a>
   </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.6;color:#555;margin:0 0 10px;">
+  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.6;color:#555;margin:14px 0 0;">
     This link expires in {VERIFY_TOKEN_TTL_HOURS} hours. If you did not ask for this, ignore it
     and nothing happens. Nobody joins the grid without this click.
   </p>
 
-  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.6;color:#555;margin:0 0 44px;">
+  <p style="font-family:{_NB_SANS_FONT};font-size:13px;line-height:1.6;color:#555;margin:14px 0 0;">
     You are receiving this because this address was entered at {site}.
   </p>
+
+  <div style="text-align:center;">{_nb_cta(link, "SIGN THE CONTRACT")}</div>
 """
     # Footer is the copyright alone. The provenance line and the expiry notice both moved up into
     # the body: they are the two things a reader deciding whether to trust this needs, and
@@ -1372,34 +1372,18 @@ def render_verification_plaintext(token: str) -> str:
 
 
 def render_welcome_email(unsub_token: str) -> str:
-    """One 43-word sentence used to carry the whole explanation, and it read as a wall. Split
-    into a short lead plus three labelled lines: the same information, but scannable, and the
-    labels let someone who is skimming still come away knowing when it arrives and what is in
-    it. No CTA, because there is no action left to take, and a button with nothing behind it
-    invites a click that leads nowhere in particular."""
-    rows = [
-        ("WHEN", "After every race weekend, once the session data lands."),
-        ("WHAT", "Three insights from the telemetry, not the broadcast."),
-        ("PLUS", "Qualifying pace and the constructor pace spread."),
-    ]
-    lines = "".join(
-        f"""
-    <tr>
-      <td style="padding:0 14px 10px 0;vertical-align:top;white-space:nowrap;
-                 font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:12px;
-                 letter-spacing:0.08em;color:#E10600;">{label}</td>
-      <td style="padding:0 0 10px 0;vertical-align:top;
-                 font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.45;color:#0a0a0a;">{text}</td>
-    </tr>"""
-        for label, text in rows
-    )
+    """No CTA: there is no action left to take, and a button with nothing behind it invites a
+    click that leads nowhere in particular."""
     body = f"""
   <p style="font-family:{_NB_DISPLAY_FONT};font-weight:700;font-size:26px;line-height:1.15;color:#0a0a0a;margin:26px 0 0;">
     Your seat is confirmed.
   </p>
 
-  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 44px;">{lines}
-  </table>
+  <p style="font-family:{_NB_SANS_FONT};font-size:16px;line-height:1.55;color:#0a0a0a;margin:14px 0 44px;">
+    After every race weekend you get three insights built from the session telemetry, not from
+    the broadcast: what the cars actually did through the corners, on the straights, and over a
+    stint. Plus two reads on qualifying pace and the constructor pace spread.
+  </p>
 """
     footer = (
         f"    &copy; {datetime.utcnow().year} Tanish Misra<br>\n"
@@ -1418,9 +1402,10 @@ def render_welcome_plaintext(unsub_token: str) -> str:
         "",
         "Your seat is confirmed.",
         "",
-        "WHEN  After every race weekend, once the session data lands.",
-        "WHAT  Three insights from the telemetry, not the broadcast.",
-        "PLUS  Qualifying pace and the constructor pace spread.",
+        "After every race weekend you get three insights built from the session telemetry,",
+        "not from the broadcast: what the cars actually did through the corners, on the",
+        "straights, and over a stint. Plus two reads on qualifying pace and the constructor",
+        "pace spread.",
         "",
         f"Unsubscribe: {unsubscribe_url(unsub_token)}",
     ])
