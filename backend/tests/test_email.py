@@ -154,8 +154,10 @@ def test_render_email_neubrutalist_renders_core_content():
     # attempt 7 item 2: WINNER stamp is always black/white now (was team-colored, forcing a
     # per-team ink/white contrast pick). attempt 8: the verdict's highlight box read as loud/bad
     # on real sends, so it's plain brand-red text now, no background.
-    assert '>WINNER</' in html
-    assert 'background:#0a0a0a' in html and 'color:#fff' in html
+    # WINNER is a hosted chip image now, not live CSS text -- immune to Gmail's dark-mode
+    # rewriting, unlike the live black-bg/white-text box it replaced (real send measured that
+    # box flipping to white-bg/black-text under Gmail's automatic inversion).
+    assert '<img src="https://telogify.app/chips/chip-winner.png" width="138" height="52" alt="WINNER"' in html
     assert '.headline .verdict { color: #0a0a0a; }' in html
     # attempt 7 item 1: capital T in the wordmark, matching the site's own casing
     assert '<p class="wordmark" style="margin:0;">Telo<span>gify</span></p>' in html
@@ -170,10 +172,13 @@ def test_render_email_neubrutalist_renders_core_content():
     # attempt 5: off-white #FEFEFE not pure #fff (dark-mode best effort -- Gmail's auto-invert
     # is measurably less aggressive on near-white than pure white)
     assert 'background:#FEFEFE' in html
-    # attempt 6 copy fixes
-    assert "SUNDAY&rsquo;S FRONT RUNNERS" in html
-    assert "YOUR 3 INSIGHTS" in html
-    assert "FAST OUT THE GATES IN PRACTICE" in html
+    # attempt 6 copy fixes -- now hosted chip images too, same reasoning as WINNER above
+    assert '<img src="https://telogify.app/chips/chip-section-pace.png"' in html
+    assert 'alt="SUNDAY&rsquo;S FRONT RUNNERS"' in html
+    assert '<img src="https://telogify.app/chips/chip-section-insights.png"' in html
+    assert 'alt="YOUR 3 INSIGHTS"' in html
+    assert '<img src="https://telogify.app/chips/chip-section-practice.png"' in html
+    assert 'alt="FAST OUT THE GATES IN PRACTICE"' in html
     # next-race stat label sits inline right of the number (item 7), not display:block below it
     assert '<span class="stat-label">days away</span>' in html
     assert '<span class="stat-label">km circuit</span>' in html

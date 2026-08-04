@@ -403,6 +403,30 @@ def _nb_logo_chip(base_url: str) -> str:
     return f'<img src="{html.escape(logo_url)}" width="46" height="50" alt="" style="display:block;width:46px;height:50px;">'
 
 
+# Section-title chips (frontend/public/chips/chip-section-*.png): the three panel headings below
+# are always the exact same word-for-word string with the same fixed black/white color scheme,
+# regardless of weekend, so -- like WINNER and the masthead logo above -- they're safe to
+# pre-bake once and serve as a hosted image, immune to Gmail's dark-mode CSS rewriting. This is
+# NOT a general pattern for every `.section-title`/`.lbl` in this file: sector/qualifying/next-up
+# labels and insight-number badges are excluded because their color and/or text is per-weekend
+# dynamic (team color, round number, driver name), which a static pre-baked image can't reflect;
+# those stay live CSS. See CLAUDE.md's Email digest section for the full background.
+_SECTION_TITLE_CHIPS = {
+    "practice": ("chip-section-practice.png", "FAST OUT THE GATES IN PRACTICE", 414, 38),
+    "pace": ("chip-section-pace.png", "SUNDAY&rsquo;S FRONT RUNNERS", 337, 38),
+    "insights": ("chip-section-insights.png", "YOUR 3 INSIGHTS", 220, 38),
+}
+
+
+def _nb_section_title_chip(base_url: str, key: str) -> str:
+    filename, alt, width, height = _SECTION_TITLE_CHIPS[key]
+    url = f"{base_url.rstrip('/')}/chips/{filename}"
+    return (
+        f'<img src="{html.escape(url)}" width="{width}" height="{height}" alt="{alt}" '
+        f'style="display:inline-block;vertical-align:middle;margin-bottom:28px;">'
+    )
+
+
 _NB_STYLE = f"""
   * {{ box-sizing: border-box; }}
   body {{ margin: 0; }}
@@ -435,9 +459,8 @@ _NB_STYLE = f"""
      theme -- plain text instead, no background. attempt 9: red read worse than black next to
      the team-colored name right before it, so plain ink. */
   .headline .verdict {{ color: #0a0a0a; }}
-  .sub {{ font-size: 14px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
+  .sub {{ font-size: 16px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
-  .section-title {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size: 22px; display: inline-block; background: #0a0a0a; color: #fff; padding: 6px 14px; margin: 0 0 28px; }}
   .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
   /* The real per-row cap is an inline max-width set in Python (see _nb_pace_spread_html: each
      row's own calc((100% - 140px) * ratio), so a clamped row stays proportional to the others
@@ -463,7 +486,7 @@ _NB_STYLE = f"""
      phrase), not stacked below it -- the old display:block on b pushed the label onto its own
      line under the figure. */
   .next-race-inner .stats b {{ font-family: {_NB_DISPLAY_FONT}; font-weight: 700; font-size:22px; color:#E10600; margin-right:6px; }}
-  .next-race-inner .stats .stat-label {{ font-size:13px; color:#0a0a0a; }}
+  .next-race-inner .stats .stat-label {{ font-size:16px; color:#0a0a0a; }}
   /* A genuine sign-off, not a line buried in the small-print footer: same display font as the
      section headings so it reads as the last beat of the email's own voice, not legal copy.
      Left-justified per item 5, matching the rest of the email's left-aligned prose. */
@@ -572,7 +595,7 @@ def _nb_sub_html(winner: dict | None, pace_spread: dict | None) -> str:
     return '<p class="sub"><b>Here&rsquo;s what actually happened!</b></p>'
 
 
-def _nb_practice_html(practice: dict | None) -> str:
+def _nb_practice_html(practice: dict | None, base_url: str) -> str:
     if practice is None:
         return ""
     tiles = []
@@ -618,8 +641,8 @@ def _nb_practice_html(practice: dict | None) -> str:
         for r in range(0, len(tile_divs), 2)
     )
     return (
-        '<span class="section-title">FAST OUT THE GATES IN PRACTICE</span>'
-        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows_html}</table>'
+        _nb_section_title_chip(base_url, "practice")
+        + f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows_html}</table>'
     )
 
 
@@ -742,7 +765,7 @@ def _nb_pace_spread_html(pace_spread: dict | None, base_url: str) -> str:
         f'style="table-layout:fixed;">{"".join(row_html)}</table>'
     )
     return (
-        '<span class="section-title">SUNDAY&rsquo;S FRONT RUNNERS</span>'
+        _nb_section_title_chip(base_url, "pace")
         + _nb_shadow_box(
             inner, box_class="flat-panel-inner",
             box_style="padding:14px 22px 16px;", wrapper_style="margin-bottom:40px;",
@@ -766,7 +789,7 @@ def _nb_next_race_html(next_race: dict | None) -> str:
         if length_km is not None else ""
     )
     place = (
-        f'<p style="margin:0;font-size:13px;">{html.escape(next_race["place"])}</p>'
+        f'<p style="margin:0;font-size:16px;">{html.escape(next_race["place"])}</p>'
         if next_race.get("place") else ""
     )
     # NEXT UP sits flush against the box's own top-left corner (zero padding on the outer box),
@@ -835,7 +858,7 @@ def render_email_neubrutalist(
                 wrapper_style="margin:0 0 20px;",
             )
             cards.append(box)
-        cards_html = '<span class="section-title">YOUR 3 INSIGHTS</span>' + "".join(cards)
+        cards_html = _nb_section_title_chip(base_url, "insights") + "".join(cards)
 
     # Inline color (not the .cta class alone): Gmail's default link-blue was winning over
     # class-only anchor color in the attempt-2 send. Shadow-boxed like the panels; the anchor
@@ -861,8 +884,16 @@ def render_email_neubrutalist(
     # feedback, wrong for at least McLaren. Black fill sidesteps the whole per-team contrast
     # question: white text is always safely legible on it, for every team including the
     # lighter ones, with no darkening logic needed.
+    # Hosted image, not live CSS: WINNER's text is always the same word with the same fixed
+    # black/white color scheme (never team-dependent), so unlike the driver name or team-colored
+    # labels elsewhere in this email, it's safe to pre-bake once -- and doing so makes it immune
+    # to Gmail's automatic dark-mode color rewriting, which was flipping the live version to a
+    # white box with black text on a real send. See CLAUDE.md's Email digest section for the
+    # full "Variant C" background on which elements are safe to pre-bake (fixed text AND fixed
+    # color) versus which still need live CSS (dynamic team color and/or per-weekend text).
     winner_stamp = (
-        f'<div style="margin-bottom:14px;">{_nb_stamp("WINNER", bg=_NB_INK, fg="#fff", inline=True)}</div>'
+        f'<div style="margin-bottom:14px;"><img src="{html.escape(base_url.rstrip("/"))}/chips/'
+        f'chip-winner.png" width="138" height="52" alt="WINNER" style="display:block;"></div>'
         if raw_team else ""
     )
     # WINNER sits flush against the box's own top-left corner (zero padding on the outer box),
@@ -902,7 +933,7 @@ def render_email_neubrutalist(
 
   {headline_box}
 
-  {_nb_practice_html(practice)}
+  {_nb_practice_html(practice, base_url)}
   {_nb_qualifying_html(quali_insight)}
   {_nb_pace_spread_html(pace_spread, base_url)}
   {cards_html}
@@ -914,7 +945,7 @@ def render_email_neubrutalist(
   <p class="closer">See you after the next session!</p>
 
   <footer>
-    Methodology inputs come from Mirco Bartolozzi (@fdataanalysis), covering clean-air filtering, fuel correction, and the ERS depletion signal. Timing data comes from FastF1.<br>
+    Methodology inputs come from <a href="https://www.instagram.com/fdataanalysis/" style="color:#0a0a0a">Mirco Bartolozzi (@fdataanalysis)</a>, covering clean-air filtering, fuel correction, and the ERS depletion signal. Timing data comes from FastF1.<br>
     &copy; {weekend.year} Tanish Misra<br>
     <a href="{html.escape(base_url.rstrip('/'))}/unsubscribe" style="color:#0a0a0a">Unsubscribe</a>
   </footer>
