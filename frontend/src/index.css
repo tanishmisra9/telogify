@@ -130,6 +130,17 @@
   font-feature-settings: "tnum" 1;
 }
 
+/* reCAPTCHA v3's floating badge. Google permits hiding it only if the branding text is shown
+   in the flow instead, which SubscribePage does ("Protected by reCAPTCHA, so Google's Privacy
+   Policy and Terms of Service apply"). If that line is ever removed, this rule has to go too.
+
+   Hidden globally rather than per route on purpose: the app is a SPA, so once the script loads
+   on /subscribe it stays for the rest of the session and the badge would otherwise follow the
+   reader onto every other page. It also sat on top of BackToTopButton in the same corner. */
+.grecaptcha-badge {
+  visibility: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
