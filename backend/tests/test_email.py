@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from telogify import email as email_module
@@ -255,3 +256,53 @@ def test_send_digest_sends_neubrutalist_to_each_recipient(db_session, monkeypatc
     assert count == 2
     assert len(sent) == 2
     assert all("READ THE FULL ANALYSIS" in params["html"] for params in sent)
+
+
+def test_every_chip_image_can_shrink_to_fit_its_container():
+    """A chip <img> carries a fixed pixel `width`, so without max-width it cannot shrink: too
+    wide for its panel and it overflows, clipping the text and forcing the whole email to scroll
+    sideways. Measured on a real render before this guard existed: the practice section title
+    overflowed by 81px at a 390px viewport and the document scrolled horizontally at 320/390/430.
+
+    Not a hypothetical -- ANDREA KIMI ANTONELLI renders a 354px driver-name chip against roughly
+    251px of usable panel width on a 390px phone.
+    """
+    practice = {
+        "sectors": [
+            (1, "Mercedes", "ANT", 0.019, 28.094),
+            (2, "Mercedes", "ANT", 0.023, 35.623),
+            (3, "McLaren", "NOR", 0.031, 24.512),
+        ],
+        "top_speed_driver": "ANT", "top_speed_constructor": "Ferrari", "top_speed_kmh": 322.0,
+    }
+    html = render_email_neubrutalist(
+        _weekend(), _insights(), "https://telogify.app",
+        winner={"driver": "ANT", "constructor": "Mercedes"},
+        pace_spread=_pace_spread(), practice=practice, quali_insight=_quali_insight(),
+    )
+    chips = re.findall(r'<img[^>]*?/chip(?:s|/text\.png)[^>]*>', html)
+    assert chips, "expected chip images in the render"
+    for chip in chips:
+        assert "max-width:100%" in chip, f"chip cannot shrink, will overflow: {chip[:120]}"
+        assert "height:auto" in chip, f"chip will squash when it shrinks: {chip[:120]}"
+
+
+def test_practice_tiles_all_reserve_the_same_number_of_value_lines():
+    """Tiles sit two-per-row; a tile whose value wraps to two lines while its row-mate stays on
+    one makes the two cards different heights and their borders visibly disagree. Measured
+    before the fix: TOP SPEED 122px against SECTOR 3's 100px, because "331 km/h (206 mph)"
+    cannot fit one line in a half-width tile at any font size the design would accept."""
+    practice = {
+        "sectors": [
+            (1, "Mercedes", "ANT", 0.019, 28.094),
+            (2, "Mercedes", "ANT", 0.023, 35.623),
+            (3, "McLaren", "NOR", 0.031, 24.512),
+        ],
+        "top_speed_driver": "HAM", "top_speed_constructor": "Ferrari", "top_speed_kmh": 322.0,
+    }
+    html = render_email_neubrutalist(
+        _weekend(), _insights(), "https://telogify.app", practice=practice,
+    )
+    vals = re.findall(r'<p class="val">(.*?)</p>', html)
+    assert len(vals) == 4, f"expected 4 practice tiles, got {len(vals)}"
+    assert all(v.count("<br>") == 1 for v in vals), f"uneven value line counts: {vals}"

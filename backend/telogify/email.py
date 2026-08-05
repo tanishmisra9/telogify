@@ -406,6 +406,16 @@ def _nb_logo_chip(base_url: str) -> str:
     return f'<img src="{html.escape(logo_url)}" width="46" height="50" alt="" style="display:block;width:46px;height:50px;">'
 
 
+# Every chip is an <img> carrying a fixed pixel `width`, which CANNOT shrink on its own: too wide
+# for its container and it overflows, clipping the text or forcing the whole email to scroll
+# sideways. Not hypothetical -- the driver-name chip for ANDREA KIMI ANTONELLI measures 354px
+# against ~251px of usable panel width on a 390px phone, and chip-section-practice.png is 414px
+# against ~416px even on the calibrated real Gmail iOS viewport, i.e. one long word from clipping.
+# max-width lets a too-wide chip scale down instead; height:auto is what keeps it from squashing,
+# since the fixed `height` attribute would otherwise hold while the width shrank.
+_CHIP_FIT_STYLE = "max-width:100%;height:auto;"
+
+
 # Section-title chips (frontend/public/chips/chip-section-*.png): the three panel headings below
 # are always the exact same word-for-word string with the same fixed black/white color scheme,
 # regardless of weekend, so -- like WINNER and the masthead logo above -- they're safe to
@@ -425,7 +435,8 @@ def _nb_section_title_chip(base_url: str, key: str) -> str:
     url = f"{base_url.rstrip('/')}/chips/{filename}"
     return (
         f'<img src="{html.escape(url)}" width="{width}" height="{height}" alt="{alt}" '
-        f'style="display:inline-block;vertical-align:middle;margin-bottom:28px;">'
+        f'style="display:inline-block;vertical-align:middle;margin-bottom:28px;'
+        f"{_CHIP_FIT_STYLE}\">"
     )
 
 
@@ -482,6 +493,7 @@ def _dynamic_chip_img(
             params[name] = value
     url = f"{settings.api_base_url.rstrip('/')}/chip/text.png?{urlencode(params)}"
     display_style = "display:block;" if block else "display:inline-block;vertical-align:middle;"
+    display_style += _CHIP_FIT_STYLE  # never let a long name overflow its panel; see the constant
     return (
         f'<img src="{html.escape(url)}" width="{width}" height="{height}" '
         f'alt="{html.escape(text)}" style="{display_style}{style_extra}">'
@@ -671,20 +683,31 @@ def _nb_sub_html(winner: dict | None, pace_spread: dict | None) -> str:
 def _nb_practice_html(practice: dict | None, base_url: str) -> str:
     if practice is None:
         return ""
+    # Every tile's .val occupies exactly TWO lines, the second one reserved even when empty.
+    # Measured at a 390px viewport: "331 km/h (206 mph)" wrapped, making the TOP SPEED tile 122px
+    # tall against its row-mate's 100px, so the two cards' borders visibly disagreed. (The value
+    # does not fit one line in a half-width tile at any font size the design would accept --
+    # estimated from font metrics, not measured, but the wrap itself was.) Reserving the line on
+    # all four keeps them identical in height whatever wraps, at every viewport, and turns the
+    # mph from an accidental wrap into a deliberate second line. Verified equal at 390/514/1000px.
+    # `&nbsp;` (not an empty string) because an empty line box collapses.
+    _VAL_SECOND_LINE = "<br>&nbsp;"
     tiles = []
     for sector, constructor, driver, _margin, best_time_s in practice["sectors"]:
         driver_name = _full_driver_name(driver) if driver else "Unknown"
         value = f"{best_time_s:.3f}s" if best_time_s is not None else "—"
-        tiles.append((f"SECTOR {sector}", value, constructor or "Unknown", driver_name, ""))
+        tiles.append(
+            (f"SECTOR {sector}", value, constructor or "Unknown", driver_name, _VAL_SECOND_LINE)
+        )
     kmh = practice["top_speed_kmh"]
     mph = kmh * 0.621371
     tiles.append((
         "TOP SPEED", f"{kmh:.0f} km/h",
         practice["top_speed_constructor"] or "Unknown",
         f"{_full_driver_name(practice['top_speed_driver'])}",
-        # attempt 6 item 10: mph moves onto the value line (with the km/h figure it belongs
-        # to) instead of tacking onto the driver name, which read as part of the driver's name.
-        f' <span style="font-size:13px;font-weight:400;color:{_MUTED}">({mph:.0f} mph)</span>',
+        # attempt 6 item 10: mph stays on the value line (with the km/h figure it belongs to)
+        # rather than tacking onto the driver name, where it read as part of the driver's name.
+        f'<br><span style="font-size:13px;font-weight:400;color:{_MUTED}">({mph:.0f} mph)</span>',
     ))
     # Table, not CSS grid (email.py:626 header note / project CLAUDE.md): Gmail (desktop,
     # iOS, Android, non-Workspace accounts) doesn't support display:grid, which was collapsing
@@ -984,7 +1007,8 @@ def render_email_neubrutalist(
     # color) versus which still need live CSS (dynamic team color and/or per-weekend text).
     winner_stamp = (
         f'<div style="margin-bottom:14px;"><img src="{html.escape(base_url.rstrip("/"))}/chips/'
-        f'chip-winner.png" width="138" height="52" alt="WINNER" style="display:block;"></div>'
+        f'chip-winner.png" width="138" height="52" alt="WINNER" '
+        f'style="display:block;{_CHIP_FIT_STYLE}"></div>'
         if raw_team else ""
     )
     # WINNER sits flush against the box's own top-left corner (zero padding on the outer box),
