@@ -287,27 +287,6 @@ def test_every_chip_image_can_shrink_to_fit_its_container():
         assert "height:auto" in chip, f"chip will squash when it shrinks: {chip[:120]}"
 
 
-def test_practice_tiles_all_reserve_the_same_number_of_value_lines():
-    """Tiles sit two-per-row; a tile whose value wraps to two lines while its row-mate stays on
-    one makes the two cards different heights and their borders visibly disagree. Measured
-    before the fix: TOP SPEED 122px against SECTOR 3's 100px, because "331 km/h (206 mph)"
-    cannot fit one line in a half-width tile at any font size the design would accept."""
-    practice = {
-        "sectors": [
-            (1, "Mercedes", "ANT", 0.019, 28.094),
-            (2, "Mercedes", "ANT", 0.023, 35.623),
-            (3, "McLaren", "NOR", 0.031, 24.512),
-        ],
-        "top_speed_driver": "HAM", "top_speed_constructor": "Ferrari", "top_speed_kmh": 322.0,
-    }
-    html = render_email_neubrutalist(
-        _weekend(), _insights(), "https://telogify.app", practice=practice,
-    )
-    vals = re.findall(r'<p class="val">(.*?)</p>', html)
-    assert len(vals) == 4, f"expected 4 practice tiles, got {len(vals)}"
-    assert all(v.count("<br>") == 1 for v in vals), f"uneven value line counts: {vals}"
-
-
 def test_sub_lead_is_plain_bold_with_no_highlight_and_no_forced_ink():
     """The lead line's yellow highlight is gone for good: #FFE500's luminance (~0.77) is far
     above the ~0.235 point where Gmail's dark-mode transform flips from lightening to crushing,

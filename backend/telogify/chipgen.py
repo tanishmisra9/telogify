@@ -45,6 +45,20 @@ def _char_advances(text: str, font: ImageFont.FreeTypeFont, spacing_px: float) -
     return [a + spacing_px for a in advances[:-1]] + advances[-1:] if advances else []
 
 
+def text_baseline_offset(font_size: int) -> int:
+    """CSS `vertical-align` (in px, negative) that puts an inline text chip's own baseline on the
+    baseline of the live text beside it.
+
+    A chip's height is ascent+descent (see measure_text_chip), so its baseline sits `descent` up
+    from its bottom edge -- which is exactly where a text run's baseline sits relative to its
+    descender. Hence -descent. Derived rather than hardcoded on purpose: the driver-name chip
+    carried a hand-tuned -7px from an earlier build whose chips were cropped tight to the ink,
+    and changing the height metric silently invalidated it, dropping the name off the headline's
+    baseline. Anything derived from the font cannot go stale that way."""
+    _, descent = _font(font_size).getmetrics()
+    return -descent
+
+
 def measure_text_chip(
     text: str,
     *,

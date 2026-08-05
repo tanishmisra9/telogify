@@ -25,7 +25,7 @@ from telogify.analysis.race_pace import constructor_median_gaps
 from telogify.analysis.schedule import fetch_season_schedule, pick_next_event
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
 from telogify.analysis.sessions import pick_session
-from telogify.chipgen import measure_text_chip
+from telogify.chipgen import measure_text_chip, text_baseline_offset
 from telogify.config import settings
 from telogify.db import set_service_scope
 from telogify.subscriptions import VERIFY_TOKEN_TTL_HOURS, unsubscribe_token
@@ -652,14 +652,15 @@ def _nb_headline_html(winner: dict | None) -> str:
         # Dynamic chip, not live `color:{team_color}` CSS: a real send measured the driver name's
         # bright team color (e.g. Mercedes teal) crushed by Gmail's dark-mode inversion. See
         # _dynamic_chip_img's docstring.
-        # vertical-align:-7px carried over from the Variant C experiment's own baseline tuning at
-        # this same font-size (measured against real Gmail there); the plain `middle` before it is
-        # a fallback for a client that doesn't parse the override. Needs its own real-send
-        # reconfirmation now that the chip is PIL/Liberation-Sans-Bold-rendered rather than a
-        # Playwright/real-Arial screenshot -- flagged as misaligned again on the first real send
-        # of this new pipeline.
+        # Baseline offset is derived from the font, not hand-tuned: the old hardcoded -7px came
+        # from a build whose chips were cropped tight to the ink, and it went stale the moment
+        # the chip height became ascent+descent, dropping the name off the headline's baseline
+        # (caught in a desktop side-by-side against the approved design). See
+        # chipgen.text_baseline_offset. The plain `middle` it overrides stays as the fallback for
+        # a client that ignores the px value. .headline is 28px, so the chip is too.
         name_chip = _dynamic_chip_img(
-            name, font_size=28, text_color=team_color, style_extra="vertical-align:-7px;",
+            name, font_size=28, text_color=team_color,
+            style_extra=f"vertical-align:{text_baseline_offset(28)}px;",
         )
         spans = (
             f'{name_chip} '
@@ -689,22 +690,11 @@ def _nb_sub_html(winner: dict | None, pace_spread: dict | None) -> str:
 def _nb_practice_html(practice: dict | None, base_url: str) -> str:
     if practice is None:
         return ""
-    # Every tile's .val occupies exactly TWO lines, the second one reserved even when empty.
-    # Measured at a 390px viewport: "331 km/h (206 mph)" wrapped, making the TOP SPEED tile 122px
-    # tall against its row-mate's 100px, so the two cards' borders visibly disagreed. (The value
-    # does not fit one line in a half-width tile at any font size the design would accept --
-    # estimated from font metrics, not measured, but the wrap itself was.) Reserving the line on
-    # all four keeps them identical in height whatever wraps, at every viewport, and turns the
-    # mph from an accidental wrap into a deliberate second line. Verified equal at 390/514/1000px.
-    # `&nbsp;` (not an empty string) because an empty line box collapses.
-    _VAL_SECOND_LINE = "<br>&nbsp;"
     tiles = []
     for sector, constructor, driver, _margin, best_time_s in practice["sectors"]:
         driver_name = _full_driver_name(driver) if driver else "Unknown"
         value = f"{best_time_s:.3f}s" if best_time_s is not None else "—"
-        tiles.append(
-            (f"SECTOR {sector}", value, constructor or "Unknown", driver_name, _VAL_SECOND_LINE)
-        )
+        tiles.append((f"SECTOR {sector}", value, constructor or "Unknown", driver_name, ""))
     kmh = practice["top_speed_kmh"]
     mph = kmh * 0.621371
     tiles.append((
@@ -713,7 +703,13 @@ def _nb_practice_html(practice: dict | None, base_url: str) -> str:
         f"{_full_driver_name(practice['top_speed_driver'])}",
         # attempt 6 item 10: mph stays on the value line (with the km/h figure it belongs to)
         # rather than tacking onto the driver name, where it read as part of the driver's name.
-        f'<br><span style="font-size:13px;font-weight:400;color:{_MUTED}">({mph:.0f} mph)</span>',
+        # Deliberately INLINE, not forced onto its own line with <br>. Forcing the break did
+        # equalize tile heights on a narrow phone (where the value wraps anyway), but on every
+        # wider viewport the mph fits inline, so the reserved line became visible dead space
+        # between the value and the driver -- a clear regression against the approved design,
+        # caught in a desktop side-by-side. A tile height mismatch only when the value actually
+        # wraps is the cheaper of the two costs.
+        f' <span style="font-size:13px;font-weight:400;color:{_MUTED}">({mph:.0f} mph)</span>',
     ))
     # Table, not CSS grid (email.py:626 header note / project CLAUDE.md): Gmail (desktop,
     # iOS, Android, non-Workspace accounts) doesn't support display:grid, which was collapsing
