@@ -307,3 +307,43 @@ def test_sub_lead_is_plain_bold_with_no_highlight_and_no_forced_ink():
     assert not re.search(r"\.sub b\s*\{", declarations), "a .sub b rule is back; see docstring"
     # emphasis still exists, carried by <b> alone
     assert "<b>Though Mercedes had the faster race pace.</b>" in html
+
+
+def test_dynamic_chips_match_variant_c_reference_dimensions():
+    """Pins each dynamic chip's rendered box to the size measured from Variant C's static
+    PNGs (frontend/public/chips/*.png, still in the repo as ground truth). Every one of these
+    chips was resized smaller than the benchmark once already -- guessed by eye instead of
+    measured -- and it read to a real user as "no room to breathe" / "much much smaller" /
+    "the wrong font" (the last of which was actually just the wrong size: chip-num01.png and a
+    same-size render of "01" are visually indistinguishable). This test is what stops that
+    regression from being silent next time.
+
+    next-up's target is +7px wide versus the Variant C PNG on purpose: this chip's text embeds a
+    round number ("NEXT UP · ROUND 12") that the static original never had to render, and the
+    middle-dot glyph is wider than Variant C's plain hyphen. Wider is the safe direction (matches
+    "much much smaller" pointing the other way), so it isn't pinned as an exact match.
+    """
+    practice = {
+        "sectors": [(1, "Mercedes", "RUS", 0.019, 27.726)],
+        "top_speed_driver": "RUS", "top_speed_constructor": "Racing Bulls", "top_speed_kmh": 331.0,
+    }
+    html = render_email_neubrutalist(
+        _weekend(), _insights(), "https://telogify.app",
+        winner=_winner(), practice=practice, quali_insight=_quali_insight(),
+        next_race={"round": 12, "name": "Dutch Grand Prix", "place": "Zandvoort",
+                   "days": 20, "length_km": 4.259},
+    )
+
+    def dims(alt_text):
+        m = re.search(rf'<img[^>]*alt="{re.escape(alt_text)}"[^>]*>', html)
+        assert m, f"no chip found with alt={alt_text!r}"
+        w, h = re.search(r'width="(\d+)" height="(\d+)"', m.group()).groups()
+        return int(w), int(h)
+
+    assert dims("Austrian Grand Prix") == (255, 52)  # _weekend()'s event name, not the AU GP
+    assert dims("SECTOR 1") == (93, 23)
+    assert dims("TOP SPEED") == (105, 23)
+    assert dims("QUALIFYING HOUR") == (177, 28)
+    assert dims("01") == (50, 35)
+    w, h = dims("NEXT UP · ROUND 12")
+    assert h == 27 and w >= 178, f"next-up shrank below the benchmark: {(w, h)}"
