@@ -15,7 +15,10 @@ Font: Liberation Sans Bold (telogify/assets/fonts/, SIL Open Font License 1.1), 
 Arial-compatible open font -- chosen to match what Gmail's live text ALREADY falls back to (it
 never fetches external stylesheets), the same lesson learned the hard way for the static chips
 (see CLAUDE.md's Email digest section: baking chips in Archivo Black looked visibly wrong next to
-Arial-fallback live text).
+Arial-fallback live text). Font SIZES for each call site match the already-approved, already-
+bumped sizes baked into the static WINNER/section-title chips (see email.py call sites), not the
+smaller original live-CSS values -- using the smaller ones here once made every dynamic chip look
+noticeably thinner/smaller than its static neighbors in the same email.
 """
 
 from __future__ import annotations
@@ -28,26 +31,36 @@ from PIL import Image, ImageDraw, ImageFont
 
 _FONT_PATH = Path(__file__).parent / "assets" / "fonts" / "LiberationSans-Bold.ttf"
 
-# ponytail: no letter-spacing support (PIL has no native kerning-gap API for it) -- only the
-# insight-number badges used a subtle 0.04em in the live-CSS version. Add manual glyph-by-glyph
-# advance if that specific gap turns out to matter once this renders on a real send.
-
 
 @lru_cache(maxsize=8)
 def _font(size_px: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(_FONT_PATH), size_px)
 
 
+def _char_advances(text: str, font: ImageFont.FreeTypeFont, spacing_px: float) -> list[float]:
+    """Per-character advance widths (PIL getlength already includes the glyph's own right-side
+    bearing, matching browser layout metrics), each with the letter-spacing gap added after it
+    except the last -- CSS letter-spacing adds the gap between characters, not a trailing gap."""
+    advances = [font.getlength(c) for c in text]
+    return [a + spacing_px for a in advances[:-1]] + advances[-1:] if advances else []
+
+
 def measure_text_chip(
-    text: str, *, font_size: int, padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+    text: str,
+    *,
+    font_size: int,
+    padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+    letter_spacing_em: float = 0.0,
 ) -> tuple[int, int]:
     """Logical (CSS px, not retina-scaled) width/height the chip will render at. Callable from
     email.py at send time without touching the network, so the <img width/height> attributes
     always match what the /chip/text.png route later serves for the identical parameters."""
     top, right, bottom, left = padding
     font = _font(font_size)
-    left_bear, top_bear, text_right, text_bottom = font.getbbox(text)
-    width = (text_right - left_bear) + left + right
+    spacing_px = letter_spacing_em * font_size
+    text_width = sum(_char_advances(text, font, spacing_px))
+    _, top_bear, _, text_bottom = font.getbbox(text)
+    width = round(text_width) + left + right
     height = (text_bottom - top_bear) + top + bottom
     return width, height
 
@@ -60,14 +73,18 @@ def render_text_chip_png(
     bg_color: str | None = None,
     padding: tuple[int, int, int, int] = (0, 0, 0, 0),
     border_radius: int = 0,
+    letter_spacing_em: float = 0.0,
     scale: int = 3,
 ) -> bytes:
     """PNG bytes at `scale`x resolution (retina-sharp when displayed at the logical size from
     measure_text_chip -- same reasoning as the static chips' deviceScaleFactor:3 renders)."""
     top, right, bottom, left = padding
-    width, height = measure_text_chip(text, font_size=font_size, padding=padding)
+    width, height = measure_text_chip(
+        text, font_size=font_size, padding=padding, letter_spacing_em=letter_spacing_em,
+    )
     font = _font(font_size * scale)
-    left_bear, top_bear, *_ = font.getbbox(text)
+    spacing_px = letter_spacing_em * font_size * scale
+    _, top_bear, *_ = font.getbbox(text)
 
     img = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -76,9 +93,11 @@ def render_text_chip_png(
             [0, 0, width * scale - 1, height * scale - 1],
             radius=border_radius * scale, fill=bg_color,
         )
-    draw.text(
-        (left * scale - left_bear, top * scale - top_bear), text, font=font, fill=text_color,
-    )
+    x = left * scale
+    y = top * scale - top_bear
+    for char, advance in zip(text, _char_advances(text, font, spacing_px)):
+        draw.text((x, y), char, font=font, fill=text_color)
+        x += advance
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")

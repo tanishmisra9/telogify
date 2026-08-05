@@ -948,7 +948,7 @@ def _validate_hex_color(value: str, param: str) -> None:
 @router.get("/chip/text.png")
 def chip_text_png(
     text: str, font_size: int, text_color: str,
-    bg_color: str | None = None, border_radius: int = 0,
+    bg_color: str | None = None, border_radius: int = 0, letter_spacing_em: float = 0.0,
     padding_top: int = 0, padding_right: int = 0, padding_bottom: int = 0, padding_left: int = 0,
 ):
     _validate_hex_color(text_color, "text_color")
@@ -957,6 +957,6 @@ def chip_text_png(
     png = render_text_chip_png(
         text, font_size=font_size, text_color=text_color, bg_color=bg_color,
         padding=(padding_top, padding_right, padding_bottom, padding_left),
-        border_radius=border_radius,
+        border_radius=border_radius, letter_spacing_em=letter_spacing_em,
     )
     return Response(content=png, media_type="image/png")

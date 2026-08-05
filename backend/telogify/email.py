@@ -437,6 +437,7 @@ def _dynamic_chip_img(
     bg_color: str | None = None,
     padding: tuple[int, int, int, int] = (0, 0, 0, 0),
     border_radius: int = 0,
+    letter_spacing_em: float = 0.0,
     style_extra: str = "",
 ) -> str:
     """<img> tag for team-colored/per-weekend-dynamic text (driver name, event name, sector/
@@ -445,13 +446,23 @@ def _dynamic_chip_img(
     neither the text nor the color is fixed across weekends, so a one-time static file can't
     represent it. Width/height come from chipgen.measure_text_chip with the exact same arguments
     passed in the URL, so what /chip/text.png later serves always matches the size this <img> tag
-    already told Gmail to expect. See chipgen.py's module docstring for the full background."""
-    width, height = measure_text_chip(text, font_size=font_size, padding=padding)
-    params: dict[str, str | int] = {"text": text, "font_size": font_size, "text_color": text_color}
+    already told Gmail to expect. See chipgen.py's module docstring for the full background.
+    font_size/letter_spacing_em must match the already-approved, already-bumped values baked into
+    the static WINNER/section-title chips (not the smaller original live-CSS values) -- using the
+    smaller ones here once made every dynamic chip look noticeably thinner than its static
+    neighbors in the same email."""
+    width, height = measure_text_chip(
+        text, font_size=font_size, padding=padding, letter_spacing_em=letter_spacing_em,
+    )
+    params: dict[str, str | int | float] = {
+        "text": text, "font_size": font_size, "text_color": text_color,
+    }
     if bg_color is not None:
         params["bg_color"] = bg_color
     if border_radius:
         params["border_radius"] = border_radius
+    if letter_spacing_em:
+        params["letter_spacing_em"] = letter_spacing_em
     top, right, bottom, left = padding
     for name, value in (
         ("padding_top", top), ("padding_right", right),
@@ -663,7 +674,7 @@ def _nb_practice_html(practice: dict | None, base_url: str) -> str:
     tile_divs = [
         _nb_shadow_box(
             _dynamic_chip_img(
-                label, font_size=11, text_color=_on_color(_team_color(constructor)),
+                label, font_size=15, text_color=_on_color(_team_color(constructor)),
                 bg_color=_team_color(constructor), padding=(1, 6, 1, 6),
                 style_extra="margin-bottom:6px;",
             )
@@ -707,7 +718,7 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
     # not honored by real Gmail).
     inner = (
         _dynamic_chip_img(
-            "QUALIFYING HOUR", font_size=12, text_color=_on_color(lbl_color), bg_color=lbl_color,
+            "QUALIFYING HOUR", font_size=16, text_color=_on_color(lbl_color), bg_color=lbl_color,
             padding=(3, 10, 3, 10),
         )
         + f'<div style="padding:12px 24px 28px;"><h3>{header}</h3>'
@@ -843,7 +854,7 @@ def _nb_next_race_html(next_race: dict | None) -> str:
     # why (negative margin verified 0px in Chromium, not honored by real Gmail).
     inner = (
         _dynamic_chip_img(
-            f'NEXT UP · ROUND {next_race["round"]}', font_size=11, text_color="#fff",
+            f'NEXT UP · ROUND {next_race["round"]}', font_size=15, text_color="#fff",
             bg_color="#E10600", padding=(3, 9, 3, 9),
         )
         + f'<div style="padding:12px 24px 26px;"><h3>{html.escape(next_race["name"])}</h3>{place}'
@@ -892,8 +903,9 @@ def render_email_neubrutalist(
             # authored in every client regardless of theme -- no dark-mode transform to reason
             # about at all, unlike when this was still live CSS.
             num_tag = _dynamic_chip_img(
-                f"{i:02d}", font_size=12, text_color=_on_color(color), bg_color=color,
-                padding=(4, 9, 4, 9), border_radius=3, style_extra="margin-bottom:14px;",
+                f"{i:02d}", font_size=18, text_color=_on_color(color), bg_color=color,
+                padding=(4, 9, 4, 9), border_radius=3, letter_spacing_em=0.04,
+                style_extra="margin-bottom:14px;",
             )
             # Alternating shadow direction on even cards matches the comp's
             # :nth-child(odd)/:nth-child(even) collage motif -- the shadow's own side is
@@ -978,8 +990,8 @@ def render_email_neubrutalist(
 
   <div class="masthead">
     {_dynamic_chip_img(
-        weekend.event_name, font_size=15, text_color=_on_color("#E10600"), bg_color="#E10600",
-        padding=(10, 18, 10, 18),
+        weekend.event_name, font_size=21, text_color=_on_color("#E10600"), bg_color="#E10600",
+        padding=(10, 18, 10, 18), letter_spacing_em=0.02,
     )}
     <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:18px auto 0;"><tr>
       <td style="padding-right:10px;vertical-align:middle;">{_nb_logo_chip(base_url)}</td>
