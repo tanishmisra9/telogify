@@ -54,14 +54,20 @@ def measure_text_chip(
 ) -> tuple[int, int]:
     """Logical (CSS px, not retina-scaled) width/height the chip will render at. Callable from
     email.py at send time without touching the network, so the <img width/height> attributes
-    always match what the /chip/text.png route later serves for the identical parameters."""
+    always match what the /chip/text.png route later serves for the identical parameters.
+
+    Height uses the font's typographic ascent+descent (getmetrics), not the tight ink bounding
+    box (getbbox) -- ink height for all-caps text like "SECTOR 1" is ~10px at 15px font-size,
+    while ascent+descent is ~18px. Using the tight box rendered every chip noticeably more
+    cramped/squished than the equivalent live CSS text, which gets the font's natural line-height
+    leading above and below the glyphs for free; ascent+descent reproduces that leading."""
     top, right, bottom, left = padding
     font = _font(font_size)
     spacing_px = letter_spacing_em * font_size
     text_width = sum(_char_advances(text, font, spacing_px))
-    _, top_bear, _, text_bottom = font.getbbox(text)
+    ascent, descent = font.getmetrics()
     width = round(text_width) + left + right
-    height = (text_bottom - top_bear) + top + bottom
+    height = ascent + descent + top + bottom
     return width, height
 
 
@@ -84,7 +90,6 @@ def render_text_chip_png(
     )
     font = _font(font_size * scale)
     spacing_px = letter_spacing_em * font_size * scale
-    _, top_bear, *_ = font.getbbox(text)
 
     img = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -93,8 +98,12 @@ def render_text_chip_png(
             [0, 0, width * scale - 1, height * scale - 1],
             radius=border_radius * scale, fill=bg_color,
         )
+    # No top_bear subtraction: PIL's default text anchor ("la") places (x, y) at the font's own
+    # ascender line, which is exactly the reference point measure_text_chip's height is built
+    # from -- drawing here (rather than nudging up to the tight ink top) is what gives the
+    # natural leading above the glyphs.
     x = left * scale
-    y = top * scale - top_bear
+    y = top * scale
     for char, advance in zip(text, _char_advances(text, font, spacing_px)):
         draw.text((x, y), char, font=font, fill=text_color)
         x += advance

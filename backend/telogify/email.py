@@ -438,6 +438,7 @@ def _dynamic_chip_img(
     padding: tuple[int, int, int, int] = (0, 0, 0, 0),
     border_radius: int = 0,
     letter_spacing_em: float = 0.0,
+    block: bool = False,
     style_extra: str = "",
 ) -> str:
     """<img> tag for team-colored/per-weekend-dynamic text (driver name, event name, sector/
@@ -450,7 +451,16 @@ def _dynamic_chip_img(
     font_size/letter_spacing_em must match the already-approved, already-bumped values baked into
     the static WINNER/section-title chips (not the smaller original live-CSS values) -- using the
     smaller ones here once made every dynamic chip look noticeably thinner than its static
-    neighbors in the same email."""
+    neighbors in the same email.
+    block=True for a chip that sits alone at the top-left of a zero-padding box (sector/top-speed,
+    qualifying, next-up, insight numbers) -- matching the static WINNER chip's own `display:block`
+    (see _nb_stamp's old docstring history). An inline-block image with vertical-align:middle,
+    used bare at the top of a block container, still participates in an inline formatting context
+    with a phantom line box sized by the container's font metrics, leaving visible space ABOVE the
+    image (real symptom: "next race' label has room on the top, when it should be 0px"). block=
+    False (default) stays inline-block for chips that sit next to other inline content on the same
+    line (driver name next to "WON FOR X!", the masthead event-name stamp centered by its
+    container's text-align:center, which a block-level image would not respect)."""
     width, height = measure_text_chip(
         text, font_size=font_size, padding=padding, letter_spacing_em=letter_spacing_em,
     )
@@ -471,9 +481,10 @@ def _dynamic_chip_img(
         if value:
             params[name] = value
     url = f"{settings.api_base_url.rstrip('/')}/chip/text.png?{urlencode(params)}"
+    display_style = "display:block;" if block else "display:inline-block;vertical-align:middle;"
     return (
         f'<img src="{html.escape(url)}" width="{width}" height="{height}" '
-        f'alt="{html.escape(text)}" style="display:inline-block;vertical-align:middle;{style_extra}">'
+        f'alt="{html.escape(text)}" style="{display_style}{style_extra}">'
     )
 
 
@@ -511,7 +522,11 @@ _NB_STYLE = f"""
   .headline .verdict {{ color: #0a0a0a; }}
   .sub {{ font-size: 16px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
   .sub b {{ background: #FFE500; padding: 0 3px; }}
-  .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:middle; }}
+  /* vertical-align:middle alone measured close-enough in Chromium but sat visibly high against
+     the 18px row text on a real send -- same "Chromium isn't real-device correctness" pattern as
+     everything else in this file's alignment notes. -2px nudges it down toward the text's own
+     visual center; unverified against a real send, tune further if it's still off. */
+  .swatch {{ display:inline-block; width:14px; height:14px; margin-right:8px; border:1px solid #0a0a0a; vertical-align:-2px; }}
   /* The real per-row cap is an inline max-width set in Python (see _nb_pace_spread_html: each
      row's own calc((100% - 140px) * ratio), so a clamped row stays proportional to the others
      instead of every clamped bar converging on the same flat ceiling regardless of its real
@@ -619,7 +634,15 @@ def _nb_headline_html(winner: dict | None) -> str:
         # Dynamic chip, not live `color:{team_color}` CSS: a real send measured the driver name's
         # bright team color (e.g. Mercedes teal) crushed by Gmail's dark-mode inversion. See
         # _dynamic_chip_img's docstring.
-        name_chip = _dynamic_chip_img(name, font_size=28, text_color=team_color)
+        # vertical-align:-7px carried over from the Variant C experiment's own baseline tuning at
+        # this same font-size (measured against real Gmail there); the plain `middle` before it is
+        # a fallback for a client that doesn't parse the override. Needs its own real-send
+        # reconfirmation now that the chip is PIL/Liberation-Sans-Bold-rendered rather than a
+        # Playwright/real-Arial screenshot -- flagged as misaligned again on the first real send
+        # of this new pipeline.
+        name_chip = _dynamic_chip_img(
+            name, font_size=28, text_color=team_color, style_extra="vertical-align:-7px;",
+        )
         spans = (
             f'{name_chip} '
             f'<span class="verdict">WON FOR {team.upper()}!</span>'
@@ -676,7 +699,7 @@ def _nb_practice_html(practice: dict | None, base_url: str) -> str:
             _dynamic_chip_img(
                 label, font_size=15, text_color=_on_color(_team_color(constructor)),
                 bg_color=_team_color(constructor), padding=(1, 6, 1, 6),
-                style_extra="margin-bottom:6px;",
+                block=True, style_extra="margin-bottom:6px;",
             )
             + f'<div style="padding:0 16px 18px;">'
             f'<p class="val">{html.escape(value)}{mph_html}</p>'
@@ -719,7 +742,7 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
     inner = (
         _dynamic_chip_img(
             "QUALIFYING HOUR", font_size=16, text_color=_on_color(lbl_color), bg_color=lbl_color,
-            padding=(3, 10, 3, 10),
+            padding=(3, 10, 3, 10), block=True,
         )
         + f'<div style="padding:12px 24px 28px;"><h3>{header}</h3>'
         f'<p>{body}</p></div>'
@@ -855,7 +878,7 @@ def _nb_next_race_html(next_race: dict | None) -> str:
     inner = (
         _dynamic_chip_img(
             f'NEXT UP · ROUND {next_race["round"]}', font_size=15, text_color="#fff",
-            bg_color="#E10600", padding=(3, 9, 3, 9),
+            bg_color="#E10600", padding=(3, 9, 3, 9), block=True,
         )
         + f'<div style="padding:12px 24px 26px;"><h3>{html.escape(next_race["name"])}</h3>{place}'
         # Table row, not display:flex+gap (unsupported for most Gmail recipients) -- was
@@ -902,9 +925,12 @@ def render_email_neubrutalist(
             # dynamic image (like the other team-colored chips), so this renders exactly as
             # authored in every client regardless of theme -- no dark-mode transform to reason
             # about at all, unlike when this was still live CSS.
+            # Square corners, not the original rounded-3px: angular reads as "stick to the
+            # top-left corner" more clearly, matching WINNER/section-title/other panel labels
+            # (none of which are rounded).
             num_tag = _dynamic_chip_img(
                 f"{i:02d}", font_size=18, text_color=_on_color(color), bg_color=color,
-                padding=(4, 9, 4, 9), border_radius=3, letter_spacing_em=0.04,
+                padding=(4, 9, 4, 9), letter_spacing_em=0.04, block=True,
                 style_extra="margin-bottom:14px;",
             )
             # Alternating shadow direction on even cards matches the comp's
