@@ -306,3 +306,25 @@ def test_practice_tiles_all_reserve_the_same_number_of_value_lines():
     vals = re.findall(r'<p class="val">(.*?)</p>', html)
     assert len(vals) == 4, f"expected 4 practice tiles, got {len(vals)}"
     assert all(v.count("<br>") == 1 for v in vals), f"uneven value line counts: {vals}"
+
+
+def test_sub_lead_is_plain_bold_with_no_highlight_and_no_forced_ink():
+    """The lead line's yellow highlight is gone for good: #FFE500's luminance (~0.77) is far
+    above the ~0.235 point where Gmail's dark-mode transform flips from lightening to crushing,
+    so it rendered as a murky dark-olive bar.
+
+    The second assertion is the real trap. The dark-mode block used to force `.sub b` to ink so
+    it stayed legible ON the yellow. With the yellow gone that override would paint the lead
+    near-black on a dark panel -- invisible. Restoring either rule alone is a bug, so both are
+    pinned here together.
+    """
+    html = render_email_neubrutalist(
+        _weekend(), _insights(), "https://telogify.app",
+        winner=_winner(), pace_spread=_pace_spread(),
+    )
+    css = html.split("<style>")[1].split("</style>")[0]
+    declarations = re.sub(r"/\*.*?\*/", "", css, flags=re.S)  # comments may mention the old hex
+    assert "FFE500" not in declarations, "the yellow highlight is back"
+    assert not re.search(r"\.sub b\s*\{", declarations), "a .sub b rule is back; see docstring"
+    # emphasis still exists, carried by <b> alone
+    assert "<b>Though Mercedes had the faster race pace.</b>" in html

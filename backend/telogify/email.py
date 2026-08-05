@@ -533,7 +533,11 @@ _NB_STYLE = f"""
      the team-colored name right before it, so plain ink. */
   .headline .verdict {{ color: #0a0a0a; }}
   .sub {{ font-size: 16px; line-height: 1.6; margin-top: 14px; max-width: 56ch; }}
-  .sub b {{ background: #FFE500; padding: 0 3px; }}
+  /* No highlight rule for `.sub b` on purpose: it carried a #FFE500 background, whose luminance
+     (~0.77) is far above the ~0.235 point where Gmail's dark-mode transform flips from lightening
+     to crushing, so it rendered as a murky dark-olive bar with the text inverted to white. Plain
+     bold survives both themes: near-black ink is below that fixed point, so it lightens correctly
+     on dark and stays ink on light. Emphasis comes from <b>'s own weight, nothing else. */
   /* vertical-align:middle alone measured close-enough in Chromium but sat visibly high against
      the 18px row text on a real send -- same "Chromium isn't real-device correctness" pattern as
      everything else in this file's alignment notes. -2px nudges it down toward the text's own
@@ -620,8 +624,10 @@ _NB_STYLE = f"""
        light dark-mode color while sitting on an unchanged light background. Real bug caught
        in the real-browser dark-mode screenshot check, not a hypothetical. */
     .quali-inner {{ color: #0a0a0a; }}
+    /* `.sub b` deliberately has NO override here: it needed ink only to stay legible on the
+       yellow highlight, which is gone. Leaving it would paint the lead line near-black on a dark
+       panel -- invisible. It inherits .sub's light color instead. */
     .sub, .insight-inner p {{ color: #d8d8c8; }}
-    .sub b {{ color: #0a0a0a; }}
     .closer {{ color: #f2f2ea; }}
     footer {{ color: #a8a89c; border-top-color: #3a3a30; }}
     footer a {{ color: #d8d8c8 !important; }}
