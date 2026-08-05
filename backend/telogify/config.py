@@ -1,7 +1,19 @@
 """Env-driven settings. Loaded once as `settings`."""
 
+from pathlib import Path
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Anchored to this module, NOT to the process's working directory. A bare env_file=".env" is
+# resolved relative to the CWD, so every setting silently fell back to its default whenever the
+# process started anywhere other than backend/ -- and the defaults are empty strings. That
+# failure is invisible and badly misattributed: an empty resend_api_key sends
+# `Authorization: Bearer ` and Resend answers "API key is invalid", which reads as a revoked or
+# rotated key rather than a settings-loading bug. Cost a long debugging session chasing domain
+# verification, rate limits and SDK bugs before the real cause (a `cd` to the repo root earlier
+# in the same shell) turned up. Absolute path means the CWD cannot matter again.
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 #: The deployed frontend's own origins. Always allowed, so the live site cannot be cut off by a
 #: missing or mistyped WEB_BASE_URL. Public hostnames, deliberately not configuration.
@@ -9,7 +21,7 @@ PRODUCTION_ORIGINS = ("https://www.telogify.com", "https://telogify.com")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
     database_url: str = "postgresql://localhost:5432/telogify_dev"
 
