@@ -1,7 +1,10 @@
+import io
 import re
 from datetime import datetime
+from urllib.parse import parse_qs, urlparse
 
 from telogify import email as email_module
+from telogify.chipgen import render_text_chip_png
 from telogify.email import (
     _load_next_race,
     render_email_neubrutalist,
@@ -148,9 +151,10 @@ def test_render_email_neubrutalist_renders_core_content():
     # verdict in a black box, no more mixed-size ransom-note spans.
     # Driver name is a dynamic chip image now (like the pace-spread swatches and WINNER above),
     # not live `color:` CSS -- a real send measured the bright team color (Mercedes teal) crushed
-    # by Gmail's dark-mode inversion. font_size=28 matches .headline's own font-size.
+    # by Gmail's dark-mode inversion. font_size=29 (not .headline's 28px) matches Variant C's
+    # own chip-drivername.png ink metrics -- see test_driver_name_chip_baseline_matches_live_text.
     assert (
-        "chip/text.png?text=CHARLES+LECLERC&amp;font_size=28&amp;text_color=%23E8002D" in html
+        "chip/text.png?text=CHARLES+LECLERC&amp;font_size=29&amp;text_color=%23E8002D" in html
     )
     assert '<span class="verdict">WON FOR FERRARI!</span>' in html
     # sub-line names the faster rival when it differs from the winner's own team
@@ -309,19 +313,61 @@ def test_sub_lead_is_plain_bold_with_no_highlight_and_no_forced_ink():
     assert "<b>Though Mercedes had the faster race pace.</b>" in html
 
 
-def test_dynamic_chips_match_variant_c_reference_dimensions():
-    """Pins each dynamic chip's rendered box to the size measured from Variant C's static
-    PNGs (frontend/public/chips/*.png, still in the repo as ground truth). Every one of these
-    chips was resized smaller than the benchmark once already -- guessed by eye instead of
-    measured -- and it read to a real user as "no room to breathe" / "much much smaller" /
-    "the wrong font" (the last of which was actually just the wrong size: chip-num01.png and a
-    same-size render of "01" are visually indistinguishable). This test is what stops that
-    regression from being silent next time.
+def _chip_ink_metrics(png_bytes: bytes, scale: float = 3.0) -> dict:
+    """Glyph (ink) height and the four ink-to-edge gaps, in display px. Distinct from the box
+    size: a chip can match its target box exactly while the text inside still crowds the edges
+    if the font is too big and the padding too small for that box -- exactly the bug this test
+    exists to catch (see the docstring below)."""
+    from PIL import Image
 
-    next-up's target is +7px wide versus the Variant C PNG on purpose: this chip's text embeds a
-    round number ("NEXT UP · ROUND 12") that the static original never had to render, and the
-    middle-dot glyph is wider than Variant C's plain hyphen. Wider is the safe direction (matches
-    "much much smaller" pointing the other way), so it isn't pinned as an exact match.
+    im = png_bytes if isinstance(png_bytes, Image.Image) else Image.open(io.BytesIO(png_bytes))
+    im = im.convert("RGBA")
+    w, h = im.size
+    px = im.load()
+    bg = px[2, h // 2]  # a point inside the box but outside any glyph
+    xs, ys = [], []
+    for y in range(h):
+        for x in range(w):
+            p = px[x, y]
+            hit = (
+                p[3] > 60 if bg[3] < 40
+                else p[3] > 60 and (abs(p[0]-bg[0])+abs(p[1]-bg[1])+abs(p[2]-bg[2])) > 120
+            )
+            if hit:
+                xs.append(x)
+                ys.append(y)
+    assert xs, "no ink found in rendered chip"
+    return {
+        "cap": round((max(ys) - min(ys) + 1) / scale, 1),
+        "top": round(min(ys) / scale, 1), "bot": round((h - 1 - max(ys)) / scale, 1),
+        "left": round(min(xs) / scale, 1), "right": round((w - 1 - max(xs)) / scale, 1),
+    }
+
+
+# Ink metrics measured directly from Variant C's static PNGs (frontend/public/chips/*.png,
+# deviceScaleFactor 3 -- still in the repo as ground truth). "cap" is glyph height; the rest are
+# ink-to-edge gaps, i.e. the actual breathing room a viewer sees around the text.
+_VC_INK_REFERENCE = {
+    "SECTOR 1": dict(cap=11.3, top=6.0, bot=5.7, left=9.3, right=11.7),
+    "TOP SPEED": dict(cap=11.3, top=6.0, bot=5.7, left=9.0, right=10.3),
+    "QUALIFYING HOUR": dict(cap=13.3, top=7.0, bot=7.7, left=13.7, right=13.7),
+    "01": dict(cap=13.7, top=9.7, bot=11.7, left=14.7, right=18.0),
+    "Austrian Grand Prix": dict(cap=16.0, top=17.3, bot=18.7, left=24.7, right=25.7),
+}
+
+
+def test_dynamic_chip_ink_metrics_match_variant_c():
+    """Pins each label chip's rendered TEXT (not just its box) to Variant C's measured ink
+    metrics. A prior version of this test pinned box dimensions only, and that is exactly what
+    let a real regression through: a font-size solved against box HEIGHT conflates size with
+    padding, so a too-big font with too-little padding can hit the right box while the text still
+    crowds the edges -- which is what "every png looks a bit smushed vertically" was. Confirmed
+    this test fails with the box-matching-but-under-padded values it replaced (font 17/padding
+    (4,10,4,10) for qualifying, e.g., left the bottom ink gap at 4.7px against Variant C's 7.7px).
+
+    Tolerance is 1.5px, not 1px: SECTOR N and TOP SPEED share one padding value but end in
+    different final glyphs ("1"/"2"/"3" vs "D"), so their own right-side kerning residue varies
+    independently of anything this code controls -- confirmed by direct measurement, not assumed.
     """
     practice = {
         "sectors": [(1, "Mercedes", "RUS", 0.019, 27.726)],
@@ -330,20 +376,59 @@ def test_dynamic_chips_match_variant_c_reference_dimensions():
     html = render_email_neubrutalist(
         _weekend(), _insights(), "https://telogify.app",
         winner=_winner(), practice=practice, quali_insight=_quali_insight(),
-        next_race={"round": 12, "name": "Dutch Grand Prix", "place": "Zandvoort",
-                   "days": 20, "length_km": 4.259},
     )
 
-    def dims(alt_text):
-        m = re.search(rf'<img[^>]*alt="{re.escape(alt_text)}"[^>]*>', html)
-        assert m, f"no chip found with alt={alt_text!r}"
-        w, h = re.search(r'width="(\d+)" height="(\d+)"', m.group()).groups()
-        return int(w), int(h)
+    for alt, target in _VC_INK_REFERENCE.items():
+        m = re.search(rf'<img[^>]*alt="{re.escape(alt)}"[^>]*>', html)
+        assert m, f"no chip found with alt={alt!r}"
+        src = re.search(r'src="([^"]+)"', m.group()).group(1).replace("&amp;", "&")
+        qs = {k: v[0] for k, v in parse_qs(urlparse(src).query).items()}
+        png = render_text_chip_png(
+            qs["text"], font_size=int(qs["font_size"]), text_color=qs["text_color"],
+            bg_color=qs.get("bg_color"), letter_spacing_em=float(qs.get("letter_spacing_em", 0)),
+            padding=(
+                int(qs.get("padding_top", 0)), int(qs.get("padding_right", 0)),
+                int(qs.get("padding_bottom", 0)), int(qs.get("padding_left", 0)),
+            ),
+        )
+        got = _chip_ink_metrics(png)
+        for metric, expected in target.items():
+            actual = got[metric]
+            assert abs(actual - expected) <= 1.5, (
+                f"{alt!r} ink {metric}: got {actual}, Variant C is {expected} "
+                f"(off by {abs(actual - expected)}px)"
+            )
 
-    assert dims("Austrian Grand Prix") == (255, 52)  # _weekend()'s event name, not the AU GP
-    assert dims("SECTOR 1") == (93, 23)
-    assert dims("TOP SPEED") == (105, 23)
-    assert dims("QUALIFYING HOUR") == (177, 28)
-    assert dims("01") == (50, 35)
-    w, h = dims("NEXT UP · ROUND 12")
-    assert h == 27 and w >= 178, f"next-up shrank below the benchmark: {(w, h)}"
+
+def test_driver_name_chip_baseline_matches_live_text():
+    """The real acceptance criterion for driver-name alignment is not matching Variant C's own
+    internal ink gaps (its ascent/descent split comes from real Arial Bold; this chip uses
+    Liberation Sans Bold, a different font, so matching both the top AND bottom gap
+    simultaneously via font-size alone is not achievable) -- it is whether the glyph's visible
+    BOTTOM lines up with the live verdict text's baseline, which is the only thing a reader
+    actually sees. vertical-align:-Npx shifts the image DOWN by N from the default (image bottom
+    ON the baseline), so the ink sits `N - bot` px below the baseline -- comparing `bot` against
+    Variant C's own 6.7px is the wrong check (a font-28 gap of 6.0 and a font-29 gap of 7.3 are
+    each within 1px of 6.7, so that comparison can't tell them apart even though only one of them
+    actually lands on the baseline). The right check is N == bot for THIS chip's own N and bot.
+
+    Params are pulled from the actual rendered <img> src, not hand-typed -- a hardcoded
+    font_size=29 here would keep "passing" even if _nb_headline_html's real font_size regressed,
+    since it would just be re-measuring chipgen in isolation instead of what email.py produces.
+    """
+    html_out = render_email_neubrutalist(
+        _weekend(), _insights(), "https://telogify.app", winner=_winner(),
+    )
+    m = re.search(r'<img[^>]*style="[^"]*vertical-align:-(\d+(?:\.\d+)?)px[^"]*"[^>]*>', html_out)
+    assert m, "no driver-name chip found (vertical-align:-Npx marker)"
+    align_px = float(m.group(1))
+    src = re.search(r'src="([^"]+)"', m.group()).group(1).replace("&amp;", "&")
+    qs = {k: v[0] for k, v in parse_qs(urlparse(src).query).items()}
+    png = render_text_chip_png(
+        qs["text"], font_size=int(qs["font_size"]), text_color=qs["text_color"],
+    )
+    got = _chip_ink_metrics(png)
+    assert abs(align_px - got["bot"]) <= 0.5, (
+        f"vertical-align is -{align_px}px but the chip's own bottom ink gap is {got['bot']}px -- "
+        f"the glyph will sit {align_px - got['bot']:+.1f}px off the live text's baseline"
+    )

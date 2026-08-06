@@ -652,16 +652,17 @@ def _nb_headline_html(winner: dict | None) -> str:
         # Dynamic chip, not live `color:{team_color}` CSS: a real send measured the driver name's
         # bright team color (e.g. Mercedes teal) crushed by Gmail's dark-mode inversion. See
         # _dynamic_chip_img's docstring.
-        # -7px is Variant C's own empirical value (measured against the approved benchmark), not
-        # chipgen.text_baseline_offset's derived -descent (-6px at this size). The derived value
-        # is self-consistent -- it puts the chip's OWN baseline where a text run's baseline would
-        # sit -- but it doesn't reproduce the benchmark: measured internals show Variant C's chip
-        # baseline sits 26.0px from its own box top (cap height 21px) vs the derived render's
-        # 26.7px (cap height 20px), a font-metric mismatch too small to fix by formula. Pin the
-        # empirical value here; text_baseline_offset stays available for chips without a
-        # hand-verified benchmark to match.
+        # -7px is Variant C's own empirical value, and IS honored by real Gmail: an earlier theory
+        # here blamed a negative vertical-align being stripped (by analogy to the confirmed
+        # negative_margin false positive), but Variant C's own benchmark HTML uses the identical
+        # -7px and renders correctly, which disproves that. The real mismatch was chip-internal:
+        # at font 28 this chip's glyph cap height is 20.0px with a 6.0px below-baseline gap, vs
+        # Variant C's 21.0px cap / 6.7px gap -- 1px shorter AND sitting 1px low at the same time.
+        # font 29 reproduces both (20.7px cap, 7.3px gap) to within 0.3px, so -7px lands the glyph
+        # bottom on the live text's baseline again. chipgen.text_baseline_offset's derived
+        # -descent (-6px) was never the fix; this hand-measured pair is.
         name_chip = _dynamic_chip_img(
-            name, font_size=28, text_color=team_color, style_extra="vertical-align:-7px;",
+            name, font_size=29, text_color=team_color, style_extra="vertical-align:-7px;",
         )
         spans = (
             f'{name_chip} '
@@ -723,12 +724,13 @@ def _nb_practice_html(practice: dict | None, base_url: str) -> str:
     tile_divs = [
         _nb_shadow_box(
             # font_size/padding measured against Variant C's static chip-sector*.png/
-            # chip-topspeed.png (93x23 / 104x23 display px) -- the values this replaced (15,
-            # (1,6,1,6)) undershot both by ~3-6px and read as "no room to breathe" against the
-            # approved benchmark.
+            # chip-topspeed.png ink metrics (glyph height + ink-to-edge gaps), not just the
+            # outer box -- the previous pass (font 16, padding (2,6,2,6)) matched the box
+            # dimensions but under-padded, so the text crowded the edges and read as "smushed"
+            # against the benchmark despite the box being the right size.
             _dynamic_chip_img(
                 label, font_size=16, text_color=_on_color(_team_color(constructor)),
-                bg_color=_team_color(constructor), padding=(2, 6, 2, 6),
+                bg_color=_team_color(constructor), padding=(2, 9, 1, 9),
                 block=True, style_extra="margin-bottom:6px;",
             )
             + f'<div style="padding:0 16px 18px;">'
@@ -770,11 +772,13 @@ def _nb_qualifying_html(quali: QualiInsight | None) -> str:
     # box's own comment for why this avoids negative margin entirely (verified 0px in Chromium,
     # not honored by real Gmail).
     inner = (
-        # font_size/padding measured against Variant C's static chip-qualifying.png
-        # (177x28 display px); the values this replaced undershot by ~6x3px.
+        # font_size/padding measured against Variant C's static chip-qualifying.png ink metrics
+        # -- the previous pass (font 17, padding (4,10,4,10)) matched the 177x28 box but the
+        # bottom ink-to-edge gap was 4.7px against Variant C's 7.7px, i.e. the box was right and
+        # the text still crowded the edges.
         _dynamic_chip_img(
-            "QUALIFYING HOUR", font_size=17, text_color=_on_color(lbl_color), bg_color=lbl_color,
-            padding=(4, 10, 4, 10), block=True,
+            "QUALIFYING HOUR", font_size=15, text_color=_on_color(lbl_color), bg_color=lbl_color,
+            padding=(4, 13, 6, 13), block=True,
         )
         + f'<div style="padding:12px 24px 28px;"><h3>{header}</h3>'
         f'<p>{body}</p></div>'
@@ -908,13 +912,12 @@ def _nb_next_race_html(next_race: dict | None) -> str:
     # with the rest padded by an inner wrapper instead -- see the headline box's own comment for
     # why (negative margin verified 0px in Chromium, not honored by real Gmail).
     inner = (
-        # font_size/padding measured against Variant C's static chip-nextup.png
-        # (178x27 display px); the values this replaced undershot enough to read as "much much
-        # smaller" against the benchmark in direct user feedback. Panel body text below (h3,
-        # place, stats) is intentionally larger than Variant C -- do not revert that.
+        # font_size/padding measured against Variant C's static chip-nextup.png ink metrics.
+        # Panel body text below (h3, place, stats) is intentionally larger than Variant C --
+        # do not revert that.
         _dynamic_chip_img(
-            f'NEXT UP · ROUND {next_race["round"]}', font_size=16, text_color="#fff",
-            bg_color="#E10600", padding=(4, 10, 4, 10), block=True,
+            f'NEXT UP · ROUND {next_race["round"]}', font_size=17, text_color="#fff",
+            bg_color="#E10600", padding=(4, 13, 4, 12), block=True,
         )
         + f'<div style="padding:12px 24px 26px;"><h3>{html.escape(next_race["name"])}</h3>{place}'
         # Table row, not display:flex+gap (unsupported for most Gmail recipients) -- was
@@ -964,13 +967,15 @@ def render_email_neubrutalist(
             # Square corners, not the original rounded-3px: angular reads as "stick to the
             # top-left corner" more clearly, matching WINNER/section-title/other panel labels
             # (none of which are rounded).
-            # font_size/padding measured against Variant C's static chip-num01/02/03.png
-            # (50x35 display px) -- rendering "01" at the old 39x29 looked like the wrong
-            # typeface entirely in a side-by-side, but at this size it's visually
-            # indistinguishable from the benchmark. The size was the bug, not the font.
+            # font_size/padding measured against Variant C's static chip-num01/02/03.png ink
+            # metrics -- rendering "01" at the earlier 39x29 looked like the wrong typeface
+            # entirely in a side-by-side, but at a size matching the benchmark's ink it's
+            # visually indistinguishable. The size was the bug, not the font. The box-only pass
+            # after that (font 20, padding (5,14,6,13)) hit the right box with too little
+            # padding around the glyphs, same "smushed" pattern as the other label chips.
             num_tag = _dynamic_chip_img(
-                f"{i:02d}", font_size=20, text_color=_on_color(color), bg_color=color,
-                padding=(5, 14, 6, 13), letter_spacing_em=0.04, block=True,
+                f"{i:02d}", font_size=19, text_color=_on_color(color), bg_color=color,
+                padding=(6, 16, 6, 14), letter_spacing_em=0.04, block=True,
                 style_extra="margin-bottom:14px;",
             )
             # Alternating shadow direction on even cards matches the comp's
@@ -1057,11 +1062,12 @@ def render_email_neubrutalist(
 
   <div class="masthead">
     {_dynamic_chip_img(
-        # font_size/padding measured against Variant C's static chip-eventname.png
-        # (275x52 display px) -- the values this replaced undershot to 262x45, read as
-        # "the Grand Prix banner is shorter vertically" in direct user feedback.
-        weekend.event_name, font_size=23, text_color=_on_color("#E10600"), bg_color="#E10600",
-        padding=(13, 15, 13, 15), letter_spacing_em=0.02,
+        # font_size/padding measured against Variant C's static chip-eventname.png ink metrics
+        # -- the box-matched pass (font 23, padding (13,15,13,15)) hit 275x52 but left only
+        # ~15px of side padding against the benchmark's ~25px, so the text visibly crowded the
+        # box despite the box itself being correctly sized.
+        weekend.event_name, font_size=21, text_color=_on_color("#E10600"), bg_color="#E10600",
+        padding=(13, 24, 13, 24), letter_spacing_em=0.02,
     )}
     <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:18px auto 0;"><tr>
       <td style="padding-right:10px;vertical-align:middle;">{_nb_logo_chip(base_url)}</td>
