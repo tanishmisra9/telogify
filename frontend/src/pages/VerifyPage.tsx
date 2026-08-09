@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { LoadingSwap } from '@/components/LoadingSwap'
 import { Skeleton } from '@/components/Skeleton'
-import { StatusLink, StatusPage } from '@/components/StatusPage'
+import { StatusContent, StatusLink, StatusShell } from '@/components/StatusPage'
 import { apiPost } from '@/lib/api'
 
 type Result = 'checking' | 'confirmed' | 'already_confirmed' | 'expired' | 'invalid' | 'error'
@@ -30,18 +31,12 @@ export function VerifyPage() {
       .catch(() => setResult('error'))
   }, [token])
 
-  if (result === 'checking') {
-    return (
-      <StatusPage marker="Checking" heading="Confirming your seat.">
-        <Skeleton className="h-5 w-64" />
-      </StatusPage>
-    )
-  }
+  let content: React.ReactNode
 
   if (result === 'confirmed' || result === 'already_confirmed') {
     const isNew = result === 'confirmed'
-    return (
-      <StatusPage
+    content = (
+      <StatusContent
         marker={isNew ? 'Confirmed' : 'Already on the grid'}
         heading={isNew ? 'You are on the grid.' : 'You are already in.'}
         actions={
@@ -56,13 +51,11 @@ export function VerifyPage() {
         {isNew
           ? 'Three insights land in your inbox after every race weekend, built from the session telemetry rather than the broadcast.'
           : 'This address was already confirmed, so there is nothing more to do.'}
-      </StatusPage>
+      </StatusContent>
     )
-  }
-
-  if (result === 'expired') {
-    return (
-      <StatusPage
+  } else if (result === 'expired') {
+    content = (
+      <StatusContent
         marker="Link expired"
         heading="That link timed out."
         actions={
@@ -73,13 +66,11 @@ export function VerifyPage() {
       >
         Confirmation links are good for 24 hours. Enter your address again and we will send a
         fresh one.
-      </StatusPage>
+      </StatusContent>
     )
-  }
-
-  if (result === 'error') {
-    return (
-      <StatusPage
+  } else if (result === 'error') {
+    content = (
+      <StatusContent
         marker="Error"
         heading="Something went wrong."
         actions={
@@ -89,22 +80,40 @@ export function VerifyPage() {
         }
       >
         We could not confirm your address just now. Try the link again in a moment.
-      </StatusPage>
+      </StatusContent>
+    )
+  } else if (result === 'checking') {
+    // Placeholder is only ever rendered by LoadingSwap below; this branch never reaches return.
+    content = null
+  } else {
+    content = (
+      <StatusContent
+        marker="Invalid link"
+        heading="That link does not check out."
+        actions={
+          <StatusLink to="/subscribe" variant="primary">
+            Back to signup
+          </StatusLink>
+        }
+      >
+        This confirmation link is not valid, or it has already been used. Signing up again sends a
+        fresh one.
+      </StatusContent>
     )
   }
 
   return (
-    <StatusPage
-      marker="Invalid link"
-      heading="That link does not check out."
-      actions={
-        <StatusLink to="/subscribe" variant="primary">
-          Back to signup
-        </StatusLink>
-      }
-    >
-      This confirmation link is not valid, or it has already been used. Signing up again sends a
-      fresh one.
-    </StatusPage>
+    <StatusShell>
+      <LoadingSwap
+        loading={result === 'checking'}
+        placeholder={
+          <StatusContent heading="Confirming your seat.">
+            <Skeleton className="h-5 w-64" />
+          </StatusContent>
+        }
+      >
+        {content}
+      </LoadingSwap>
+    </StatusShell>
   )
 }

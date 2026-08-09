@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { LoadingSwap } from '@/components/LoadingSwap'
 import { Skeleton } from '@/components/Skeleton'
-import { StatusButton, StatusLink, StatusPage } from '@/components/StatusPage'
+import { StatusButton, StatusContent, StatusLink, StatusShell } from '@/components/StatusPage'
 import { apiPost } from '@/lib/api'
 
 type Result =
@@ -44,17 +45,11 @@ export function UnsubscribePage() {
       .finally(() => setRejoining(false))
   }
 
-  if (result === 'working') {
-    return (
-      <StatusPage marker="Working" heading="Taking you off the list.">
-        <Skeleton className="h-5 w-64" />
-      </StatusPage>
-    )
-  }
+  let content: React.ReactNode
 
   if (result === 'unsubscribed' || result === 'already_unsubscribed') {
-    return (
-      <StatusPage
+    content = (
+      <StatusContent
         marker="Unsubscribed"
         heading="You have left the grid."
         actions={
@@ -68,13 +63,11 @@ export function UnsubscribePage() {
       >
         No more digests will reach this address. If that was a misclick, one tap puts you back on
         without another confirmation email.
-      </StatusPage>
+      </StatusContent>
     )
-  }
-
-  if (result === 'resubscribed') {
-    return (
-      <StatusPage
+  } else if (result === 'resubscribed') {
+    content = (
+      <StatusContent
         marker="Back on the grid"
         heading="Welcome back."
         actions={
@@ -87,37 +80,53 @@ export function UnsubscribePage() {
         }
       >
         Your seat is restored. The next digest lands after the next race weekend.
-      </StatusPage>
+      </StatusContent>
     )
-  }
-
-  if (result === 'error') {
-    return (
-      <StatusPage marker="Error" heading="Something went wrong." actions={<StatusLink to="/">Go home</StatusLink>}>
+  } else if (result === 'error') {
+    content = (
+      <StatusContent marker="Error" heading="Something went wrong." actions={<StatusLink to="/">Go home</StatusLink>}>
         We could not update your subscription just now. Try the link again in a moment.
-      </StatusPage>
+      </StatusContent>
+    )
+  } else if (result === 'working') {
+    // Placeholder is only ever rendered by LoadingSwap below; this branch never reaches return.
+    content = null
+  } else {
+    // Two genuinely different situations, and telling someone their code is "missing" when they
+    // can see it in the address bar reads as the site being broken rather than the link being bad.
+    // No token at all is the older-digest case; a token that fails to verify is a bad link.
+    content = token ? (
+      <StatusContent
+        marker="Invalid link"
+        heading="That link does not check out."
+        actions={<StatusLink to="/">Go home</StatusLink>}
+      >
+        This unsubscribe link is not valid. Use the Unsubscribe link at the bottom of any recent
+        Telogify email and it will work.
+      </StatusContent>
+    ) : (
+      <StatusContent
+        marker="Missing code"
+        heading="This link is missing its code."
+        actions={<StatusLink to="/">Go home</StatusLink>}
+      >
+        Use the Unsubscribe link at the bottom of any recent Telogify email and it will work.
+      </StatusContent>
     )
   }
 
-  // Two genuinely different situations, and telling someone their code is "missing" when they
-  // can see it in the address bar reads as the site being broken rather than the link being bad.
-  // No token at all is the older-digest case; a token that fails to verify is a bad link.
-  return token ? (
-    <StatusPage
-      marker="Invalid link"
-      heading="That link does not check out."
-      actions={<StatusLink to="/">Go home</StatusLink>}
-    >
-      This unsubscribe link is not valid. Use the Unsubscribe link at the bottom of any recent
-      Telogify email and it will work.
-    </StatusPage>
-  ) : (
-    <StatusPage
-      marker="Missing code"
-      heading="This link is missing its code."
-      actions={<StatusLink to="/">Go home</StatusLink>}
-    >
-      Use the Unsubscribe link at the bottom of any recent Telogify email and it will work.
-    </StatusPage>
+  return (
+    <StatusShell>
+      <LoadingSwap
+        loading={result === 'working'}
+        placeholder={
+          <StatusContent heading="Taking you off the list.">
+            <Skeleton className="h-5 w-64" />
+          </StatusContent>
+        }
+      >
+        {content}
+      </LoadingSwap>
+    </StatusShell>
   )
 }

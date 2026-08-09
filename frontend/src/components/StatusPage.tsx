@@ -2,35 +2,44 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { BlurFade } from '@/components/BlurFade'
 
-/** A short terminal page: status marker, verdict, one line of explanation, up to two actions.
- *
- * The chassis is NotFoundPage's, which is the right shape for this kind of page: min-h-[60vh]
- * plus centred flex column so a three-line page reads as deliberate rather than stranded at the
- * top of the viewport. Shared here because verify and unsubscribe would otherwise be the third
- * and fourth copies of it.
+/** The persistent chassis for a short terminal page: min-h-[60vh] plus centred flex column so a
+ * three-line page reads as deliberate rather than stranded at the top of the viewport. Mounted
+ * ONCE per page (unlike the old single `StatusPage`, which was called fresh per result state) so
+ * that swapping `StatusContent` inside it via `LoadingSwap` crossfades instead of hard-cutting.
  */
-export function StatusPage({
+export function StatusShell({ children }: { children: ReactNode }) {
+  return (
+    <main className="mx-auto flex min-h-[60vh] max-w-[1312px] flex-col justify-center px-6 py-16">
+      {children}
+    </main>
+  )
+}
+
+/** One state's content: status marker, verdict, one line of explanation, up to two actions.
+ * `marker` is optional -- a kicker that only restates the heading in fewer words (e.g.
+ * "Checking" above "Confirming your seat.") is the eyebrow-redundant-with-heading pattern
+ * DESIGN.md already warns `.kicker` against, so a loading state can render heading-only.
+ */
+export function StatusContent({
   marker,
   heading,
   children,
   actions,
 }: {
-  marker: string
+  marker?: string
   heading: string
   children?: ReactNode
   actions?: ReactNode
 }) {
   return (
-    <main className="mx-auto flex min-h-[60vh] max-w-[1312px] flex-col justify-center px-6 py-16">
-      <BlurFade>
-        <p className="kicker text-accent">{marker}</p>
-        <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
-          {heading}
-        </h1>
-        {children && <div className="mt-4 max-w-lg text-lg text-muted">{children}</div>}
-        {actions && <div className="mt-8 flex flex-wrap gap-4">{actions}</div>}
-      </BlurFade>
-    </main>
+    <BlurFade>
+      {marker && <p className="kicker text-accent">{marker}</p>}
+      <h1 className={`font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem] ${marker ? 'mt-3' : ''}`}>
+        {heading}
+      </h1>
+      {children && <div className="mt-4 max-w-lg text-lg text-muted">{children}</div>}
+      {actions && <div className="mt-8 flex flex-wrap gap-4">{actions}</div>}
+    </BlurFade>
   )
 }
 
