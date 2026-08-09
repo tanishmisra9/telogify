@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { LoadingSwap } from '@/components/LoadingSwap'
-import { Skeleton } from '@/components/Skeleton'
-import { StatusButton, StatusContent, StatusLink, StatusShell } from '@/components/StatusPage'
+import {
+  CheckingPlaceholder,
+  StatusButton,
+  StatusContent,
+  StatusLink,
+  StatusShell,
+} from '@/components/StatusPage'
 import { apiPost } from '@/lib/api'
 
 type Result =
@@ -118,11 +123,7 @@ export function UnsubscribePage() {
     <StatusShell>
       <LoadingSwap
         loading={result === 'working'}
-        placeholder={
-          <StatusContent heading="Taking you off the list.">
-            <Skeleton className="h-5 w-64" />
-          </StatusContent>
-        }
+        placeholder={<CheckingPlaceholder heading="Taking you off the list." />}
       >
         {content}
       </LoadingSwap>

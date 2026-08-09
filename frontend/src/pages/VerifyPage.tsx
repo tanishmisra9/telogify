@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { LoadingSwap } from '@/components/LoadingSwap'
-import { Skeleton } from '@/components/Skeleton'
-import { StatusContent, StatusLink, StatusShell } from '@/components/StatusPage'
+import { CheckingPlaceholder, StatusContent, StatusLink, StatusShell } from '@/components/StatusPage'
 import { apiPost } from '@/lib/api'
 
 type Result = 'checking' | 'confirmed' | 'already_confirmed' | 'expired' | 'invalid' | 'error'
@@ -105,11 +104,7 @@ export function VerifyPage() {
     <StatusShell>
       <LoadingSwap
         loading={result === 'checking'}
-        placeholder={
-          <StatusContent heading="Confirming your seat.">
-            <Skeleton className="h-5 w-64" />
-          </StatusContent>
-        }
+        placeholder={<CheckingPlaceholder heading="Confirming your seat." />}
       >
         {content}
       </LoadingSwap>
