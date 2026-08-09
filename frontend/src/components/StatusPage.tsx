@@ -37,7 +37,11 @@ export function StatusContent({
 }) {
   return (
     <BlurFade>
-      {marker && <p className="kicker text-accent">{marker}</p>}
+      {/* div, not p: marker is now ReactNode, and CheckingPlaceholder puts a <Skeleton> (a div)
+          here. A div inside a <p> is invalid HTML and the browser silently splits the <p>,
+          corrupting the tree. .kicker is pure text styling with no <p>-specific semantics, so
+          this renders identically for the plain-string case in every other marker. */}
+      {marker && <div className="kicker text-accent">{marker}</div>}
       <h1 className={`font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem] ${marker ? 'mt-3' : ''}`}>
         {heading}
       </h1>

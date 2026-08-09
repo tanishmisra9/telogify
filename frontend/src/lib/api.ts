@@ -397,3 +397,18 @@ export function useApi<T>(path: string | null) {
 
   return { data, error, loading }
 }
+
+// `/weekends` is ordered (year, round) ascending, so the newest ingested weekend is the LAST
+// row, not the first. Pure so the ordering assumption is pinned by a test rather than living
+// only in a component; if the endpoint ever flips to descending, that test fails loudly instead
+// of the link quietly pointing at the season opener.
+export function latestWeekendPath(weekends: WeekendSummary[] | null | undefined): string {
+  const latest = weekends?.[weekends.length - 1]
+  return latest ? `/weekends/${latest.year}/${latest.round}` : '/weekends'
+}
+
+// Falls back to the index while the lookup is in flight, so the button is never dead: a reader
+// who clicks early lands on the list rather than nowhere.
+export function useLatestWeekendPath(): string {
+  return latestWeekendPath(useApi<WeekendSummary[]>('/weekends').data)
+}

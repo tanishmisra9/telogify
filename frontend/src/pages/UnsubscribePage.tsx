@@ -8,7 +8,7 @@ import {
   StatusLink,
   StatusShell,
 } from '@/components/StatusPage'
-import { apiPost } from '@/lib/api'
+import { apiPost, useLatestWeekendPath } from '@/lib/api'
 
 type Result =
   | 'working'
@@ -23,6 +23,7 @@ export function UnsubscribePage() {
   const token = params.get('t') ?? ''
   const [result, setResult] = useState<Result>('working')
   const [rejoining, setRejoining] = useState(false)
+  const latestWeekendPath = useLatestWeekendPath()
   const sent = useRef(false)
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export function UnsubscribePage() {
         heading="Welcome back."
         actions={
           <>
-            <StatusLink to="/weekends" variant="primary">
+            <StatusLink to={latestWeekendPath} variant="primary">
               See the latest weekend
             </StatusLink>
             <StatusLink to="/">Go home</StatusLink>

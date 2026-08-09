@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { LoadingSwap } from '@/components/LoadingSwap'
 import { CheckingPlaceholder, StatusContent, StatusLink, StatusShell } from '@/components/StatusPage'
-import { apiPost } from '@/lib/api'
+import { apiPost, useLatestWeekendPath } from '@/lib/api'
 
 type Result = 'checking' | 'confirmed' | 'already_confirmed' | 'expired' | 'invalid' | 'error'
 
@@ -14,6 +14,7 @@ export function VerifyPage() {
   // would confirm on the first call and report "invalid" on the second, which is exactly the
   // state a real reader must never be shown.
   const sent = useRef(false)
+  const latestWeekendPath = useLatestWeekendPath()
 
   useEffect(() => {
     if (sent.current) return
@@ -40,7 +41,7 @@ export function VerifyPage() {
         heading={isNew ? 'You are on the grid.' : 'You are already in.'}
         actions={
           <>
-            <StatusLink to="/weekends" variant="primary">
+            <StatusLink to={latestWeekendPath} variant="primary">
               See the latest weekend
             </StatusLink>
             <StatusLink to="/">Go home</StatusLink>
