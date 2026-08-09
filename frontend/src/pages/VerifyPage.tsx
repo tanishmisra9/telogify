@@ -31,7 +31,7 @@ export function VerifyPage() {
       .catch(() => setResult('error'))
   }, [token])
 
-  let content: React.ReactNode
+  let content: React.ReactNode = null
 
   if (result === 'confirmed' || result === 'already_confirmed') {
     const isNew = result === 'confirmed'
@@ -82,10 +82,9 @@ export function VerifyPage() {
         We could not confirm your address just now. Try the link again in a moment.
       </StatusContent>
     )
-  } else if (result === 'checking') {
-    // Placeholder is only ever rendered by LoadingSwap below; this branch never reaches return.
-    content = null
-  } else {
+  } else if (result !== 'checking') {
+    // 'checking' falls through with content still null; LoadingSwap shows the placeholder
+    // instead and never renders `content` while loading.
     content = (
       <StatusContent
         marker="Invalid link"

@@ -45,7 +45,7 @@ export function UnsubscribePage() {
       .finally(() => setRejoining(false))
   }
 
-  let content: React.ReactNode
+  let content: React.ReactNode = null
 
   if (result === 'unsubscribed' || result === 'already_unsubscribed') {
     content = (
@@ -88,10 +88,9 @@ export function UnsubscribePage() {
         We could not update your subscription just now. Try the link again in a moment.
       </StatusContent>
     )
-  } else if (result === 'working') {
-    // Placeholder is only ever rendered by LoadingSwap below; this branch never reaches return.
-    content = null
-  } else {
+  } else if (result !== 'working') {
+    // 'working' falls through with content still null; LoadingSwap shows the placeholder
+    // instead and never renders `content` while loading.
     // Two genuinely different situations, and telling someone their code is "missing" when they
     // can see it in the address bar reads as the site being broken rather than the link being bad.
     // No token at all is the older-digest case; a token that fails to verify is a bad link.
