@@ -95,8 +95,9 @@ export function SubscribePage() {
                   Provisional grid slot held.
                 </p>
                 <p className="mt-3 text-muted">
-                  We sent a confirmation link to {email || 'your inbox'}. Click it and your seat
-                  is locked in. The link is good for 24 hours.
+                  If {email || 'that address'} is new here, a confirmation link is on its way.
+                  Click it within 24 hours and your seat is locked in. Already confirmed? You're
+                  already set, nothing else to do.
                 </p>
               </div>
             ) : (

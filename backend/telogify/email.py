@@ -1379,14 +1379,25 @@ def _nb_cta(url: str, label: str) -> str:
     )
 
 
-def _optin_shell(*, title: str, body_html: str, footer_html: str) -> str:
+def _optin_shell(*, title: str, preheader: str, body_html: str, footer_html: str) -> str:
     """Masthead + sheet + footer for a transactional email. Narrower than the digest's shell
     because these carry one message and one action, not eight sections.
 
     No stamp chip above the wordmark, unlike the digest. The digest's stamp names which race
     weekend it covers, which is real information; on a transactional email it only restated the
     heading directly beneath it, so the reader met the same three words twice before any content.
+
+    `preheader` is the digest's hidden-preheader technique (see render_email_neubrutalist),
+    reused as-is: without it Gmail builds the inbox snippet by scanning the first visible text
+    in <body>, which here would be the wordmark ("Telogify") immediately followed by the heading,
+    reading as a run-on rather than a real sentence.
     """
+    preheader_html = (
+        '<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;'
+        'opacity:0;overflow:hidden;mso-hide:all;">'
+        f"{html.escape(preheader)}" + "&zwnj;&nbsp;" * 80 +
+        "</div>"
+    )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1397,6 +1408,7 @@ def _optin_shell(*, title: str, body_html: str, footer_html: str) -> str:
 <style>{_NB_STYLE}</style>
 </head>
 <body>
+{preheader_html}
 <div class="page">
 <div class="sheet">
 
@@ -1475,6 +1487,7 @@ def render_verification_email(token: str) -> str:
     footer = f"    &copy; {datetime.utcnow().year} Tanish Misra"
     return _optin_shell(
         title=VERIFICATION_SUBJECT,
+        preheader="One click and you're on the grid. This link expires in 24 hours.",
         body_html=body,
         footer_html=footer,
     )
@@ -1516,6 +1529,8 @@ def render_welcome_email(unsub_token: str) -> str:
     )
     return _optin_shell(
         title=WELCOME_SUBJECT,
+        preheader="Three insights land in your inbox after every race weekend, "
+                  "built from the session telemetry.",
         body_html=body,
         footer_html=footer,
     )
