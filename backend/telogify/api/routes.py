@@ -1,6 +1,7 @@
 """Read endpoints for the weekend page (insights, pace, sectors, top speeds, qualifying
 car character, tyre degradation, finishing order, session progress), plus subscribe."""
 
+import json
 import re
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -40,6 +41,7 @@ from telogify.ingest.results import (
 )
 from telogify.db import get_session, set_db_context, set_subscriber_context
 from telogify.email import send_verification_email, send_welcome_email
+from telogify.resend_webhooks import verify as verify_resend_webhook
 from telogify.subscriptions import (
     hash_ip,
     hash_token,
@@ -805,8 +807,10 @@ def subscribe(body: SubscribeIn, request: Request, db: Session = Depends(get_ses
         raise HTTPException(400, "Could not verify that you are human. Please try again.")
 
     existing = db.exec(select(Subscriber).where(Subscriber.email == email)).first()
-    if existing and existing.status == "confirmed":
-        # Deliberately silent: no second email, and the same response as everyone else.
+    if existing and existing.status in ("confirmed", "bounced", "complained"):
+        # Deliberately silent: no second email, and the same response as everyone else. Also
+        # blocks a hard-bounced or complained address from being quietly reactivated by
+        # resubmitting the same form -- see resend_webhooks.py for how those statuses get set.
         audit("signup_requested")
         return same_answer
 
@@ -927,6 +931,54 @@ def resubscribe(request: Request, t: str = "", db: Session = Depends(get_session
     db.add(subscriber)
     db.commit()
     return {"status": "resubscribed"}
+
+
+# Statuses that stop send_digest's WHERE status = 'confirmed' from ever selecting this address
+# again, and stop /subscribe from silently reactivating it -- see the widened skip condition
+# there. Not a full Subscriber.status enum: those two rows are the only ones this file writes.
+_SUPPRESSING_STATUS = {"email.bounced": "bounced", "email.complained": "complained"}
+
+
+@router.post("/webhooks/resend")
+async def resend_webhook(request: Request, db: Session = Depends(get_session)):
+    """Suppresses addresses Resend reports as hard-bounced or spam-complained.
+
+    Without this, an address that stops working or complains keeps receiving every digest
+    forever: nothing else in the system observes delivery outcomes. Repeatedly mailing a
+    bounced/complained address is exactly what damages sender reputation for the whole domain.
+
+    Signature must be checked against the RAW body -- `await request.body()`, not a Pydantic
+    model, which would parse (and on re-serialization, potentially not byte-for-byte match what
+    was signed). An unset secret or a bad signature means nothing here is trusted: 401, and the
+    payload is never even parsed as JSON.
+    """
+    body = await request.body()
+    if not verify_resend_webhook(
+        body=body,
+        svix_id=request.headers.get("svix-id", ""),
+        svix_timestamp=request.headers.get("svix-timestamp", ""),
+        svix_signature=request.headers.get("svix-signature", ""),
+    ):
+        raise HTTPException(401, "Invalid signature")
+
+    payload = json.loads(body)
+    new_status = _SUPPRESSING_STATUS.get(payload.get("type", ""))
+    if new_status is None:
+        # Every other event type (delivered/opened/clicked/...) is a genuine no-op, not an
+        # error: Resend retries non-2xx responses, so an event we don't act on must still 200.
+        return {"status": "ignored"}
+
+    for raw_address in payload.get("data", {}).get("to", []):
+        email = normalize_email(raw_address)
+        if email is None:
+            continue
+        subscriber = db.exec(select(Subscriber).where(Subscriber.email == email)).first()
+        if subscriber is None:
+            continue  # not one of ours (an ad-hoc --to test send, e.g.) -- nothing to suppress
+        subscriber.status = new_status
+        db.add(subscriber)
+    db.commit()
+    return {"status": "processed"}
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$")

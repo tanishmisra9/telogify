@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     # require_signup_secrets() below.
     recaptcha_secret: str = ""
 
+    # Resend's webhook signing secret (Svix-based; starts "whsec_"). Empty means
+    # resend_webhooks.verify() always fails closed -- unlike recaptcha_secret, there is no
+    # benign "local dev" reason to accept an unsigned bounce/complaint payload, so this is not
+    # in require_signup_secrets(): the endpoint already refuses everything on its own when unset,
+    # rather than needing a full boot refusal for what is optional infrastructure on top of an
+    # already-working send path.
+    resend_webhook_secret: str = ""
+
     # Set ENVIRONMENT=production on Railway. This started out derived from web_base_url, to save
     # a setting, which was wrong: web_base_url is https://www.telogify.com even in local dev,
     # because Gmail has to fetch the digest's hosted images from the public internet during a
