@@ -212,7 +212,7 @@ export function Nav() {
                     <Link
                       to={l.to}
                       aria-current={active ? 'page' : undefined}
-                      className={`block rounded-sm py-1 text-center font-display text-6xl font-medium tracking-tight outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-4 focus-visible:ring-offset-bg ${
+                      className={`block rounded-sm py-1 text-center font-display text-4xl font-extrabold uppercase tracking-tighter outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-4 focus-visible:ring-offset-bg ${
                         active ? 'text-ink underline decoration-accent decoration-2 underline-offset-[0.25em]' : 'text-muted hover:text-ink'
                       }`}
                     >
