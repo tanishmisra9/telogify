@@ -54,7 +54,7 @@ _DRIVER_NAMES = {
     "LEC": "Charles Leclerc", "LIN": "Arvid Lindblad", "NOR": "Lando Norris",
     "OCO": "Esteban Ocon", "PER": "Sergio Perez", "PIA": "Oscar Piastri",
     "RUS": "George Russell", "SAI": "Carlos Sainz", "STR": "Lance Stroll",
-    "VER": "Max Verstappen",
+    "TSU": "Yuki Tsunoda", "VER": "Max Verstappen",
 }
 
 

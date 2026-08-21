@@ -3,6 +3,7 @@
 // adding. Unknown codes fall back to the code itself, so a missing entry is never a wrong name.
 const DRIVER_NAMES: Record<string, string> = {
   VER: 'Max Verstappen',
+  TSU: 'Yuki Tsunoda',
   RUS: 'George Russell',
   ANT: 'Kimi Antonelli',
   NOR: 'Lando Norris',

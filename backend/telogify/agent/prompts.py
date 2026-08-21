@@ -18,7 +18,7 @@ PICK FOR SURPRISE diversity rule, and Output format differ by scope.
 # SYSTEM_PROMPT/QUALI_SYSTEM_PROMPT or the shared constants above; bump MAJOR (reset MINOR to 0)
 # only on another rewrite of that scale. Stamped onto every persisted insight so a published
 # insight can be traced back to the exact prompt revision that generated it.
-PROMPT_VERSION = "3.3"
+PROMPT_VERSION = "3.4"
 
 _OBSERVED_BEHAVIOR_ONLY = """OBSERVED BEHAVIOR ONLY:
 Never infer the underlying engineering mechanism behind a telemetry observation (harvesting, \
@@ -289,12 +289,12 @@ between grid and finish or a start-line narrative. If a driver gained places onl
 retired, say that plainly.
 
 DRIVER NAMES (the tools return 3-letter codes; expand every code to the exact full name below on first mention, then use the surname):
-ALB Alexander Albon, ALO Fernando Alonso, ANT Kimi Antonelli, BEA Oliver Bearman, BOR Gabriel Bortoleto, BOT Valtteri Bottas, COL Franco Colapinto, GAS Pierre Gasly, HAD Isack Hadjar, HAM Lewis Hamilton, HUL Nico Hulkenberg, LAW Liam Lawson, LEC Charles Leclerc, LIN Arvid Lindblad, NOR Lando Norris, OCO Esteban Ocon, PER Sergio Perez, PIA Oscar Piastri, RUS George Russell, SAI Carlos Sainz, STR Lance Stroll, VER Max Verstappen.
+ALB Alexander Albon, ALO Fernando Alonso, ANT Kimi Antonelli, BEA Oliver Bearman, BOR Gabriel Bortoleto, BOT Valtteri Bottas, COL Franco Colapinto, GAS Pierre Gasly, HAD Isack Hadjar, HAM Lewis Hamilton, HUL Nico Hulkenberg, LAW Liam Lawson, LEC Charles Leclerc, LIN Arvid Lindblad, NOR Lando Norris, OCO Esteban Ocon, PER Sergio Perez, PIA Oscar Piastri, RUS George Russell, SAI Carlos Sainz, STR Lance Stroll, TSU Yuki Tsunoda, VER Max Verstappen.
 If a tool returns a 3-letter code not on this list, use the full name from the tool return if \
 one is provided; otherwise print the code exactly. Do not guess a name from memory or past \
 seasons.
 
-TEAMS (two are easy to confuse, keep them separate): "Red Bull Racing" (Max Verstappen and Isack Hadjar) and "Racing Bulls" (Liam Lawson and Arvid Lindblad) are DIFFERENT constructors. Never merge them, never call a Red Bull Racing car a Racing Bulls car or the reverse, and never write "sister car" or "team mate" for two drivers unless a tool return gives them the identical constructor. Always use the exact constructor name from the data.
+TEAMS (two are easy to confuse, keep them separate): "Red Bull Racing" and "Racing Bulls" are DIFFERENT constructors. Never merge them, never call a Red Bull Racing car a Racing Bulls car or the reverse, and never write "sister car" or "team mate" for two drivers unless a tool return gives them the identical constructor. Never assume which drivers are on which of these two teams from memory or past seasons; that pairing changes mid-season. Always use the exact constructor name from the data.
 
 LANGUAGE:
 - Write plainly, like a broadcaster. No engineering jargon: never "trap", "DRS zone", \
