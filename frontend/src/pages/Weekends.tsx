@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { BackHomeButton } from '@/components/BackHomeButton'
 import { BlurFade } from '@/components/BlurFade'
-import { CountdownPanel } from '@/components/CountdownPanel'
 import { LoadingSwap } from '@/components/LoadingSwap'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { Skeleton } from '@/components/Skeleton'
@@ -127,14 +126,6 @@ export function Weekends() {
                       →
                     </span>
                   </Link>
-                  {/* Not-yet-ingested rounds still link through (the weekend page falls back to
-                      the season fixture too), but get their own ticking countdown here as well --
-                      the same shared component WeekendPage's per-session sections use. */}
-                  {!w.ingested && w.date_utc && new Date(w.date_utc).getTime() > Date.now() && (
-                    <div className="pb-6">
-                      <CountdownPanel kicker="Coming up" targetIso={w.date_utc} compact />
-                    </div>
-                  )}
                 </li>
               </ScrollReveal>
             ))}
