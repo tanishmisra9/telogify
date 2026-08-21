@@ -149,48 +149,16 @@ export function Insight({
   const gridCols = showSlot ? 'grid-cols-[auto_1fr] gap-x-4 sm:gap-x-5' : 'grid-cols-1'
   const contentCol = showSlot ? 'col-start-2' : 'col-start-1'
   // Copy is a real nested interactive element, so its click must not also bubble into the
-  // outer toggle; the chevron is purely decorative and deliberately left un-stopped, so
-  // clicking it (or anywhere else in the header) still toggles when nested inside the
-  // collapsible <button> (showSlot=true). When !showSlot, this whole group instead renders as
-  // an absolutely-positioned corner overlay OUTSIDE that button (see below), so the chevron
-  // needs its own onClick + stopPropagation to still toggle there -- harmless when it IS nested
-  // (stops the bubble, then fires the identical toggle directly, so it's still exactly one
-  // toggle per click either way). gap-6 (not tighter): both icons' -m-3 tap targets reach 12px
-  // past their own visible glyph, so anything less than 24px between them lets the two
-  // invisible hit-boxes overlap and steal each other's clicks.
+  // outer toggle. There is deliberately no chevron: the card's whole upper region is already
+  // the toggle and reads as clickable, so a separate affordance was only eating the heading's
+  // width (its glyph plus the gap holding it off the copy icon), forcing the header to wrap
+  // more than it needed to and look vertically cramped on a phone. `aria-expanded` on the
+  // wrapping <button> still announces collapse state to assistive tech.
   const buttonGroup = (
-    <div className="flex shrink-0 items-start gap-6">
+    <div className="flex shrink-0 items-start">
       <span onClick={(e) => e.stopPropagation()}>
         <CopyButton text={copyText} />
       </span>
-      {collapsible && (
-        <Tooltip label={open ? 'Collapse' : 'Expand'}>
-          <span
-            onClick={(e) => {
-              e.stopPropagation()
-              toggle()
-            }}
-            // -m-3 + p-3 matches CopyButton's 40px tap target.
-            className="-m-3 mt-[-0.375rem] flex shrink-0 cursor-pointer items-center justify-center rounded-full p-3 text-muted transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
-          >
-            <m.svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-              animate={{ rotate: open ? 180 : 0 }}
-              transition={expandTransition}
-            >
-              <path d="m6 9 6 6 6-6" />
-            </m.svg>
-          </span>
-        </Tooltip>
-      )}
     </div>
   )
   const content = (
@@ -206,16 +174,16 @@ export function Insight({
             {String(item.slot).padStart(2, '0')}
           </span>
         )}
-        {/* gap-10 (not gap-6): with justify-between, `gap` is a hard minimum flexbox will
-            enforce by shrinking/wrapping the heading before it lets the two items get closer
-            than that. A short-but-not-short-enough header can fit on one line right at a 24px
-            minimum, reading as crowded against the buttons even though longer headers (forced
-            to wrap) end their last line well short of the boundary. The larger minimum guarantees
-            the same breathing room regardless of where a given header happens to wrap.
+        {/* With justify-between, `gap` is a hard minimum flexbox enforces by shrinking/wrapping
+            the heading before it lets the two items get closer, so it is pure width taken off the
+            header. 40px was sized against a two-icon cluster (copy + chevron); with the chevron
+            gone a single 16px glyph does not need that much, and on a phone it was forcing extra
+            wraps. 24px still clears the copy button's own tap target, which -m-3 extends 12px
+            past the visible glyph, so heading text can never reach the invisible hit box.
             Without a slot number, there's no rank digit to line the button row up against, so
             the buttons move out of the heading's row entirely (see the absolutely-positioned
             copy of buttonGroup below) and the heading gets the row to itself. */}
-        <div className={`${contentCol} row-start-1 flex min-w-0 items-start ${showSlot ? 'justify-between gap-10' : ''}`}>
+        <div className={`${contentCol} row-start-1 flex min-w-0 items-start ${showSlot ? 'justify-between gap-6' : ''}`}>
           {heading}
           {showSlot && buttonGroup}
         </div>
