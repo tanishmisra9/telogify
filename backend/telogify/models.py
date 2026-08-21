@@ -16,6 +16,9 @@ class RaceWeekend(SQLModel, table=True):
     circuit_name: str
     country: str
     event_name: str
+    # Set once, the first time poll's auto-send fires the real digest for this weekend. The
+    # sole guard against sending the same weekend's digest twice across repeat cron ticks.
+    digest_sent_at: datetime | None = None
 
 
 class Session(SQLModel, table=True):

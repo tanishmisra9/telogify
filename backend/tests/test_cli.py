@@ -405,6 +405,206 @@ def test_poll_happy_path_calls_run_weekend_without_force(monkeypatch):
     assert calls == [(2026, 8)]
 
 
+def test_poll_auto_sends_digest_once_race_and_insights_are_ready(monkeypatch, test_engine):
+    from sqlmodel import Session
+
+    from telogify.models import Insight, RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2026, round=8, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        db.add(Insight(
+            weekend_id=wk.id, slot=1, header="h", explanation_web="w", explanation_email="e",
+            source_tool_calls_json=[],
+        ))
+        db.commit()
+        weekend_id = wk.id
+
+    now = datetime.utcnow()
+    ready_event = (Event(round=8, name="Ready GP", date=now - timedelta(hours=1)),)
+    monkeypatch.setattr("telogify.analysis.schedule.fetch_season_schedule", lambda year: ready_event)
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round: {"session_types": ["R"], "weekend_id": weekend_id},
+    )
+    sent_calls = []
+
+    def fake_send_digest(year, round, db):
+        sent_calls.append((year, round))
+        return 5
+
+    monkeypatch.setattr("telogify.email.send_digest", fake_send_digest)
+
+    result = runner.invoke(cli.app, ["poll", "2026"])
+    assert result.exit_code == 0
+    assert sent_calls == [(2026, 8)]
+    assert "digest auto-sent to 5 subscriber" in plain(result.output)
+
+    with Session(test_engine) as db:
+        assert db.get(RaceWeekend, weekend_id).digest_sent_at is not None
+
+
+def test_poll_does_not_resend_an_already_sent_digest(monkeypatch, test_engine):
+    from sqlmodel import Session
+
+    from telogify.models import Insight, RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        wk = RaceWeekend(
+            year=2026, round=8, circuit_name="X", country="Y", event_name="Z GP",
+            digest_sent_at=datetime.utcnow(),
+        )
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        db.add(Insight(
+            weekend_id=wk.id, slot=1, header="h", explanation_web="w", explanation_email="e",
+            source_tool_calls_json=[],
+        ))
+        db.commit()
+        weekend_id = wk.id
+
+    now = datetime.utcnow()
+    ready_event = (Event(round=8, name="Ready GP", date=now - timedelta(hours=1)),)
+    monkeypatch.setattr("telogify.analysis.schedule.fetch_season_schedule", lambda year: ready_event)
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round: {"session_types": ["R"], "weekend_id": weekend_id},
+    )
+    sent_calls = []
+    monkeypatch.setattr(
+        "telogify.email.send_digest",
+        lambda year, round, db: sent_calls.append((year, round)) or 5,
+    )
+
+    result = runner.invoke(cli.app, ["poll", "2026"])
+    assert result.exit_code == 0
+    assert sent_calls == []
+
+
+def test_poll_does_not_send_digest_before_insights_exist(monkeypatch, test_engine):
+    from sqlmodel import Session
+
+    from telogify.models import RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2026, round=8, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        weekend_id = wk.id
+
+    now = datetime.utcnow()
+    ready_event = (Event(round=8, name="Ready GP", date=now - timedelta(hours=1)),)
+    monkeypatch.setattr("telogify.analysis.schedule.fetch_season_schedule", lambda year: ready_event)
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round: {"session_types": ["R"], "weekend_id": weekend_id},
+    )
+    sent_calls = []
+    monkeypatch.setattr(
+        "telogify.email.send_digest",
+        lambda year, round, db: sent_calls.append((year, round)) or 5,
+    )
+
+    result = runner.invoke(cli.app, ["poll", "2026"])
+    assert result.exit_code == 0
+    assert sent_calls == []
+
+
+def test_poll_digest_send_failure_still_claims_the_marker_not_auto_retried(monkeypatch, test_engine):
+    """The marker is claimed BEFORE the send is attempted, on purpose: there's no way to tell
+    from here whether a failed send reached zero, some, or all recipients, and silently
+    re-sending to an unknown subset on the next tick is worse than requiring a human to notice
+    the logged failure and run `send-digest --to-subscribers` themselves."""
+    from sqlmodel import Session
+
+    from telogify.models import Insight, RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2026, round=8, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        db.add(Insight(
+            weekend_id=wk.id, slot=1, header="h", explanation_web="w", explanation_email="e",
+            source_tool_calls_json=[],
+        ))
+        db.commit()
+        weekend_id = wk.id
+
+    now = datetime.utcnow()
+    ready_event = (Event(round=8, name="Ready GP", date=now - timedelta(hours=1)),)
+    monkeypatch.setattr("telogify.analysis.schedule.fetch_season_schedule", lambda year: ready_event)
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round: {"session_types": ["R"], "weekend_id": weekend_id},
+    )
+
+    def boom(year, round, db):
+        raise RuntimeError("resend is unhappy")
+
+    monkeypatch.setattr("telogify.email.send_digest", boom)
+
+    result = runner.invoke(cli.app, ["poll", "2026"])
+    assert result.exit_code == 0
+    assert "digest send failed" in plain(result.output)
+
+    with Session(test_engine) as db:
+        assert db.get(RaceWeekend, weekend_id).digest_sent_at is not None
+
+
+def test_send_digest_to_subscribers_sets_the_digest_sent_marker(monkeypatch, test_engine):
+    """So poll's own claim (`_maybe_send_digest`) sees the weekend as already sent and never
+    races a manual `--to-subscribers` blast for the same round."""
+    from sqlmodel import Session, select
+
+    from telogify.db import set_service_scope
+    from telogify.models import RaceWeekend, Subscriber
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        set_service_scope(db)
+        db.add(RaceWeekend(year=2026, round=8, circuit_name="X", country="Y", event_name="Z GP"))
+        db.add(Subscriber(email="a@x.com", status="confirmed"))
+        db.commit()
+
+    monkeypatch.setattr("telogify.email.send_digest", lambda year, round, db: 1)
+    result = runner.invoke(cli.app, ["send-digest", "2026", "8", "--to-subscribers"], input="y\n")
+    assert result.exit_code == 0
+
+    with Session(test_engine) as db:
+        weekend = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2026)).first()
+        assert weekend.digest_sent_at is not None
+
+
+def test_send_digest_without_to_subscribers_does_not_set_the_marker(monkeypatch, test_engine):
+    """An ad-hoc single-recipient test send is not a real subscriber blast, so it must not make
+    poll believe the weekend's digest has already gone out to the list."""
+    from sqlmodel import Session, select
+
+    from telogify.models import RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        db.add(RaceWeekend(year=2026, round=8, circuit_name="X", country="Y", event_name="Z GP"))
+        db.commit()
+
+    monkeypatch.setattr("telogify.email.send_digest", lambda year, round, db: 1)
+    result = runner.invoke(cli.app, ["send-digest", "2026", "8"])
+    assert result.exit_code == 0
+
+    with Session(test_engine) as db:
+        weekend = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2026)).first()
+        assert weekend.digest_sent_at is None
+
+
 def test_poll_timeout_escapes_fastf1_soft_exceptions():
     """The highest-value test in this plan: fires a real SIGALRM inside FastF1's REAL
     @soft_exceptions decorator (not a hand-rolled mimic) and asserts _PollTimeout still

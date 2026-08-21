@@ -176,6 +176,59 @@ def _report_insights_done(state: dict, elapsed: str) -> None:
         )
 
 
+def _maybe_send_digest(year: int, round: int, state: dict) -> None:
+    """Auto-send the real digest to every confirmed subscriber the first time this weekend's
+    race is ingested and its insights are persisted. Fires from `poll` only -- never from the
+    manual `run-weekend` command a human runs directly -- so the one unattended, no-review send
+    path is exactly the recurring cron, not every local invocation.
+
+    `RaceWeekend.digest_sent_at` is claimed ATOMICALLY (one UPDATE ... WHERE digest_sent_at IS
+    NULL) BEFORE the send is attempted, not after it succeeds. Claiming first, rather than
+    marking sent after, guards against two failure modes a claim-after-send ordering can't:
+    two `poll` invocations overlapping (`_POLL_TIMEOUT_S` is 90 minutes precisely because a
+    cold-cache run can legitimately take that long, against a 20-30 minute cron cadence -- a
+    real, not theoretical, overlap) both racing to send the same weekend, where only one UPDATE
+    can win the WHERE clause; and a crash between a successful send and a later commit
+    (including `_PollTimeout` itself, which can fire at any instant) leaving the guard unset and
+    the next tick re-sending to every subscriber.
+
+    The trade-off: once claimed, a failed or partial send is never auto-retried by `poll` --
+    there is no way to know from here whether zero, some, or all recipients actually got the
+    email, and silently re-sending to an unknown subset is worse than requiring a human to
+    notice the logged failure and run `send-digest --to-subscribers` (which claims the same
+    marker on success, so it and `poll` never race each other for the same weekend either)."""
+    if "R" not in state.get("session_types", ()):
+        return
+    from sqlmodel import Session, update
+
+    from telogify.db import engine
+    from telogify.email import send_digest as run_send_digest
+    from telogify.models import Insight, RaceWeekend
+    from telogify.pipeline import _has_existing
+
+    with Session(engine) as db:
+        weekend = db.get(RaceWeekend, state["weekend_id"])
+        if weekend is None or weekend.digest_sent_at is not None:
+            return
+        if not _has_existing(db, weekend.id, Insight):
+            return
+        claim = db.exec(
+            update(RaceWeekend)
+            .where(RaceWeekend.id == weekend.id, RaceWeekend.digest_sent_at.is_(None))
+            .values(digest_sent_at=datetime.utcnow())
+        )
+        db.commit()
+        if claim.rowcount == 0:
+            return  # another poll invocation, or a manual send-digest, claimed it first
+
+        try:
+            sent = run_send_digest(year, round, db)
+        except Exception as exc:
+            console.print(f"  [red]✗[/red] digest send failed: {escape(str(exc))}")
+            return
+    console.print(f"  [green]✓[/green] digest auto-sent to {sent} subscriber(s)")
+
+
 def _run_insights_one(year: int, round: int, force: bool = False) -> None:
     from telogify.pipeline import regen_insights
 
@@ -266,7 +319,11 @@ def poll_cmd(
         "at the season boundary, so the Railway cron start command should always omit this.",
     ),
 ) -> None:
-    """Cron-safe recurring trigger: ingest whatever's newly ready in the current round window.
+    """Cron-safe recurring trigger: ingest whatever's newly ready in the current round window,
+    and auto-send the real digest the moment a round's race is ingested and its insights are
+    persisted -- unattended, no human review, per an explicit product decision (see
+    `_maybe_send_digest`). This is the only path that sends a digest with no confirmation step;
+    the manual `run-weekend`/`send-digest` commands are untouched.
 
     Intended for a fixed schedule (e.g. Railway cron every 20-30 min). Never passes --force --
     an already-ingested session or already-persisted insight batch is left untouched, so a
@@ -309,6 +366,7 @@ def poll_cmd(
             state = run_weekend(resolved_year, rnd)
             elapsed = _format_elapsed(time.monotonic() - started)
             _report_insights_done(state, elapsed)
+            _maybe_send_digest(resolved_year, rnd, state)
     finally:
         signal.alarm(0)
 
@@ -607,6 +665,18 @@ def send_digest(
                 return
 
         sent = run_send(year, round, db)
+        if to_subscribers:
+            # Marks the same guard poll's auto-send checks, so a manual subscriber blast here
+            # and an unattended poll tick never end up racing to send the same weekend twice.
+            from telogify.models import RaceWeekend
+
+            weekend = db.exec(
+                select(RaceWeekend).where(RaceWeekend.year == year, RaceWeekend.round == round)
+            ).first()
+            if weekend is not None:
+                weekend.digest_sent_at = datetime.utcnow()
+                db.add(weekend)
+                db.commit()
     console.print(f"[green]Sent digest to {sent} recipient(s).[/green]")
 
 
