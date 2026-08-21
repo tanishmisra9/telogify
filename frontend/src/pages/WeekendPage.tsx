@@ -536,7 +536,7 @@ export function WeekendPage() {
             sessionsLoaded={sessionsLoaded}
             delay={0.24}
             loading={<SkeletonCard label="Pace spread" className="min-h-[600px]" />}
-            target={nextSessionTarget(['SQ', 'SPRINT'])}
+            target={nextSessionTarget(['SPRINT'])}
             label="Sprint"
             happened={sprintHappened}
             noData={sprintNoData}
