@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -23,6 +24,7 @@ export function CountdownPanel({
   subtitle,
   targetIso,
   compact = false,
+  href,
 }: {
   kicker: string
   // Optional: omit when a heading above the panel already states the same thing (e.g. the
@@ -34,6 +36,10 @@ export function CountdownPanel({
   subtitle?: ReactNode
   targetIso: string
   compact?: boolean
+  // Optional route (e.g. `/weekends/2026/12`) that makes `title` itself a link, in the same
+  // hover-pill style as the "Latest verdict" headline link in Insight.tsx -- copied verbatim
+  // rather than re-derived, so it gets the same no-hover-on-mobile behaviour for free.
+  href?: string
 }) {
   const target = new Date(targetIso).getTime()
   const [, tick] = useState(0)
@@ -65,7 +71,16 @@ export function CountdownPanel({
               : 'text-5xl sm:text-7xl xl:text-8xl'
           }`}
         >
-          {title}
+          {href ? (
+            <Link
+              to={href}
+              className="-mx-2 -my-1 inline-block rounded-full px-2 py-1 text-ink transition-colors [-webkit-tap-highlight-color:transparent] hover:bg-accent/10 hover:text-accent [@media(hover:hover)]:active:bg-accent/20"
+            >
+              {title}
+            </Link>
+          ) : (
+            title
+          )}
         </h2>
       )}
 

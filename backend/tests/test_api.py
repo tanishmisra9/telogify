@@ -102,8 +102,37 @@ def test_list_weekends(client):
     assert r.json()[0]["event_name"] == "Austrian Grand Prix"
 
 
-def test_weekend_detail_404(client):
+def test_weekend_detail_404(client, monkeypatch):
+    # Round not ingested AND not on the (monkeypatched, so no live FastF1 call) calendar either.
+    from telogify.api import routes
+
+    monkeypatch.setattr(routes, "_schedule_events", lambda year: ())
     assert client.get("/weekends/1999/1").status_code == 404
+
+
+def test_weekend_detail_falls_back_to_schedule_for_unraced_round(client, monkeypatch):
+    """A round not yet ingested but on the season calendar still renders (as a "coming soon"
+    shape) instead of 404ing, so the weekend page can show it with a countdown."""
+    from datetime import datetime
+
+    from telogify.analysis.schedule import Event
+    from telogify.api import routes
+
+    events = (
+        Event(round=12, name="Future GP", date=datetime(2025, 8, 1), country="Neverland", location="Nowhere City"),
+    )
+    monkeypatch.setattr(routes, "_schedule_events", lambda year: events if year == 2025 else ())
+    r = client.get("/weekends/2025/12")
+    assert r.status_code == 200
+    assert r.json() == {
+        "id": None,
+        "year": 2025,
+        "round": 12,
+        "event_name": "Future GP",
+        "circuit_name": "Nowhere City",
+        "country": "Neverland",
+        "race_laps": None,
+    }
 
 
 def test_weekend_detail_includes_race_laps(client):
@@ -256,6 +285,40 @@ def test_sessions_reports_unavailable_for_stale_never_ingested_session(client, m
     assert by_type["FP1"]["status"] == "loaded"
 
 
+def test_sessions_returns_schedule_only_when_weekend_not_ingested(client, monkeypatch):
+    """No RaceWeekend row exists yet for 2025/12 (the fixture only seeds 2025/11) -- this must
+    render the calendar with every session unloaded, not 404 the way it did before the weekend
+    row became optional."""
+    from datetime import datetime
+
+    from telogify.analysis.schedule import Event
+    from telogify.api import routes
+
+    # Round 12 is on the calendar (just not ingested) -- clears the "not ingested AND not on the
+    # calendar either" 404 guard.
+    monkeypatch.setattr(
+        routes, "_schedule_events", lambda year: (Event(round=12, name="X", date=datetime(2099, 3, 1)),)
+    )
+    monkeypatch.setattr(
+        routes,
+        "session_schedule",
+        lambda year, round: [("FP1", "Practice 1", datetime(2099, 3, 1, 10, 0))],
+    )
+    r = client.get("/weekends/2025/12/sessions")
+    assert r.status_code == 200
+    assert r.json() == [{"session_type": "FP1", "status": None, "date_utc": "2099-03-01T10:00:00Z"}]
+
+
+def test_sessions_404_for_round_not_ingested_and_not_on_calendar(client, monkeypatch):
+    """Unlike the case above, round 1 in the year 1999 isn't ingested AND isn't on the (here
+    monkeypatched empty, so no live FastF1 call) calendar either -- this must 404 in agreement
+    with weekend_detail, not silently answer "zero sessions" for a round that doesn't exist."""
+    from telogify.api import routes
+
+    monkeypatch.setattr(routes, "_schedule_events", lambda year: ())
+    assert client.get("/weekends/1999/1/sessions").status_code == 404
+
+
 def test_sectors(client):
     data = client.get("/weekends/2025/11/sectors").json()
     assert data["indicative"] is True
@@ -385,6 +448,32 @@ def test_next_race_none_when_no_upcoming_events(client, monkeypatch):
     assert client.get("/next-race").json() is None
 
 
+def test_schedule_events_does_not_cache_a_transient_empty_fetch(monkeypatch):
+    """A single failed/empty fetch_season_schedule call must not poison the cache for the rest
+    of the process -- only a non-empty result is remembered, so the next call retries instead of
+    permanently serving (). Both /season/{year}/weekends and the weekend_detail/sessions
+    "coming soon" fallback depend on this to self-heal after a transient FastF1 outage."""
+    from datetime import datetime
+
+    from telogify.analysis.schedule import Event
+    from telogify.api import routes
+
+    routes._schedule_events.cache_clear()
+    calls = {"n": 0}
+    events = (Event(round=1, name="X", date=datetime.utcnow()),)
+
+    def flaky(year):
+        calls["n"] += 1
+        return () if calls["n"] == 1 else events
+
+    monkeypatch.setattr(routes, "fetch_season_schedule", flaky)
+    assert routes._schedule_events(2030) == ()
+    assert routes._schedule_events(2030) == events  # retried, not stuck on the empty result
+    assert routes._schedule_events(2030) == events  # now cached for real
+    assert calls["n"] == 2
+    routes._schedule_events.cache_clear()
+
+
 def test_empty_weekend_endpoints_return_placeholder_shapes(test_engine):
     """A weekend with no ingested sessions at all: every 'no data yet' branch in one pass."""
     with Session(test_engine) as db:
@@ -510,6 +599,47 @@ def test_season_snapshot_ok_for_seeded_year(client):
     out = client.get("/season/2025").json()
     assert out["year"] == 2025
     assert "constructors" in out
+
+
+def test_season_weekends_unions_ingested_and_schedule(client, monkeypatch):
+    from datetime import datetime
+
+    from telogify.analysis.schedule import Event
+    from telogify.api import routes
+
+    events = (
+        # Round 11 is already ingested by the fixture (as "Austrian Grand Prix") -- the DB row's
+        # fields must win over whatever the schedule says for it.
+        Event(round=11, name="Schedule Name Ignored", date=datetime(2025, 6, 29), country="X", location="Y"),
+        Event(round=12, name="Future GP", date=datetime(2025, 8, 1), country="Neverland", location="Nowhere City"),
+    )
+    monkeypatch.setattr(routes, "_schedule_events", lambda year: events if year == 2025 else ())
+
+    rows = client.get("/season/2025/weekends").json()
+    by_round = {r["round"]: r for r in rows}
+    assert set(by_round) == {11, 12}
+
+    assert by_round[11]["ingested"] is True
+    assert by_round[11]["id"] is not None
+    assert by_round[11]["event_name"] == "Austrian Grand Prix"
+    assert by_round[11]["date_utc"] == "2025-06-29T00:00:00Z"
+
+    assert by_round[12]["ingested"] is False
+    assert by_round[12]["id"] is None
+    assert by_round[12]["event_name"] == "Future GP"
+    assert by_round[12]["circuit_name"] == "Nowhere City"
+    assert by_round[12]["date_utc"] == "2025-08-01T00:00:00Z"
+
+
+def test_season_weekends_degrades_to_ingested_only_when_schedule_unavailable(client, monkeypatch):
+    from telogify.api import routes
+
+    monkeypatch.setattr(routes, "_schedule_events", lambda year: ())
+    rows = client.get("/season/2025/weekends").json()
+    assert len(rows) == 1
+    assert rows[0]["round"] == 11
+    assert rows[0]["ingested"] is True
+    assert rows[0]["date_utc"] is None
 
 
 def test_quali_trace_endpoint_session_exists_without_rows(client):

@@ -25,6 +25,7 @@ export function Countdown() {
           subtitle={place && <span className="block">{place}</span>}
           title={data.event_name}
           targetIso={data.date_utc}
+          href={`/weekends/${data.year}/${data.round}`}
         />
       </section>
     </BlurFade>

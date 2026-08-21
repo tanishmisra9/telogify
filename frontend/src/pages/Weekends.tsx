@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom'
 import { BackHomeButton } from '@/components/BackHomeButton'
 import { BlurFade } from '@/components/BlurFade'
+import { CountdownPanel } from '@/components/CountdownPanel'
 import { LoadingSwap } from '@/components/LoadingSwap'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { Skeleton } from '@/components/Skeleton'
-import { useApi, type WeekendSummary } from '@/lib/api'
+import { useApi, type SeasonWeekendRow, type WeekendSummary } from '@/lib/api'
 
 // Only the first screenful cascades on load; rows reached by scrolling fade in one at a time as
 // they enter the viewport, so the scroll itself is the stagger and no per-row delay is needed.
@@ -15,8 +16,31 @@ const STAGGERED_ROWS = 6
 const SKELETON_ROWS = 8
 
 export function Weekends() {
-  const { data, loading, error } = useApi<WeekendSummary[]>('/weekends')
-  const weekends = [...(data ?? [])].sort((a, b) => a.year - b.year || a.round - b.round)
+  const currentYear = new Date().getFullYear()
+  const { data: pastData, loading: pastLoading, error } = useApi<WeekendSummary[]>('/weekends')
+  // The full current-season fixture, ingested or not (see /season/{year}/weekends) -- every
+  // other year is already fully ingested, so only the current year needs this richer fetch.
+  const { data: seasonData, loading: seasonLoading } = useApi<SeasonWeekendRow[]>(
+    `/season/${currentYear}/weekends`,
+  )
+  const loading = pastLoading || seasonLoading
+
+  // Past years come straight from /weekends (always ingested). The current year is replaced
+  // wholesale by the season fixture, which already includes its own ingested rows -- falling
+  // back to /weekends' own current-year rows only if that fetch itself failed, so a transient
+  // schedule outage doesn't blank the season currently in progress.
+  const currentYearRows: SeasonWeekendRow[] =
+    seasonData ??
+    (pastData ?? [])
+      .filter((w) => w.year === currentYear)
+      .map((w) => ({ ...w, date_utc: null, ingested: true }))
+  const weekends = [
+    ...(pastData ?? [])
+      .filter((w) => w.year !== currentYear)
+      .map((w): SeasonWeekendRow => ({ ...w, date_utc: null, ingested: true })),
+    ...currentYearRows,
+  ].sort((a, b) => a.year - b.year || a.round - b.round)
+  const loggedCount = weekends.filter((w) => w.ingested).length
 
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
@@ -39,11 +63,11 @@ export function Weekends() {
               to measure and nothing to drift out of sync. Still never renders "0 logged", which
               would be a real but wrong figure a reader could act on. */}
           <span className="kicker whitespace-nowrap text-muted">
-            {loading ? ' ' : `${weekends.length} logged`}
+            {loading ? ' ' : `${loggedCount} logged`}
           </span>
         </div>
         <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
-          Every ingested race weekend, each with its verdicts traced to official timing data.
+          Every race weekend of the season, each analysed weekend traced to official timing data.
         </p>
       </BlurFade>
 
@@ -69,17 +93,17 @@ export function Weekends() {
       >
         {error ? (
           <p className="mt-8 text-muted">API offline.</p>
-        ) : data && data.length === 0 ? (
+        ) : !loading && weekends.length === 0 ? (
           <p className="mt-8 text-muted">No weekends processed yet.</p>
         ) : (
           <ul>
             {weekends.map((w, i) => (
-              <ScrollReveal key={w.id} delay={i < STAGGERED_ROWS ? 0.04 * i : 0}>
-                <li>
+              <ScrollReveal key={`${w.year}-${w.round}`} delay={i < STAGGERED_ROWS ? 0.04 * i : 0}>
+                <li className="border-b border-border">
                   <Link
                     to={`/weekends/${w.year}/${w.round}`}
                     aria-label={`${w.event_name}, round ${w.round}, ${w.year}`}
-                    className="group flex items-center gap-5 border-b border-border py-6 transition-colors hover:bg-surface"
+                    className="group flex items-center gap-5 py-6 transition-colors hover:bg-surface"
                   >
                     <span className="num w-14 text-2xl font-bold text-accent">
                       {String(w.round).padStart(2, '0')}
@@ -103,6 +127,14 @@ export function Weekends() {
                       →
                     </span>
                   </Link>
+                  {/* Not-yet-ingested rounds still link through (the weekend page falls back to
+                      the season fixture too), but get their own ticking countdown here as well --
+                      the same shared component WeekendPage's per-session sections use. */}
+                  {!w.ingested && w.date_utc && new Date(w.date_utc).getTime() > Date.now() && (
+                    <div className="pb-6">
+                      <CountdownPanel kicker="Coming up" targetIso={w.date_utc} compact />
+                    </div>
+                  )}
                 </li>
               </ScrollReveal>
             ))}

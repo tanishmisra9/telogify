@@ -88,7 +88,7 @@ export function legendTeamOrder(rows: SeasonConstructorRow[], metric: Metric): s
 // front-runner and a line dropping away is a team losing ground. Copies DegradationChart's scaffold.
 export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[]; rounds: SeasonRound[] }) {
   const reduce = useReducedMotion()
-  const [metric, setMetric] = useState<Metric>('pace')
+  const [metric, setMetric] = useState<Metric>('cumulative')
   // Empty = show every team (default). Not reset on metric switch, so a comparison survives
   // moving between Race pace/Qualifying/Cumulative.
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -179,7 +179,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
           ariaLabel="Metric"
           active={metric}
           onChange={setMetric}
-          tabs={(['pace', 'quali', 'cumulative'] as Metric[]).map((mkey) => ({ value: mkey, label: METRIC_LABEL[mkey] }))}
+          tabs={(['cumulative', 'pace', 'quali'] as Metric[]).map((mkey) => ({ value: mkey, label: METRIC_LABEL[mkey] }))}
         />
       </div>
 

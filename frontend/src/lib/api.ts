@@ -3,7 +3,10 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 export interface WeekendSummary {
-  id: number
+  // Null when GET /weekends/{year}/{round} falls back to the season schedule for a round that
+  // hasn't been ingested yet -- there's no RaceWeekend row to have an id. Always non-null on rows
+  // from GET /weekends (ingested only).
+  id: number | null
   year: number
   round: number
   event_name: string
@@ -12,6 +15,21 @@ export interface WeekendSummary {
   // The winner's classified lap count (the one driver for whom that figure is reliable);
   // null before the race session is ingested.
   race_laps: number | null
+}
+
+// Every round on a season's calendar, ingested or not -- served by /season/{year}/weekends for
+// the Weekends list page. `date_utc` is the scheduled race start (null if the schedule fetch
+// failed and this round is only known because it's already ingested); `ingested` distinguishes a
+// real, browsable weekend from one that's only a calendar placeholder so far.
+export interface SeasonWeekendRow {
+  id: number | null
+  year: number
+  round: number
+  event_name: string
+  circuit_name: string
+  country: string
+  date_utc: string | null
+  ingested: boolean
 }
 
 export interface InsightItem {
@@ -35,6 +53,7 @@ export interface LatestInsight extends InsightItem {
 export interface NextRace {
   event_name: string
   round: number
+  year: number
   date_utc: string
   country?: string
   location?: string

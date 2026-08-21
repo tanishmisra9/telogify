@@ -4,7 +4,6 @@ car character, tyre degradation, finishing order, session progress), plus subscr
 import json
 import re
 from datetime import datetime, timezone
-from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -167,10 +166,25 @@ def latest_insight(db: Session = Depends(get_session)):
     }
 
 
-@lru_cache(maxsize=4)
+_schedule_cache: dict[int, tuple[Event, ...]] = {}
+
+
 def _schedule_events(year: int) -> tuple[Event, ...]:
-    """Cached wrapper around fetch_season_schedule for the landing countdown."""
-    return fetch_season_schedule(year)
+    """Cached wrapper around fetch_season_schedule, for the landing countdown, the weekend
+    detail/sessions "not ingested yet" fallback, and the season weekends list. Only a non-empty
+    result is cached: a transient fetch failure (network blip, FastF1 hiccup) must self-heal on
+    the next request rather than permanently hiding a season's future rounds for the rest of the
+    process's life (an `lru_cache` would happily cache and keep serving the empty `()`)."""
+    cached = _schedule_cache.get(year)
+    if cached:
+        return cached
+    events = fetch_season_schedule(year)
+    if events:
+        _schedule_cache[year] = events
+    return events
+
+
+_schedule_events.cache_clear = _schedule_cache.clear
 
 
 @router.get("/next-race")
@@ -180,23 +194,75 @@ def next_race():
     and next year's schedule isn't out, or when FastF1 is unavailable, so the frontend simply
     hides the countdown."""
     now = datetime.utcnow()
-    ev = pick_next_event(list(_schedule_events(now.year)), now)
+    year = now.year
+    ev = pick_next_event(list(_schedule_events(year)), now)
     if ev is None:
-        ev = pick_next_event(list(_schedule_events(now.year + 1)), now)
+        year = now.year + 1
+        ev = pick_next_event(list(_schedule_events(year)), now)
     if ev is None:
         return None
     return {
         "event_name": ev.name,
         "round": ev.round,
+        "year": year,
         "date_utc": ev.date.isoformat() + "Z",
         "country": ev.country,
         "location": ev.location,
     }
 
 
+@router.get("/season/{year}/weekends")
+def season_weekends(year: int, db: Session = Depends(get_session)):
+    """Every round on `year`'s calendar, ingested or not -- unlike /weekends (ingested only,
+    relied on by lib/api.ts's latestWeekendPath), this is the full season fixture for the
+    Weekends list page, so a not-yet-run round still appears with a countdown target instead of
+    just being absent. Unions by round rather than only reading the live schedule, so an already-
+    ingested round still shows (with date_utc null) even if the live FastF1 schedule fetch fails."""
+    ingested = {
+        w.round: w
+        for w in db.exec(select(RaceWeekend).where(RaceWeekend.year == year)).all()
+    }
+    events = {e.round: e for e in _schedule_events(year)}
+    out = []
+    for r in sorted(set(ingested) | set(events)):
+        w = ingested.get(r)
+        ev = events.get(r)
+        out.append(
+            {
+                "id": w.id if w else None,
+                "year": year,
+                "round": r,
+                "event_name": w.event_name if w else (ev.name if ev else ""),
+                "circuit_name": w.circuit_name if w else (ev.location if ev else ""),
+                "country": w.country if w else (ev.country if ev else ""),
+                "date_utc": ev.date.isoformat() + "Z" if ev else None,
+                "ingested": w is not None,
+            }
+        )
+    return out
+
+
 @router.get("/weekends/{year}/{round}")
 def weekend_detail(year: int, round: int, db: Session = Depends(get_session)):
-    w = _weekend(db, year, round)
+    w = db.exec(
+        select(RaceWeekend).where(RaceWeekend.year == year, RaceWeekend.round == round)
+    ).first()
+    if w is None:
+        # Not yet ingested (a RaceWeekend row is only created by ingest) -- fall back to the
+        # season fixture so a future weekend still renders a "coming soon" page instead of
+        # 404ing. A genuinely invalid round (not on the calendar either) still 404s below.
+        ev = next((e for e in _schedule_events(year) if e.round == round), None)
+        if ev is None:
+            raise HTTPException(status_code=404, detail="weekend not found")
+        return {
+            "id": None,
+            "year": year,
+            "round": round,
+            "event_name": ev.name,
+            "circuit_name": ev.location,
+            "country": ev.country,
+            "race_laps": None,
+        }
 
     # Race distance in laps: the WINNER's classified lap count, not any driver's -- a winner by
     # definition completes the full race distance, so this is the one case get_session_results'
@@ -235,8 +301,15 @@ def weekend_sessions(year: int, round: int, db: Session = Depends(get_session)):
     `date_utc` is the session's scheduled start (null if FastF1's schedule doesn't have one),
     used by the frontend to count down to a session that hasn't happened yet. Falls back to
     ingested-only sessions with no date if the live FastF1 schedule fetch fails."""
-    w = _weekend(db, year, round)
-    ingested = {s.session_type: s.status for s in _weekend_sessions(db, w.id)}
+    w = db.exec(
+        select(RaceWeekend).where(RaceWeekend.year == year, RaceWeekend.round == round)
+    ).first()
+    if w is None and not any(e.round == round for e in _schedule_events(year)):
+        # Same "not ingested AND not on the calendar either" check weekend_detail uses, so the
+        # two sibling endpoints 404 in agreement rather than this one silently answering "zero
+        # sessions" for a round that doesn't exist at all.
+        raise HTTPException(status_code=404, detail="weekend not found")
+    ingested = {s.session_type: s.status for s in _weekend_sessions(db, w.id)} if w else {}
     schedule = session_schedule(year, round)
     if not schedule:
         return [
