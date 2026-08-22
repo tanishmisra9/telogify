@@ -102,6 +102,18 @@ def overall_ranking(
     return {c: {"score": scores[c], "rank": i + 1} for i, c in enumerate(ordered)}
 
 
+def _blended_gap_s(pace_means: dict[str, float | None], ranking: dict[str, dict]) -> dict[str, float]:
+    """Rescale each team's overall_ranking score (0.6/0.4 blend, normalized 0..1) back onto
+    pace_gap's own seconds span. `score` is an affine transform of this value (same lo/span for
+    every team), so sorting by it is identical to sorting by overall_rank -- the displayed gap
+    and the ranking order can never disagree, unlike showing race pace alone."""
+    present_pace = [v for v in pace_means.values() if v is not None]
+    if not present_pace:
+        return {}
+    lo, span = min(present_pace), max(present_pace) - min(present_pace)
+    return {c: r["score"] * span + lo for c, r in ranking.items()}
+
+
 def _reference_compound(deg_vals: dict[str, list[tuple[str, float, int]]]) -> str | None:
     """The compound the field ran the most laps on across the season. Comparing every team's
     degradation on this one tyre keeps it apples-to-apples (compounds have different baselines)."""
@@ -276,6 +288,7 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
     pace_means = {c: weighted_aggregate(pace_vals[c], current_round)["mean"] for c in constructors}
     quali_means = {c: weighted_aggregate(quali_vals[c], current_round)["mean"] for c in constructors}
     ranking = overall_ranking(pace_means, quali_means)
+    blended_gap = _blended_gap_s(pace_means, ranking)
     unranked = len(constructors) + 1
 
     rows = []
@@ -285,6 +298,7 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
             {
                 "constructor": c,
                 "overall_rank": ranking.get(c, {}).get("rank"),
+                "overall_gap_s": blended_gap.get(c),
                 "pace_gap": weighted_aggregate(pace_vals[c], current_round),
                 "quali_gap_pct": weighted_aggregate(quali_vals[c], current_round),
                 "top_speed_deficit_kmh": ts["mean"],

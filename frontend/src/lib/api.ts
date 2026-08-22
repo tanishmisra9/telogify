@@ -238,6 +238,7 @@ export interface TrendPoint {
 export interface SeasonConstructorRow {
   constructor: string
   overall_rank: number | null
+  overall_gap_s: number | null
   pace_gap: MetricAgg
   quali_gap_pct: MetricAgg
   top_speed_deficit_kmh: number | null

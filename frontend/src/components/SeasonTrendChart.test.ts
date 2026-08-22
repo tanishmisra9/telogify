@@ -8,6 +8,7 @@ function row(constructor: string, paceMean: number, qualiMean: number, cumulativ
   return {
     constructor,
     overall_rank: null,
+    overall_gap_s: null,
     pace_gap: { mean: paceMean, spread: null, n: 1 },
     quali_gap_pct: { mean: qualiMean, spread: null, n: 1 },
     top_speed_deficit_kmh: null,

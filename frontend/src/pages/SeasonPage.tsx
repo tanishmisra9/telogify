@@ -52,10 +52,10 @@ const FIGURE_W = 'w-14 sm:w-24'
 function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
   const reduce = useReducedMotion()
 
-  // Pace only: the row order still comes from the locked 60/40 race+qualifying blend
-  // (r.overall_rank, set server-side), but the bar and figure show race pace alone, in seconds
-  // behind the season's best -- see the footnote below.
-  const paceValues = rows.map((r) => r.pace_gap.mean)
+  // Bar and figure show the same locked 60/40 race+qualifying blend that sets row order
+  // (r.overall_rank), rescaled onto race pace's own seconds span server-side
+  // (overall_gap_s) -- so the displayed gap and the ranking order can never disagree.
+  const paceValues = rows.map((r) => r.overall_gap_s)
   const present = paceValues.filter((v): v is number => v != null)
   const maxGap = present.length > 0 ? Math.max(...present) - Math.min(...present) : 0
   const ticks = axisTicks(maxGap)
@@ -241,8 +241,8 @@ function SeasonView({ year }: { year: number }) {
               <RankingTable rows={rows} />
               <p className="mt-4 text-sm text-muted">
                 Ranked on the season's blend of race and qualifying pace (60/40), weighted so
-                recent rounds count somewhat more than early ones. Each bar is race pace alone:
-                the season's best team shows "leader", every other team its gap to it in
+                recent rounds count somewhat more than early ones. Each bar is that same blend:
+                the season's best team shows "leader", every other team its gap to it, scaled in
                 seconds. A "partial data" or "low data" tag marks a team seen in too few rounds
                 to read at full confidence.
               </p>

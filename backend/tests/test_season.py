@@ -5,6 +5,7 @@ import pytest
 
 from telogify.analysis.season import (
     RECENCY_HALF_LIFE_ROUNDS,
+    _blended_gap_s,
     _recency_weight,
     _reference_compound,
     _stride_cap,
@@ -138,6 +139,33 @@ def test_overall_ranking_team_missing_quali_scored_on_race_alone():
 
 def test_overall_ranking_empty():
     assert overall_ranking({}, {}) == {}
+
+
+# --- _blended_gap_s --------------------------------------------------------
+
+
+def test_blended_gap_s_sort_order_matches_overall_rank():
+    # Same reproduction as the reported bug: with a wider field to normalize against, a team
+    # with a slightly worse race-pace gap but a much better qualifying gap outranks a rival --
+    # the displayed blended figure must still come out SMALLER for the better-ranked team.
+    pace = {"Leader": 0.0, "Audi": 1.684, "Alpine": 1.621, "Worst": 3.5}
+    quali = {"Leader": 0.0, "Audi": 0.05, "Alpine": 1.5, "Worst": 1.5}
+    ranking = overall_ranking(pace, quali)
+    blended = _blended_gap_s(pace, ranking)
+    assert ranking["Audi"]["rank"] < ranking["Alpine"]["rank"]
+    assert blended["Audi"] < blended["Alpine"]
+
+
+def test_blended_gap_s_reduces_to_raw_pace_when_quali_missing():
+    pace = {"A": 0.0, "B": 1.0}
+    quali = {"A": 0.0}  # B has no quali data -> scored on pace alone
+    ranking = overall_ranking(pace, quali)
+    blended = _blended_gap_s(pace, ranking)
+    assert blended["B"] == pytest.approx(1.0)
+
+
+def test_blended_gap_s_empty_pace_returns_empty():
+    assert _blended_gap_s({}, overall_ranking({}, {"A": 0.0})) == {}
 
 
 # --- confidence ----------------------------------------------------------
