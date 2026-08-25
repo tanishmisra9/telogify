@@ -111,17 +111,14 @@ export function Insight({
       {href && collapsible ? (
         <Link
           to={href}
-          // Same accent hover recipe as the footer's Mirco credit link: a pill-shaped
-          // background glow, not a text-bound shadow -- the -mx/-my cancel the pill's own
+          // Same accent hover recipe as the footer's Mirco credit link: a rectangular
+          // background glow, not a text-bound shadow -- the -mx/-my cancel the box's own
           // padding so it doesn't shift surrounding layout.
           //
-          // No highlight at all on touch. `rounded-full` only reads as a pill while the header
-          // stays on one line: it clamps to half the box height, so a header that wraps (3 lines
-          // at 390px) degenerates into a fat lozenge. Rather than reshape it, touch drops the
-          // highlight entirely. Tailwind v4 already gates `hover:` behind (hover: hover), but
-          // NOT `active:` -- hence the explicit query there, plus killing iOS's own tap flash,
-          // which would otherwise still paint over that same wrapped box.
-          className="-mx-2 -my-1 inline-block rounded-full px-2 py-1 text-ink transition-colors [-webkit-tap-highlight-color:transparent] hover:bg-accent/10 hover:text-accent [@media(hover:hover)]:active:bg-accent/20"
+          // No highlight at all on touch. Tailwind v4 already gates `hover:` behind
+          // (hover: hover), but NOT `active:` -- hence the explicit query there, plus killing
+          // iOS's own tap flash, which would otherwise still paint over the wrapped box.
+          className="-mx-2 -my-1 inline-block rounded-[--radius-panel] px-2 py-1 text-ink transition-colors [-webkit-tap-highlight-color:transparent] hover:bg-accent/10 hover:text-accent [@media(hover:hover)]:active:bg-accent/20"
           onClick={(e) => e.stopPropagation()}
         >
           {headingText}

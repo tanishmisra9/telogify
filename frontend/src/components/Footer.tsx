@@ -69,11 +69,11 @@ export function Footer() {
                   href="https://www.instagram.com/fdataanalysis/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  // -mx/-my offset the padding so the pill highlight appears without shifting the
+                  // -mx/-my offset the padding so the highlight appears without shifting the
                   // prose; same accent hover recipe as the copy/collapse icon buttons. -mx-1 (not
-                  // -mx-1.5): the wider pill bled far enough left to overlap the "y" in the
+                  // -mx-1.5): the wider box bled far enough left to overlap the "y" in the
                   // preceding "by".
-                  className="-mx-1 -my-1 inline-flex items-center gap-1 rounded-full px-1 py-1 text-ink transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
+                  className="-mx-1 -my-1 inline-flex items-center gap-1 rounded-[--radius-panel] px-1 py-1 text-ink transition-colors hover:bg-accent/10 hover:text-accent active:bg-accent/20"
                 >
                   Mirco Bartolozzi
                   {/* The icon stands in for "@" entirely (no literal @ character) -- gap-0.5, not

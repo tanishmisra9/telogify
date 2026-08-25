@@ -74,7 +74,7 @@ export function CountdownPanel({
           {href ? (
             <Link
               to={href}
-              className="-mx-2 -my-1 inline-block rounded-full px-2 py-1 text-ink transition-colors [-webkit-tap-highlight-color:transparent] hover:bg-accent/10 hover:text-accent [@media(hover:hover)]:active:bg-accent/20"
+              className="-mx-2 -my-1 inline-block rounded-[--radius-panel] px-2 py-1 text-ink transition-colors [-webkit-tap-highlight-color:transparent] hover:bg-accent/10 hover:text-accent [@media(hover:hover)]:active:bg-accent/20"
             >
               {title}
             </Link>
