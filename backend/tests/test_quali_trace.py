@@ -6,6 +6,7 @@ from telogify.analysis.quali_trace import (
     lap_relative_time_s,
     representative_max_distance_m,
     resample_to_grid,
+    resolve_pole_reference,
 )
 
 
@@ -37,18 +38,57 @@ def test_is_distance_plausible_true_for_normal_line_variance():
     assert is_distance_plausible(5883.6, 5834.7) is True
 
 
+def test_is_distance_plausible_keeps_monza_pole_within_line_variance():
+    # 2026 R13 Italy: Gasly's pole lap recorded +110m (+1.92%) vs a ~5766m field -- a
+    # verified-uniform stretch, not a glitch. The flat-100m cap wrongly dropped it and relabelled
+    # the runner-up as pole; the 2.5% relative cap keeps it.
+    assert is_distance_plausible(5876.1, 5765.7) is True
+
+
 def test_is_distance_plausible_false_for_telemetry_integration_glitch():
-    # ~380m short (2026 R3 Japan pole) is not a racing line, it's corrupted telemetry
+    # ~380m short / -6.6% (2026 R3 Japan pole) is not a racing line, it's corrupted telemetry
     assert is_distance_plausible(5389.0, 5773.7) is False
-    # ~224m long (2026 R3 Japan OCO) -- same failure mode, opposite direction
+    # ~224m long / +3.9% (2026 R3 Japan OCO) -- same failure mode, opposite direction
     assert is_distance_plausible(5994.6, 5770.3) is False
+    # ~184m long / +3.2% (2026 R13 Italy Sainz)
+    assert is_distance_plausible(5949.9, 5765.7) is False
+
+
+def test_is_distance_plausible_bound_scales_with_lap_length():
+    # 120m off is fine on a 6000m lap (2%) but not on a 4000m one (3%)
+    assert is_distance_plausible(6120.0, 6000.0) is True
+    assert is_distance_plausible(4120.0, 4000.0) is False
 
 
 def test_is_distance_plausible_boundary_is_inclusive_both_directions():
-    assert is_distance_plausible(700.0, 800.0, max_deviation_m=100.0) is True
-    assert is_distance_plausible(699.9, 800.0, max_deviation_m=100.0) is False
-    assert is_distance_plausible(900.0, 800.0, max_deviation_m=100.0) is True
-    assert is_distance_plausible(900.1, 800.0, max_deviation_m=100.0) is False
+    assert is_distance_plausible(700.0, 800.0, max_deviation_frac=0.125) is True  # cap = 100m exactly
+    assert is_distance_plausible(699.9, 800.0, max_deviation_frac=0.125) is False
+    assert is_distance_plausible(900.0, 800.0, max_deviation_frac=0.125) is True
+    assert is_distance_plausible(900.1, 800.0, max_deviation_frac=0.125) is False
+
+
+def test_resolve_pole_reference_uses_official_pole_when_present():
+    pole, ref = resolve_pole_reference(["RUS", "GAS", "ANT"], {"RUS": 81.8, "GAS": 81.7, "ANT": 81.9}, "GAS")
+    assert pole == "GAS"
+    assert ref == "GAS"  # delta measured against the real pole lap
+
+
+def test_resolve_pole_reference_no_pole_when_official_sitter_has_no_usable_lap():
+    # 2026 R3 Japan: Antonelli took pole but his lap telemetry is scrubbed. The chart must NOT
+    # call Russell pole -- pole is None, and the delta falls back to the fastest plottable lap.
+    pole, ref = resolve_pole_reference(["RUS", "PIA"], {"RUS": 89.076, "PIA": 89.132}, "ANT")
+    assert pole is None
+    assert ref == "RUS"
+
+
+def test_resolve_pole_reference_empty_field():
+    assert resolve_pole_reference([], {}, "RUS") == (None, None)
+
+
+def test_resolve_pole_reference_unknown_official_pole_falls_back_to_fastest():
+    pole, ref = resolve_pole_reference(["RUS", "PIA"], {"RUS": 89.076, "PIA": 89.132}, None)
+    assert pole is None
+    assert ref == "RUS"
 
 
 def test_resample_to_grid_linearly_interpolates_between_samples():

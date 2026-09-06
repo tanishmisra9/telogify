@@ -557,30 +557,42 @@ def weekend_quali_character(year: int, round: int, db: Session = Depends(get_ses
 def weekend_quali_trace(year: int, round: int, db: Session = Depends(get_session)):
     """Distance-aligned telemetry (speed, throttle, delta-to-pole) for every driver's fastest
     lap in the MAIN Qualifying session, for "The fight to pole". Q only, never SQ. Rows are
-    ordered fastest-first, so drivers[0]/drivers[1] are always pole/runner-up; every driver
-    with a usable lap is included even though the frontend renders only the top two today."""
+    ordered by official qualifying classification, so drivers[0]/drivers[1] are P1/P2; every
+    driver with a usable lap is included even though the frontend renders only the top two.
+    `pole_driver`/`pole_lap_time_s` are the OFFICIAL pole sitter and their Q3 time -- when the
+    pole sitter has no usable trace (telemetry scrubbed) they are still reported here while no
+    row is flagged is_pole, so the frontend can relabel the chart honestly."""
+    empty = {"session_type": None, "grid_m": [], "corners": [], "drivers": [], "pole_driver": None, "pole_lap_time_s": None}
     w = _weekend(db, year, round)
     sessions = _weekend_sessions(db, w.id)
     session = _session_by_type(sessions, "Q")
     if session is None:
-        return {"session_type": None, "grid_m": [], "corners": [], "drivers": []}
+        return empty
 
-    rows = db.exec(
-        select(QualiTrace).where(QualiTrace.session_id == session.id).order_by(QualiTrace.lap_time_s)
-    ).all()
+    rows = db.exec(select(QualiTrace).where(QualiTrace.session_id == session.id)).all()
     if not rows:
-        return {"session_type": session.session_type, "grid_m": [], "corners": [], "drivers": []}
+        return {**empty, "session_type": session.session_type}
+
+    results = db.exec(select(SessionResult).where(SessionResult.session_id == session.id)).all()
+    positions = {r.driver: r.position for r in results if r.position is not None}
+    pole = next((r for r in results if r.position == 1), None)
+    pole_lap_time_s = (pole.q3_time_s or pole.q2_time_s or pole.q1_time_s) if pole else None
+
+    # official classification first (P1, P2, ...), then any driver without a position by lap time
+    rows = sorted(rows, key=lambda r: (positions.get(r.driver) is None, positions.get(r.driver, 0), r.lap_time_s or 0.0))
 
     return {
         "session_type": session.session_type,
         "grid_m": rows[0].grid_m,
         "corners": rows[0].corners_json,
+        "pole_driver": pole.driver if pole else None,
+        "pole_lap_time_s": pole_lap_time_s,
         "drivers": [
             {
                 "driver": r.driver,
                 "constructor": r.constructor,
                 "lap_time_s": r.lap_time_s,
-                "is_pole": r.is_pole,
+                "is_pole": (positions.get(r.driver) == 1) if positions else r.is_pole,
                 "speed_kmh": r.speed_kmh,
                 "throttle_pct": r.throttle_pct,
                 "delta_s": r.delta_s,

@@ -9,14 +9,16 @@ Q/SQ-agnostic extraction, because "the fight to pole" is specifically about the 
 decides pole. Stored per driver, idempotently, for every driver with a usable lap -- not just
 the eventual top two -- so a future compare-any-two (or add-a-driver) UI needs no re-ingest.
 
-A driver whose recorded distance is implausibly short vs the field (is_distance_plausible) is
-excluded entirely, same as an unparseable lap -- their official lap time/result is untouched
-elsewhere in the product; only this telemetry-scrub chart can't trust their car-data channel for
-that lap. In the rare case that driver is pole, "the fight to pole" then compares the two
-fastest drivers WITH trustworthy telemetry rather than showing a corrupted number under pole's
-name -- see is_distance_plausible's docstring for why partial masking alone isn't enough.
+Pole is the OFFICIAL qualifying P1 (session.results Position == 1), not "fastest surviving
+lap". A driver whose recorded distance is implausibly far from the field (is_distance_plausible)
+is excluded entirely, same as an unparseable lap. If that driver is the pole sitter, NO row is
+marked is_pole -- the chart must not promote the runner-up to pole (2026 R3 Japan: pole's lap
+recorded 5389m against a ~5770m field). The delta trace still needs a reference lap, so it falls
+back to the fastest available lap and the API flags that axis for the frontend to relabel.
+Ordering into P1/P2/... is the API's job (it joins SessionResult), not stored here.
 """
 
+import pandas as pd
 from sqlmodel import Session as DBSession
 from sqlmodel import delete, select
 
@@ -28,6 +30,7 @@ from telogify.analysis.quali_trace import (
     lap_relative_time_s,
     representative_max_distance_m,
     resample_to_grid,
+    resolve_pole_reference,
 )
 from telogify.ingest.loader import WeekendData
 from telogify.ingest.quali_character import select_representative_laps
@@ -35,10 +38,25 @@ from telogify.ingest.segment import get_corners
 from telogify.models import QualiTrace, Session
 
 
+def _official_positions(session) -> dict[str, int]:
+    """{driver code: classified qualifying position} from session.results, empty if unavailable."""
+    results = getattr(session, "results", None)
+    if results is None or len(results) == 0:
+        return {}
+    out: dict[str, int] = {}
+    for _, r in results.iterrows():
+        code, pos = r.get("Abbreviation"), r.get("Position")
+        if code is None or pd.isna(pos):
+            continue
+        out[str(code)] = int(pos)
+    return out
+
+
 def extract_quali_traces(session) -> tuple[dict[str, dict], list[float]]:
     """driver -> {constructor, lap_time_s, is_pole, speed_kmh, throttle_pct, delta_s}, plus the
     shared distance grid (built from the field's median recorded lap distance). Empty ({}, [])
-    when no driver has a representative lap with usable, distance-plausible telemetry."""
+    when no driver has a representative lap with usable, distance-plausible telemetry. is_pole is
+    the OFFICIAL qualifying P1 and stays all-False when that driver's lap was scrubbed."""
     reps = select_representative_laps(session)
     if len(reps) == 0:
         return {}, []
@@ -66,7 +84,10 @@ def extract_quali_traces(session) -> tuple[dict[str, dict], list[float]]:
     if not laps_by_driver:
         return {}, []
 
-    pole_driver = min(laps_by_driver, key=lambda d: laps_by_driver[d][0]["LapTime"])
+    positions = _official_positions(session)
+    official_pole = next((d for d, p in positions.items() if p == 1), None)
+    lap_times_s = {d: laps_by_driver[d][0]["LapTime"].total_seconds() for d in laps_by_driver}
+    pole_driver, reference_driver = resolve_pole_reference(list(laps_by_driver), lap_times_s, official_pole)
     nominal_max = representative_max_distance_m([float(tel["Distance"].max()) for _, tel in laps_by_driver.values()])
     grid = build_distance_grid(nominal_max)
 
@@ -75,7 +96,7 @@ def extract_quali_traces(session) -> tuple[dict[str, dict], list[float]]:
         query = fraction_aligned_query(grid, distance[-1], nominal_max)
         return resample_to_grid(distance, lap_relative_time_s(tel["Time"].dt.total_seconds().tolist()), query)
 
-    pole_time_on_grid = time_on_grid_for(laps_by_driver[pole_driver][1])
+    pole_time_on_grid = time_on_grid_for(laps_by_driver[reference_driver][1])
 
     out: dict[str, dict] = {}
     for driver, (lap, tel) in laps_by_driver.items():

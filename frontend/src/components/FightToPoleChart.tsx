@@ -16,10 +16,11 @@ const INNER_W = WIDTH - MARGIN.left - MARGIN.right
 const PANELS_H = PANEL_H * 3 + GAP_AFTER_SPEED + GAP_AFTER_DELTA
 const HEIGHT = MARGIN.top + PANELS_H + MARGIN.bottom
 
-// ponytail: locked to P1 vs P2 -- data.drivers is already ordered fastest-first by the API, so
-// [0]/[1] are pole/runner-up. Upgrade path: accept a driver-pair prop (or a picker) over
-// data.drivers when comparing more than the top two is ever needed; QualiTrace/the API already
-// carry every driver's trace, so that's a frontend-only change, no ingest/DB work required.
+// ponytail: locked to P1 vs P2 -- data.drivers is ordered by official qualifying classification
+// by the API, so [0]/[1] are P1/P2 (or, when P1's telemetry was scrubbed, the two fastest
+// plottable laps -- see poleMissing below). Upgrade path: accept a driver-pair prop (or a
+// picker) over data.drivers when comparing more than the top two is ever needed; QualiTrace/the
+// API already carry every driver's trace, so that's a frontend-only change, no ingest/DB work.
 
 // Plain point-to-point path, not lib/svgPath's smoothPath (Catmull-Rom) -- that's tuned for
 // sparse, hand-picked points (round-by-round trend lines) and would overshoot on dense,
@@ -93,6 +94,12 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   // a dramatically ink-shifted shade of the team color instead.
   const p2Color = sameTeam ? teammateShade(p2.constructor) : p2Base
 
+  // The official pole sitter's lap telemetry was scrubbed (e.g. a corrupted distance channel), so
+  // they're absent from the chart and drivers[0] is the fastest lap we could actually plot. Say
+  // so, and relabel the delta axis -- it's no longer "delta to pole".
+  const poleMissing = data.pole_driver != null && p1.driver !== data.pole_driver
+  const deltaLabel = poleMissing ? `Delta to ${driverName(p1.driver)} (s)` : 'Delta to pole (s)'
+
   // Chart geometry stays in km/h regardless of unit (a linear conversion doesn't change the
   // curve's shape); only the displayed numbers convert.
   const toDisplay = (v: number) => (unit === 'mph' ? v * 0.621371 : v)
@@ -129,7 +136,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
 
   const panels = [
     { key: 'speed', label: `Top speed (${unitLabel})`, offset: 0, scale: speed, p1: p1.speed_kmh, p2: p2.speed_kmh },
-    { key: 'delta', label: 'Delta to pole (s)', offset: PANEL_H + GAP_AFTER_SPEED, scale: delta, p1: p1.delta_s, p2: p2.delta_s },
+    { key: 'delta', label: deltaLabel, offset: PANEL_H + GAP_AFTER_SPEED, scale: delta, p1: p1.delta_s, p2: p2.delta_s },
     {
       key: 'throttle',
       label: 'Throttle (%)',
@@ -172,6 +179,14 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
           ]}
         />
       </div>
+
+      {poleMissing && (
+        <p className="mt-2 text-xs text-muted">
+          {driverName(data.pole_driver as string)} took pole
+          {data.pole_lap_time_s != null ? ` in ${data.pole_lap_time_s.toFixed(3)}s` : ''}. Telemetry
+          for that lap isn&apos;t usable here, so this compares the next two.
+        </p>
+      )}
 
       <svg
         ref={svgRef}
@@ -286,8 +301,9 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
 
       <p className="mt-4 text-sm text-muted">
         Telemetry from each driver's fastest qualifying lap, aligned by position on track; dotted
-        lines mark turn numbers. Delta is the running time gap to the pole lap: below the line means
-        ahead at that point, above means behind, and where it ends is the final gap. Throttle is how
+        lines mark turn numbers. Delta is the running time gap to {poleMissing ? `${driverName(p1.driver)}'s lap` : 'the pole lap'}:
+        below the line means ahead at that point, above means behind, and where it ends is the final
+        gap. Throttle is how
         much of full power the driver is asking for: 100% is flat out, and every dip is a braking
         zone or a corner taken partly lifted. Move over the chart to scrub through the lap.
       </p>

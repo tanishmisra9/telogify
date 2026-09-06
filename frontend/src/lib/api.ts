@@ -198,7 +198,13 @@ export interface QualiTraceData {
   session_type: string | null
   grid_m: number[]
   corners: QualiTraceCorner[]
+  // Ordered by official qualifying classification: drivers[0]/[1] are P1/P2.
   drivers: QualiTraceDriver[]
+  // The official pole sitter and their Q3 time. When their lap telemetry was scrubbed they are
+  // still named here but absent from `drivers` (and no driver has is_pole) -- the chart then
+  // relabels its "delta to pole" reference to whichever lap it fell back to (drivers[0]).
+  pole_driver: string | null
+  pole_lap_time_s: number | null
 }
 
 export interface DegradationFit {

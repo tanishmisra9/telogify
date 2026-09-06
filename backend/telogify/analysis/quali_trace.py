@@ -41,24 +41,33 @@ def build_distance_grid(max_distance_m: float, step_m: float = GRID_STEP_M) -> l
     return [round(v, 1) for v in grid]
 
 
-MAX_PLAUSIBLE_DISTANCE_DEVIATION_M = 100.0
+MAX_PLAUSIBLE_DISTANCE_DEVIATION_FRAC = 0.025  # 2.5% of the field's median recorded lap length
 
 
 def is_distance_plausible(
-    distance_m: float, typical_distance_m: float, max_deviation_m: float = MAX_PLAUSIBLE_DISTANCE_DEVIATION_M
+    distance_m: float,
+    typical_distance_m: float,
+    max_deviation_frac: float = MAX_PLAUSIBLE_DISTANCE_DEVIATION_FRAC,
 ) -> bool:
     """False when a lap's own recorded distance is implausibly far -- short OR long -- from the
     field's typical recorded distance for the same session. Almost certainly a telemetry
     integration glitch (e.g. a brief speed-channel dropout under-integrating FastF1's
     add_distance(), or a spurious spike over-integrating it), not a genuinely different racing
-    line: real line variance across drivers is tens of meters, not hundreds (confirmed ~19-49m in
-    both directions). Fraction alignment fixes the finish-line delta even for such a lap, but a
-    LOCALIZED integration glitch still distorts the trace mid-lap (fraction-of-distance stops
-    tracking fraction-of-track where the glitch sits), so a grossly-off lap is dropped from this
-    chart entirely -- most importantly so it can't become the pole reference the whole comparison
-    hangs on (2026 R3 Japan, pole recorded 5389m against a ~5770m field). The driver's official
-    lap time and result are untouched everywhere else in the product."""
-    return abs(distance_m - typical_distance_m) <= max_deviation_m
+    line. Fraction alignment fixes the finish-line delta even for such a lap, but a LOCALIZED
+    integration glitch still distorts the trace mid-lap (fraction-of-distance stops tracking
+    fraction-of-track where the glitch sits), so a grossly-off lap is dropped from this chart
+    entirely -- most importantly so it can't become the pole reference the whole comparison hangs
+    on (2026 R3 Japan, pole recorded 5389m against a ~5770m field).
+
+    The bound is a FRACTION of the lap length, not a flat metre count: add_distance() integrates
+    speed*dt, so integration drift scales with lap duration and a flat cap is tightest on the
+    longest circuits -- exactly backwards. Measured across 261 clean 2026 quali laps, abs
+    deviation is p90 0.70%, p95 1.58%, p97 2.41%; genuine racing-line variance stays under ~1.9%
+    (Monza pole 2026 R13, +110m / +1.92%, a verified-uniform stretch), while real glitches run
+    2.7%+ (Suzuka pole 2026 R3, -6.6%). 2.5% sits at p97, keeping legitimate laps and dropping
+    the corrupt ones. The driver's official lap time and result are untouched everywhere else in
+    the product."""
+    return abs(distance_m - typical_distance_m) <= max_deviation_frac * typical_distance_m
 
 
 def representative_max_distance_m(driver_max_distances: list[float]) -> float:
@@ -99,6 +108,29 @@ def lap_relative_time_s(time_s: list[float]) -> list[float]:
         return []
     t0 = time_s[0]
     return [t - t0 for t in time_s]
+
+
+def resolve_pole_reference(
+    drivers_with_laps: list[str],
+    lap_times_s: dict[str, float],
+    official_pole: str | None,
+) -> tuple[str | None, str | None]:
+    """(pole_driver, reference_driver) for "The fight to pole".
+
+    pole_driver is the official qualifying P1 IF they have a usable trace lap here, else None --
+    the chart must never relabel some other driver as pole just because the real pole sitter's
+    telemetry was scrubbed (2026 R3 Japan: pole's lap recorded 5389m against a ~5770m field, so
+    is_distance_plausible drops it; the runner-up is NOT the pole sitter).
+
+    reference_driver is whose lap the delta-to-pole trace is measured against: the pole sitter
+    when present, otherwise the fastest lap available so the panel still has a reference (the API
+    tells the frontend to relabel that axis when pole_driver is None).
+    """
+    if not drivers_with_laps:
+        return None, None
+    pole = official_pole if official_pole in drivers_with_laps else None
+    reference = pole or min(drivers_with_laps, key=lambda d: lap_times_s[d])
+    return pole, reference
 
 
 def delta_to_pole_s(time_on_grid: list[float], pole_time_on_grid: list[float]) -> list[float]:
