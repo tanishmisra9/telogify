@@ -27,7 +27,7 @@ from telogify.agent.insights import (
     parse_insights,
     persist_insights,
 )
-from telogify.agent.prompts import PROMPT_VERSION, QUALI_SYSTEM_PROMPT
+from telogify.agent.prompts import PROMPT_VERSION, QUALI_SYSTEM_PROMPT, SPRINT_QUALI_SYSTEM_PROMPT
 from telogify.agent.season_deployment import (
     generate_season_deployment_verdicts,
     persist_season_deployment,
@@ -66,6 +66,7 @@ class PipelineState(TypedDict, total=False):
     force: bool
     insight_count: int
     quali_insight_count: int
+    sprint_quali_insight_count: int
 
 
 def _ingest(state: PipelineState) -> dict:
@@ -97,7 +98,9 @@ def _ingest(state: PipelineState) -> dict:
 
 def _has_quali_or_race(state: PipelineState) -> bool:
     session_types = state.get("session_types", ())
-    return "Q" in session_types or "R" in session_types
+    # SQ included: candidates must be mined on a sprint Friday (FP1+SQ, no Q/R yet) or the
+    # sprint qualifying agent has no findings to pick from.
+    return "Q" in session_types or "SQ" in session_types or "R" in session_types
 
 
 def _analyze(state: PipelineState) -> dict:
@@ -122,8 +125,11 @@ def _ingested_session_types(db: Session, weekend_id: int) -> set[str]:
     return {r.session_type for r in rows}
 
 
-def _has_existing(db: Session, weekend_id: int, model: type) -> bool:
-    return db.exec(select(model).where(model.weekend_id == weekend_id)).first() is not None
+def _has_existing(db: Session, weekend_id: int, model: type, session_type: str | None = None) -> bool:
+    query = select(model).where(model.weekend_id == weekend_id)
+    if session_type is not None:
+        query = query.where(model.session_type == session_type)
+    return db.exec(query).first() is not None
 
 
 _MAX_INSIGHT_ATTEMPTS = 3
@@ -157,6 +163,7 @@ def _insights(
     required_keys: tuple[str, ...] = _REQUIRED_KEYS,
     result_key: str = "insight_count",
     allow_qualifying_only: bool = False,
+    session_type: str | None = None,
 ) -> dict:
     """Generate `count` insights, rejecting and re-prompting on any guardrail violation.
     Nothing is persisted, and the pipeline fails loud, unless a clean set is produced within
@@ -199,6 +206,7 @@ def _insights(
                     count=count,
                     model_used=configured_llm_label(),
                     prompt_version=PROMPT_VERSION,
+                    session_type=session_type,
                 )
             return {result_key: len(rows)}
         for slot in flagged:
@@ -227,7 +235,7 @@ def _insights(
 
 
 def _quali_insights(state: PipelineState, agent_runner) -> dict:
-    """The 2 qualifying car-character insights: same hard gate as `_insights`, targeting
+    """The 2 main-qualifying car-character insights: same hard gate as `_insights`, targeting
     QualiInsight instead of Insight."""
     return _insights(
         state,
@@ -237,6 +245,22 @@ def _quali_insights(state: PipelineState, agent_runner) -> dict:
         required_keys=_QUALI_REQUIRED_KEYS,
         result_key="quali_insight_count",
         allow_qualifying_only=True,
+        session_type="Q",
+    )
+
+
+def _sprint_quali_insights(state: PipelineState, agent_runner) -> dict:
+    """The 2 sprint-qualifying car-character insights: same shape as `_quali_insights`, scoped
+    to QualiInsight rows with session_type="SQ" so it never collides with the main-Q batch."""
+    return _insights(
+        state,
+        agent_runner,
+        count=2,
+        model=QualiInsight,
+        required_keys=_QUALI_REQUIRED_KEYS,
+        result_key="sprint_quali_insight_count",
+        allow_qualifying_only=True,
+        session_type="SQ",
     )
 
 
@@ -268,7 +292,7 @@ def _default_agent_runner(year: int, round: int, feedback: str | None = None) ->
 
 
 def _default_quali_agent_runner(year: int, round: int, feedback: str | None = None) -> list:
-    agent = build_agent(year, round, system_prompt=QUALI_SYSTEM_PROMPT)
+    agent = build_agent(year, round, system_prompt=QUALI_SYSTEM_PROMPT, quali_session="Q")
     task = f"Write the 2 qualifying car-character insights for {year} round {round}."
     if feedback:
         task = f"{task}\n\n{feedback}"
@@ -279,17 +303,30 @@ def _default_quali_agent_runner(year: int, round: int, feedback: str | None = No
     return result["messages"]
 
 
-def _needs_generation(state: PipelineState, model: type) -> bool:
+def _default_sprint_quali_agent_runner(year: int, round: int, feedback: str | None = None) -> list:
+    agent = build_agent(year, round, system_prompt=SPRINT_QUALI_SYSTEM_PROMPT, quali_session="SQ")
+    task = f"Write the 2 sprint qualifying car-character insights for {year} round {round}."
+    if feedback:
+        task = f"{task}\n\n{feedback}"
+    result = agent.invoke(
+        {"messages": [("user", task)]},
+        config={"configurable": {"thread_id": f"sprint-quali-agent-{year}-{round}"}},
+    )
+    return result["messages"]
+
+
+def _needs_generation(state: PipelineState, model: type, session_type: str | None = None) -> bool:
     """Whether an insight batch should (re)generate: forced, or none persisted yet. Without this,
     a recurring caller (e.g. a cron) would re-spend an LLM call every tick for a round that's
-    already fully done."""
+    already fully done. `session_type` scopes the existing-check for models sharing a table
+    across sessions (QualiInsight's "Q" vs "SQ" batches)."""
     if state.get("force"):
         return True
     with Session(engine) as db:
-        return not _has_existing(db, state["weekend_id"], model)
+        return not _has_existing(db, state["weekend_id"], model, session_type=session_type)
 
 
-def build_pipeline(agent_runner, quali_agent_runner):
+def build_pipeline(agent_runner, quali_agent_runner, sprint_quali_agent_runner):
     g = StateGraph(PipelineState)
     g.add_node("ingest", _ingest)
     g.add_node("analyze", _analyze)
@@ -306,7 +343,15 @@ def build_pipeline(agent_runner, quali_agent_runner):
         "quali_insights",
         lambda s: (
             _quali_insights(s, quali_agent_runner)
-            if "Q" in s.get("session_types", ()) and _needs_generation(s, QualiInsight)
+            if "Q" in s.get("session_types", ()) and _needs_generation(s, QualiInsight, "Q")
+            else {}
+        ),
+    )
+    g.add_node(
+        "sprint_quali_insights",
+        lambda s: (
+            _sprint_quali_insights(s, sprint_quali_agent_runner)
+            if "SQ" in s.get("session_types", ()) and _needs_generation(s, QualiInsight, "SQ")
             else {}
         ),
     )
@@ -322,13 +367,19 @@ def build_pipeline(agent_runner, quali_agent_runner):
     g.add_edge("analyze", "candidates")
     g.add_edge("candidates", "insights")
     g.add_edge("insights", "quali_insights")
-    g.add_edge("quali_insights", "season_deployment")
+    g.add_edge("quali_insights", "sprint_quali_insights")
+    g.add_edge("sprint_quali_insights", "season_deployment")
     g.add_edge("season_deployment", END)
     return g.compile(checkpointer=MemorySaver())
 
 
 def run_weekend(
-    year: int, round: int, agent_runner=None, quali_agent_runner=None, force: bool = False
+    year: int,
+    round: int,
+    agent_runner=None,
+    quali_agent_runner=None,
+    force: bool = False,
+    sprint_quali_agent_runner=None,
 ) -> PipelineState:
     """`force` bypasses every skip guard: already-ingested sessions are re-fetched and re-run,
     and already-persisted insight batches / season-deployment verdicts regenerate regardless.
@@ -336,6 +387,7 @@ def run_weekend(
     pipeline = build_pipeline(
         agent_runner or _default_agent_runner,
         quali_agent_runner or _default_quali_agent_runner,
+        sprint_quali_agent_runner or _default_sprint_quali_agent_runner,
     )
     return pipeline.invoke(
         {"year": year, "round": round, "force": force},
@@ -360,6 +412,7 @@ class RoundResult:
     ok: bool
     insight_count: int = 0
     quali_insight_count: int = 0
+    sprint_quali_insight_count: int = 0
     error: str | None = None
 
 
@@ -381,6 +434,7 @@ def run_season(
     agent_runner=None,
     *,
     quali_agent_runner=None,
+    sprint_quali_agent_runner=None,
     now: datetime | None = None,
     continue_on_error: bool = True,
     force: bool = False,
@@ -396,13 +450,19 @@ def run_season(
             on_round_start(rnd, i, total)
         try:
             state = run_weekend(
-                year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner, force=force
+                year,
+                rnd,
+                agent_runner=agent_runner,
+                quali_agent_runner=quali_agent_runner,
+                sprint_quali_agent_runner=sprint_quali_agent_runner,
+                force=force,
             )
             result = RoundResult(
                 round=rnd,
                 ok=True,
                 insight_count=state.get("insight_count", 0),
                 quali_insight_count=state.get("quali_insight_count", 0),
+                sprint_quali_insight_count=state.get("sprint_quali_insight_count", 0),
             )
         except Exception as exc:
             result = RoundResult(round=rnd, ok=False, error=str(exc))
@@ -419,6 +479,7 @@ def run_insights_season(
     agent_runner=None,
     *,
     quali_agent_runner=None,
+    sprint_quali_agent_runner=None,
     now: datetime | None = None,
     continue_on_error: bool = True,
     max_workers: int = 4,
@@ -444,13 +505,19 @@ def run_insights_season(
             on_round_start(rnd, index, total)
         try:
             state = regen_insights(
-                year, rnd, agent_runner=agent_runner, quali_agent_runner=quali_agent_runner, force=force
+                year,
+                rnd,
+                agent_runner=agent_runner,
+                quali_agent_runner=quali_agent_runner,
+                sprint_quali_agent_runner=sprint_quali_agent_runner,
+                force=force,
             )
             return RoundResult(
                 round=rnd,
                 ok=True,
                 insight_count=state.get("insight_count", 0),
                 quali_insight_count=state.get("quali_insight_count", 0),
+                sprint_quali_insight_count=state.get("sprint_quali_insight_count", 0),
             )
         except Exception as exc:
             return RoundResult(round=rnd, ok=False, error=str(exc))
@@ -474,25 +541,33 @@ def run_insights_season(
 
 
 def regen_insights(
-    year: int, round: int, agent_runner=None, quali_agent_runner=None, force: bool = False
+    year: int,
+    round: int,
+    agent_runner=None,
+    quali_agent_runner=None,
+    force: bool = False,
+    sprint_quali_agent_runner=None,
 ) -> dict:
-    """Regenerate whichever of the 3 race insights / 2 qualifying insights the ingested data
-    supports, from already-ingested data: recompute candidates (so a scoring change shows) and
-    re-run the relevant agent(s). Skips FastF1 ingest and analysis, whose inputs haven't
-    changed, so there is no re-download and no cost beyond the agents themselves.
+    """Regenerate whichever of the 3 race insights / 2 qualifying insights / 2 sprint
+    qualifying insights the ingested data supports, from already-ingested data: recompute
+    candidates (so a scoring change shows) and re-run the relevant agent(s). Skips FastF1
+    ingest and analysis, whose inputs haven't changed, so there is no re-download and no cost
+    beyond the agents themselves.
 
     Race insights only run once the race session is ingested; qualifying insights only run once
-    the qualifying session is ingested (mid-weekend, that may be all there is yet). If neither
-    is ingested, there is nothing to regenerate and this raises loud rather than silently doing
-    nothing. If the qualifying insights fail their guardrail/validation gate, the RuntimeError
-    propagates even though the race insights already persisted this run: each insight batch is
-    its own hard gate, same "never ship a fabricated claim" rule.
+    the qualifying session is ingested (mid-weekend, that may be all there is yet); sprint
+    qualifying insights only run once SQ is ingested. If none of Q/SQ/R is ingested, there is
+    nothing to regenerate and this raises loud rather than silently doing nothing. If any batch
+    fails its guardrail/validation gate, the RuntimeError propagates even though other batches
+    already persisted this run: each insight batch is its own hard gate, same "never ship a
+    fabricated claim" rule.
 
     Each batch also skips regenerating (no LLM call at all) if it's already persisted, unless
     `force` -- same cron-safety reasoning as run_weekend's default: a recurring caller shouldn't
     re-spend an LLM call every tick for a round that hasn't changed since it was last generated."""
     runner = agent_runner or _default_agent_runner
     quali_runner = quali_agent_runner or _default_quali_agent_runner
+    sprint_quali_runner = sprint_quali_agent_runner or _default_sprint_quali_agent_runner
     with Session(engine) as db:
         weekend_id = _weekend_id(db, year, round)
         if weekend_id is None:
@@ -500,7 +575,7 @@ def regen_insights(
                 f"No ingested weekend for {year} round {round}. Run run-weekend first."
             )
         session_types = _ingested_session_types(db, weekend_id)
-        if "Q" not in session_types and "R" not in session_types:
+        if "Q" not in session_types and "SQ" not in session_types and "R" not in session_types:
             raise RuntimeError(
                 f"{year} round {round} has no qualifying or race data ingested yet; "
                 "nothing to regenerate insights from. Run run-weekend once a session has "
@@ -508,11 +583,16 @@ def regen_insights(
             )
         compute_candidates(weekend_id, db)
         needs_race = force or not _has_existing(db, weekend_id, Insight)
-        needs_quali = force or not _has_existing(db, weekend_id, QualiInsight)
+        needs_quali = force or not _has_existing(db, weekend_id, QualiInsight, session_type="Q")
+        needs_sprint_quali = force or not _has_existing(
+            db, weekend_id, QualiInsight, session_type="SQ"
+        )
     state: PipelineState = {"year": year, "round": round, "weekend_id": weekend_id}
     result: dict = {"session_types": sorted(session_types)}
     if "R" in session_types and needs_race:
         result.update(_insights(state, runner))
     if "Q" in session_types and needs_quali:
         result.update(_quali_insights(state, quali_runner))
+    if "SQ" in session_types and needs_sprint_quali:
+        result.update(_sprint_quali_insights(state, sprint_quali_runner))
     return result

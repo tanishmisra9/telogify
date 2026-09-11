@@ -116,15 +116,21 @@ function HeadCell({ label, hint, align = 'left' }: { label: React.ReactNode; hin
 export function QualiCharacterTable({
   data,
   insights,
+  sprint = false,
 }: {
   data: QualiCharacterData
   insights: QualiInsightItem[]
+  sprint?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canScrollRight = useScrollFade(containerRef)
 
   if (data.rows.length === 0) {
-    return <p className="text-sm text-muted">No qualifying car-character data yet.</p>
+    return (
+      <p className="text-sm text-muted">
+        No {sprint ? 'sprint qualifying' : 'qualifying'} car-character data yet.
+      </p>
+    )
   }
 
   const rows = data.rows
@@ -143,11 +149,17 @@ export function QualiCharacterTable({
 
       <div className="relative mt-6">
       <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
-        <table className="w-full min-w-[680px] border-collapse text-sm" aria-label="Qualifying car character by team">
+        <table
+          className="w-full min-w-[680px] border-collapse text-sm"
+          aria-label={`${sprint ? 'Sprint qualifying' : 'Qualifying'} car character by team`}
+        >
           <thead>
             <tr className="text-left text-xs text-muted">
               <th className="px-4 py-2.5 font-medium">Team</th>
-              <HeadCell label="Lap time (s)" hint="Best single-lap qualifying time" />
+              <HeadCell
+                label="Lap time (s)"
+                hint={`Best single-lap ${sprint ? 'sprint qualifying' : 'qualifying'} time`}
+              />
               <HeadCell label="Top speed (km/h)" hint="Highest speed reached on the lap" />
               <HeadCell label="Min speed (km/h)" hint="Slowest point on the lap, in the tightest corner: a read on mechanical grip" />
               <HeadCell

@@ -313,7 +313,7 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
     monkeypatch.setattr(
         pipeline,
         "_ingest",
-        lambda s: calls.append("ingest") or {"weekend_id": 1, "session_types": ["Q", "R"], "force": True},
+        lambda s: calls.append("ingest") or {"weekend_id": 1, "session_types": ["Q", "SQ", "R"], "force": True},
     )
     monkeypatch.setattr(pipeline, "_analyze", lambda s: calls.append("analyze") or {})
     monkeypatch.setattr(pipeline, "_candidates", lambda s: calls.append("candidates") or {})
@@ -328,6 +328,11 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
         assert s["weekend_id"] == 1
         return {"quali_insight_count": len(runner(s["year"], s["round"]))}
 
+    def fake_sprint_quali_insights(s, runner):
+        calls.append("sprint_quali_insights")
+        assert s["weekend_id"] == 1
+        return {"sprint_quali_insight_count": len(runner(s["year"], s["round"]))}
+
     def fake_season_deployment(s):
         calls.append("season_deployment")
         assert s["weekend_id"] == 1
@@ -335,6 +340,7 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
 
     monkeypatch.setattr(pipeline, "_insights", fake_insights)
     monkeypatch.setattr(pipeline, "_quali_insights", fake_quali_insights)
+    monkeypatch.setattr(pipeline, "_sprint_quali_insights", fake_sprint_quali_insights)
     monkeypatch.setattr(pipeline, "_season_deployment", fake_season_deployment)
 
     # agent_runners return fake "messages"; pipeline never calls Anthropic here.
@@ -343,9 +349,13 @@ def test_pipeline_runs_phases_in_order(monkeypatch):
         11,
         agent_runner=lambda y, r: ["m1", "m2", "m3"],
         quali_agent_runner=lambda y, r: ["m1", "m2"],
+        sprint_quali_agent_runner=lambda y, r: ["m1", "m2"],
     )
 
-    assert calls == ["ingest", "analyze", "candidates", "insights", "quali_insights", "season_deployment"]
+    assert calls == [
+        "ingest", "analyze", "candidates", "insights", "quali_insights",
+        "sprint_quali_insights", "season_deployment",
+    ]
     assert state["insight_count"] == 3
     assert state["quali_insight_count"] == 2
 
@@ -649,6 +659,41 @@ def test_pipeline_skips_race_insights_when_race_not_ready(monkeypatch):
     assert state["quali_insight_count"] == 2
 
 
+def test_pipeline_runs_sprint_quali_insights_on_a_sprint_friday(monkeypatch):
+    """FP1+SQ ingested, no Q/R yet (a sprint weekend's Friday): candidates must still be mined
+    (gated on SQ, not just Q/R) and the sprint quali agent must run; the other two must not."""
+    candidate_calls = []
+    monkeypatch.setattr(
+        pipeline,
+        "_ingest",
+        lambda s: {"weekend_id": 1, "session_types": ["FP1", "SQ"]},
+    )
+    monkeypatch.setattr(pipeline, "_analyze", lambda s: {})
+    monkeypatch.setattr(pipeline, "_candidates", lambda s: candidate_calls.append(1) or {})
+
+    calls = []
+    monkeypatch.setattr(pipeline, "_insights", lambda s, r: calls.append("insights") or {"insight_count": 3})
+    monkeypatch.setattr(
+        pipeline, "_quali_insights", lambda s, r: calls.append("quali_insights") or {"quali_insight_count": 2}
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_sprint_quali_insights",
+        lambda s, r: calls.append("sprint_quali_insights") or {"sprint_quali_insight_count": 2},
+    )
+
+    state = pipeline.run_weekend(
+        2025, 24, agent_runner=lambda y, r: [], quali_agent_runner=lambda y, r: [],
+        sprint_quali_agent_runner=lambda y, r: [],
+    )
+
+    assert candidate_calls == [1]  # candidates mined despite no Q/R
+    assert calls == ["sprint_quali_insights"]
+    assert "insight_count" not in state
+    assert "quali_insight_count" not in state
+    assert state["sprint_quali_insight_count"] == 2
+
+
 def test_pipeline_skips_both_insight_agents_practice_only(monkeypatch):
     monkeypatch.setattr(
         pipeline,
@@ -677,7 +722,7 @@ def test_run_season_runs_each_planned_round(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     calls = []
 
-    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False, sprint_quali_agent_runner=None):
         calls.append(round)
         return {"insight_count": 3, "quali_insight_count": 2}
 
@@ -693,7 +738,7 @@ def test_run_season_runs_each_planned_round(monkeypatch):
 def test_run_season_continues_after_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False, sprint_quali_agent_runner=None):
         if round == 2:
             raise RuntimeError("guardrail failure")
         return {"insight_count": 3, "quali_insight_count": 2}
@@ -724,7 +769,7 @@ def test_run_insights_season_calls_regen_not_full_pipeline(monkeypatch):
     regen_calls = []
     ingest_calls = []
 
-    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False, sprint_quali_agent_runner=None):
         regen_calls.append(round)
         return {"insight_count": 3, "quali_insight_count": 2}
 
@@ -742,7 +787,7 @@ def test_run_insights_season_calls_regen_not_full_pipeline(monkeypatch):
 def test_run_insights_season_continues_after_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False, sprint_quali_agent_runner=None):
         if round == 2:
             raise RuntimeError("guardrail failure")
         return {"insight_count": 3, "quali_insight_count": 2}
@@ -772,7 +817,7 @@ def test_run_season_progress_callbacks_fire_in_order(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     events = []
 
-    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False, sprint_quali_agent_runner=None):
         events.append(("work", round))
         return {"insight_count": 3, "quali_insight_count": 2}
 
@@ -891,7 +936,9 @@ def test_default_quali_agent_runner_invokes_build_agent(monkeypatch):
             calls.append((payload, config))
             return {"messages": ["m1"]}
 
-    monkeypatch.setattr(pipeline, "build_agent", lambda year, round, system_prompt=None: _FakeAgent())
+    monkeypatch.setattr(
+        pipeline, "build_agent", lambda year, round, system_prompt=None, quali_session=None: _FakeAgent()
+    )
 
     result = pipeline._default_quali_agent_runner(2025, 11)
     assert result == ["m1"]
@@ -925,7 +972,7 @@ def test_season_rounds_uses_fetched_schedule(monkeypatch):
 def test_run_season_stops_on_first_failure_when_continue_on_error_false(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False):
+    def fake_run_weekend(year, round, agent_runner=None, quali_agent_runner=None, force=False, sprint_quali_agent_runner=None):
         if round == 1:
             raise RuntimeError("boom")
         return {"insight_count": 3, "quali_insight_count": 2}
@@ -940,7 +987,7 @@ def test_run_season_stops_on_first_failure_when_continue_on_error_false(monkeypa
 def test_run_insights_season_stops_on_first_failure_when_continue_on_error_false(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
 
-    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False, sprint_quali_agent_runner=None):
         if round == 1:
             raise RuntimeError("boom")
         # slow down the other rounds so round 1's failure has a chance to cancel them
@@ -959,7 +1006,7 @@ def test_run_insights_season_progress_callbacks_on_failure(monkeypatch):
     monkeypatch.setattr(pipeline, "season_rounds", lambda year, now=None: [1, 2, 3])
     events = []
 
-    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False):
+    def fake_regen(year, round, agent_runner=None, quali_agent_runner=None, force=False, sprint_quali_agent_runner=None):
         if round == 2:
             raise RuntimeError("guardrail failure")
         return {"insight_count": 3, "quali_insight_count": 2}

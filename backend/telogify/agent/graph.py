@@ -8,10 +8,18 @@ from telogify.agent.prompts import SYSTEM_PROMPT
 from telogify.agent.tools import build_tools
 
 
-def build_agent(year: int, round: int, session_factory=None, system_prompt: str = SYSTEM_PROMPT):
-    """Construct the ReAct insight agent for one weekend. Fails loud without an API key."""
+def build_agent(
+    year: int,
+    round: int,
+    session_factory=None,
+    system_prompt: str = SYSTEM_PROMPT,
+    quali_session: str = "Q",
+):
+    """Construct the ReAct insight agent for one weekend. Fails loud without an API key.
+    `quali_session` ("Q" or "SQ") binds which session the qualifying-only tools read from --
+    see build_tools' docstring."""
     provider = resolve_provider()
-    tools = build_tools(year, round, session_factory=session_factory)
+    tools = build_tools(year, round, session_factory=session_factory, quali_session=quali_session)
     return create_react_agent(
         provider.build_model(),
         tools,

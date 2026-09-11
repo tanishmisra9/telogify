@@ -34,10 +34,10 @@ from telogify.models import Session as SessionRow
 from telogify.models import SectorBest, SessionResult, StraightSegment, Subscriber
 from telogify.serialize import format_lap_times, strip_em_dashes
 
-# Same practice/sprint-quali session set the site's own /sectors and /topspeeds endpoints treat
-# as "indicative" (api/routes.py's INDICATIVE_SESSIONS) -- conditions vary run to run, so these
+# Same practice session set the site's own /sectors and /topspeeds endpoints treat as
+# "indicative" (api/routes.py's PRACTICE_SESSIONS) -- conditions vary run to run, so these
 # are read as a snapshot, not a qualifying-grade ranking.
-_INDICATIVE_SESSIONS = ("FP1", "FP2", "FP3", "SQ")
+_INDICATIVE_SESSIONS = ("FP1", "FP2", "FP3")
 
 # A sentence boundary is punctuation followed by whitespace; a decimal point never has
 # whitespace right after it (there's always another digit), so this never false-splits a number.
@@ -1249,10 +1249,13 @@ def _load_practice_summary(db: Session, weekend_id: int) -> dict | None:
 
 
 def _load_quali_insight(db: Session, weekend_id: int) -> QualiInsight | None:
-    """One of the (up to 2) LLM-written qualifying car-character insights, if any exist yet --
-    slot 1, the primary one."""
+    """One of the (up to 2) LLM-written main-qualifying car-character insights, if any exist
+    yet -- slot 1, the primary one. Scoped to session_type="Q" so a Sprint Qualifying insight
+    is never surfaced here under the "Qualifying" label."""
     return db.exec(
-        select(QualiInsight).where(QualiInsight.weekend_id == weekend_id).order_by(QualiInsight.slot)
+        select(QualiInsight)
+        .where(QualiInsight.weekend_id == weekend_id, QualiInsight.session_type == "Q")
+        .order_by(QualiInsight.slot)
     ).first()
 
 

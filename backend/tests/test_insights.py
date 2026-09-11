@@ -221,3 +221,49 @@ def test_persist_insights_targets_quali_insight_model_with_team(db_session):
 
     # the race Insight table is untouched by a quali persist
     assert db_session.exec(select(Insight).where(Insight.weekend_id == wk.id)).all() == []
+
+
+def test_persist_insights_session_type_scoping_does_not_collide(db_session):
+    """Q and SQ share the QualiInsight table -- persisting one session's batch must not
+    delete the other's, in either direction."""
+    wk = RaceWeekend(year=2026, round=9, circuit_name="Spa", country="Belgium", event_name="B")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    q_insights = [
+        {"team": "Mercedes", "header": "QH1", "explanation_web": "QW1", "explanation_email": "QE1"},
+        {"team": "Ferrari", "header": "QH2", "explanation_web": "QW2", "explanation_email": "QE2"},
+    ]
+    sq_insights = [
+        {"team": "McLaren", "header": "SQH1", "explanation_web": "SQW1", "explanation_email": "SQE1"},
+        {"team": "Red Bull", "header": "SQH2", "explanation_web": "SQW2", "explanation_email": "SQE2"},
+    ]
+    trace = [{"tool": "get_quali_character", "args": {}, "result": "{}"}]
+
+    persist_insights(wk.id, q_insights, trace, db_session, model=QualiInsight, count=2, session_type="Q")
+    persist_insights(wk.id, sq_insights, trace, db_session, model=QualiInsight, count=2, session_type="SQ")
+
+    q_rows = db_session.exec(
+        select(QualiInsight).where(QualiInsight.weekend_id == wk.id, QualiInsight.session_type == "Q")
+    ).all()
+    sq_rows = db_session.exec(
+        select(QualiInsight).where(QualiInsight.weekend_id == wk.id, QualiInsight.session_type == "SQ")
+    ).all()
+    assert [r.header for r in q_rows] == ["QH1", "QH2"]
+    assert [r.header for r in sq_rows] == ["SQH1", "SQH2"]
+
+    # Regenerating the Q batch must not touch the already-persisted SQ batch.
+    persist_insights(
+        wk.id,
+        [{"team": "Mercedes", "header": "QH1-new", "explanation_web": "W", "explanation_email": "E"}],
+        trace,
+        db_session,
+        model=QualiInsight,
+        count=1,
+        session_type="Q",
+    )
+    sq_rows_after = db_session.exec(
+        select(QualiInsight).where(QualiInsight.weekend_id == wk.id, QualiInsight.session_type == "SQ")
+    ).all()
+    assert [r.header for r in sq_rows_after] == ["SQH1", "SQH2"]

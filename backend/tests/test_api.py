@@ -152,6 +152,29 @@ def test_quali_insights(client):
     assert r.json() == [{"slot": 1, "team": "Ferrari", "header": "QH1", "explanation_web": "QW1"}]
 
 
+def test_quali_insights_filters_by_session(client, test_engine):
+    """Q and SQ insights share the QualiInsight table -- ?session must scope to one, never
+    surfacing the other's rows under the wrong label."""
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        db.add(QualiInsight(
+            weekend_id=wk.id, slot=1, session_type="SQ", team="McLaren",
+            header="SQH1", explanation_web="SQW1", explanation_email="SQE1",
+        ))
+        db.commit()
+
+    r_q = client.get("/weekends/2025/11/quali-insights?session=Q")
+    assert [i["header"] for i in r_q.json()] == ["QH1"]
+
+    r_sq = client.get("/weekends/2025/11/quali-insights?session=SQ")
+    assert [i["header"] for i in r_sq.json()] == ["SQH1"]
+
+
+def test_quali_insights_rejects_invalid_session(client):
+    r = client.get("/weekends/2025/11/quali-insights?session=R")
+    assert r.status_code == 422
+
+
 def test_latest_insight_picks_recent_weekend_slot1(client, test_engine):
     # Fixture seeds 2025 R11 (H1). Add a newer weekend with two insights; latest = its slot 1.
     with Session(test_engine) as db:
@@ -330,6 +353,22 @@ def test_sectors(client):
     dominance = {d["sector"]: d for d in data["dominance"]}
     assert dominance[1]["constructor"] == "Ferrari"  # 29.8 < 30.0
     assert dominance[2]["constructor"] == "McLaren"  # 40.0 < 40.2
+
+
+def test_sectors_excludes_sprint_qualifying(client, test_engine):
+    """SQ moved out of Practice's pooled sessions -- its sector bests must not appear here."""
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        sq = SessionRow(weekend_id=wk.id, session_type="SQ", status="loaded")
+        db.add(sq)
+        db.commit()
+        db.refresh(sq)
+        db.add(SectorBest(session_id=sq.id, driver="VER", sector=1, best_time_s=1.0))
+        db.commit()
+
+    data = client.get("/weekends/2025/11/sectors").json()
+    assert all(d["driver"] != "VER" for d in data["drivers"])
+    assert "SQ" not in {d["session_type"] for d in data["drivers"]}
 
 
 def test_topspeeds(client):

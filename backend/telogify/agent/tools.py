@@ -70,8 +70,12 @@ def _session_id(db: Session, weekend_id: int, session_type: str) -> int | None:
     return s.id if s else None
 
 
-def build_tools(year: int, round_num: int, session_factory=None) -> list:
-    """Return the LangChain tools bound to this weekend."""
+def build_tools(year: int, round_num: int, session_factory=None, quali_session: str = "Q") -> list:
+    """Return the LangChain tools bound to this weekend. `quali_session` ("Q" or "SQ") is which
+    qualifying-style session the qualifying-only tools (get_quali_character, get_deployment's
+    default, and get_candidate_insights' quali_character filter) read from -- bound here rather
+    than left to the prompt, since Q telemetry would otherwise still be real, traceable data
+    and so would pass every guardrail even when quoted in a Sprint Qualifying insight."""
     from langchain_core.tools import tool
 
     sf = session_factory or _default_factory
@@ -90,7 +94,21 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
             query = select(CandidateInsight).where(CandidateInsight.weekend_id == wid)
             if category:
                 query = query.where(CandidateInsight.category == category)
-            rows = db.exec(query.order_by(CandidateInsight.rank).limit(n)).all()
+            if category == "quali_character":
+                # Filter to this agent's own qualifying session before truncating to n -- a
+                # main-Q candidate ranked ahead of the sprint's own findings must not crowd
+                # them out of the returned set.
+                all_rows = db.exec(query.order_by(CandidateInsight.rank)).all()
+                rows = [
+                    r
+                    for r in all_rows
+                    if any(
+                        ref.get("session_type") == quali_session
+                        for ref in (r.source_refs_json or {}).get("refs", [])
+                    )
+                ][:n]
+            else:
+                rows = db.exec(query.order_by(CandidateInsight.rank).limit(n)).all()
             return json.dumps(
                 [
                     {
@@ -475,7 +493,7 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
             )
 
     @tool
-    def get_deployment(driver: str = "", session_type: str = "Q") -> str:
+    def get_deployment(driver: str = "", session_type: str = quali_session) -> str:
         """ERS deployment / clipping on the qualifying lap ("Q" or "SQ"): deploy depletion and
         super-clipping inferred from acceleration residuals at wide-open throttle. Per driver:
         top_speed_kmh, total_clip_m (depletion + superclip, higher = runs out sooner),
@@ -599,7 +617,7 @@ def build_tools(year: int, round_num: int, session_factory=None) -> list:
         front of the field, not the whole grid."""
         with sf() as db:
             wid = _weekend_id(db, year, round_num)
-            sid = _session_id(db, wid, "Q") if wid is not None else None
+            sid = _session_id(db, wid, quali_session) if wid is not None else None
             if sid is None:
                 return json.dumps(
                     {"rows": [], "fastest_corner_number": None, "sector_dominance": []}

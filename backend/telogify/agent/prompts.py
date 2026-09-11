@@ -18,7 +18,7 @@ PICK FOR SURPRISE diversity rule, and Output format differ by scope.
 # SYSTEM_PROMPT/QUALI_SYSTEM_PROMPT or the shared constants above; bump MAJOR (reset MINOR to 0)
 # only on another rewrite of that scale. Stamped onto every persisted insight so a published
 # insight can be traced back to the exact prompt revision that generated it.
-PROMPT_VERSION = "3.4"
+PROMPT_VERSION = "3.5"
 
 _OBSERVED_BEHAVIOR_ONLY = """OBSERVED BEHAVIOR ONLY:
 Never infer the underlying engineering mechanism behind a telemetry observation (harvesting, \
@@ -607,3 +607,15 @@ filler. Each object has these keys:
   "explanation_email": exactly 1 sentence, the single strongest claim only.
 """,
 ])
+
+# Appended (never spliced into the list above, so QUALI_SYSTEM_PROMPT stays byte-identical):
+# every tool this agent calls is already bound to the Sprint Qualifying session (see
+# build_tools' quali_session param), so this block only needs to fix the prose scope and
+# wording, not redirect any data access.
+SPRINT_QUALI_SYSTEM_PROMPT = QUALI_SYSTEM_PROMPT + "\n\n" + (
+    """SPRINT QUALIFYING SCOPE:
+This batch is about Sprint Qualifying, the session that sets the sprint race grid, not \
+main Qualifying. Every tool call already returns Sprint Qualifying's own data -- do not ask \
+for or assume main Qualifying data. Call it "sprint qualifying" in every insight, never \
+"qualifying" alone and never the abbreviation SQ."""
+)

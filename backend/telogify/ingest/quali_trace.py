@@ -3,11 +3,11 @@ fastest representative Q lap, speed/throttle/delta-to-pole resampled onto one sh
 grid so every driver's trace lines up point-for-point.
 
 Reuses the same representative-lap selection as quali_character/deployment (fastest
-representative lap per driver, no pooled multi-lap TrackStatus gate). MAIN Qualifying only
-(session type "Q") -- Sprint Qualifying is deliberately excluded, unlike deployment.py's
-Q/SQ-agnostic extraction, because "the fight to pole" is specifically about the session that
-decides pole. Stored per driver, idempotently, for every driver with a usable lap -- not just
-the eventual top two -- so a future compare-any-two (or add-a-driver) UI needs no re-ingest.
+representative lap per driver, no pooled multi-lap TrackStatus gate). Runs for both main
+Qualifying ("Q") and Sprint Qualifying ("SQ") -- each stored under its own session_id, so "the
+fight to pole" and "the fight to sprint pole" coexist with no collision. Stored per driver,
+idempotently, for every driver with a usable lap -- not just the eventual top two -- so a
+future compare-any-two (or add-a-driver) UI needs no re-ingest.
 
 Pole is the OFFICIAL qualifying P1 (session.results Position == 1), not "fastest surviving
 lap". A driver whose recorded distance is implausibly far from the field (is_distance_plausible)
@@ -115,7 +115,7 @@ def extract_quali_traces(session) -> tuple[dict[str, dict], list[float]]:
 
 def store_quali_traces(data: WeekendData, db: DBSession) -> None:
     for code, session in data.sessions.items():
-        if code != "Q":  # main Qualifying only -- Sprint Qualifying excluded
+        if code not in ("Q", "SQ"):
             continue
         row = db.exec(
             select(Session).where(Session.weekend_id == data.weekend.id, Session.session_type == code)

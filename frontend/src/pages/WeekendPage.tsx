@@ -284,11 +284,12 @@ function SessionGate({
   )
 }
 
-function FightToPoleDesktopNote() {
+function FightToPoleDesktopNote({ sprint = false }: { sprint?: boolean }) {
   return (
     <DesktopOnlyNote>
-      The fight to pole: scrub through every driver&apos;s qualifying lap telemetry side by
-      side. Open this weekend on a larger screen to use it.
+      The fight to {sprint ? 'sprint pole' : 'pole'}: scrub through every driver&apos;s{' '}
+      {sprint ? 'sprint qualifying' : 'qualifying'} lap telemetry side by side. Open this
+      weekend on a larger screen to use it.
     </DesktopOnlyNote>
   )
 }
@@ -315,6 +316,9 @@ export function WeekendPage() {
   const qualiCharacter = useApi<QualiCharacterData>(`${base}/quali-character`)
   const qualiInsights = useApi<QualiInsightItem[]>(`${base}/quali-insights`)
   const qualiTrace = useApi<QualiTraceData>(`${base}/quali-trace`)
+  const sprintQualiCharacter = useApi<QualiCharacterData>(`${base}/quali-character?session=SQ`)
+  const sprintQualiInsights = useApi<QualiInsightItem[]>(`${base}/quali-insights?session=SQ`)
+  const sprintQualiTrace = useApi<QualiTraceData>(`${base}/quali-trace?session=SQ`)
   const sprintPace = useApi<PaceData>(`${base}/pace?session=SPRINT`)
   const pace = useApi<PaceData>(`${base}/pace`)
   const degradation = useApi<DegradationData>(`${base}/degradation`)
@@ -329,10 +333,14 @@ export function WeekendPage() {
   const sessionByType = new Map((sessions.data ?? []).map((s) => [s.session_type, s]))
   const isIngested = (code: string) => sessionByType.get(code)?.status === 'loaded'
   const isSprintWeekend = sessionByType.has('SQ') || sessionByType.has('SPRINT')
-  const practiceHappened = [...PRACTICE_CODES, 'SQ'].some(isIngested)
+  const practiceHappened = PRACTICE_CODES.some(isIngested)
+  const sprintQualiHappened = isIngested('SQ')
   const sprintHappened = isIngested('SPRINT')
   const qualiHappened = isIngested('Q')
   const raceHappened = isIngested('R')
+  // Sessions actually ingested so far, for the "pooling from" label under Practice -- accurate
+  // mid-weekend (e.g. only FP1 shows once FP2/FP3 haven't run yet).
+  const practiceSessionsIngested = PRACTICE_CODES.filter(isIngested)
   const sessionsLoaded = !sessions.loading
 
   // The earliest not-yet-ingested session among `types`, for a section's countdown target; null
@@ -356,6 +364,11 @@ export function WeekendPage() {
     !qualiTrace.loading &&
     (!qualiCharacter.data || qualiCharacter.data.rows.length === 0) &&
     (!qualiTrace.data || qualiTrace.data.drivers.length === 0)
+  const sprintQualiNoData =
+    !sprintQualiCharacter.loading &&
+    !sprintQualiTrace.loading &&
+    (!sprintQualiCharacter.data || sprintQualiCharacter.data.rows.length === 0) &&
+    (!sprintQualiTrace.data || sprintQualiTrace.data.drivers.length === 0)
   const raceNoData =
     !pace.loading &&
     !degradation.loading &&
@@ -367,6 +380,7 @@ export function WeekendPage() {
   const navSections: NavSection[] = [
     topReady && insights.data && insights.data.length > 0 ? { id: 'insights', label: 'Insights' } : null,
     sessionsLoaded ? { id: 'practice', label: 'Practice' } : null,
+    sessionsLoaded && isSprintWeekend ? { id: 'sprint-qualifying', label: 'Sprint Qualifying' } : null,
     sessionsLoaded && isSprintWeekend ? { id: 'sprint', label: 'Sprint' } : null,
     sessionsLoaded ? { id: 'qualifying', label: 'Qualifying' } : null,
     sessionsLoaded ? { id: 'race', label: 'Race' } : null,
@@ -501,6 +515,11 @@ export function WeekendPage() {
 
       <section id="practice" className="mt-20 scroll-mt-24">
         <SectionTitle delay={0.16}>Practice</SectionTitle>
+        {practiceSessionsIngested.length > 0 && (
+          <p className="kicker -mt-4 mb-6 text-muted">
+            Pooling from {practiceSessionsIngested.join(' · ')}
+          </p>
+        )}
         <SessionGate
           sessionsLoaded={sessionsLoaded}
           delay={0.16}
@@ -528,6 +547,51 @@ export function WeekendPage() {
           </div>
         </SessionGate>
       </section>
+
+      {isSprintWeekend && (
+        <section id="sprint-qualifying" className="mt-20 scroll-mt-24">
+          <SectionTitle delay={0.2}>Sprint Qualifying</SectionTitle>
+          <SessionGate
+            sessionsLoaded={sessionsLoaded}
+            delay={0.2}
+            loading={
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+                <SkeletonCard label="Car character" className="min-h-[520px]" />
+                <SkeletonCard label="The fight to sprint pole" className="hidden min-h-[640px] md:block" />
+                <FightToPoleDesktopNote sprint />
+              </div>
+            }
+            target={nextSessionTarget(['SQ'])}
+            label="Sprint Qualifying"
+            happened={sprintQualiHappened}
+            noData={sprintQualiNoData}
+          >
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+              {sprintQualiCharacter.data ? (
+                <ScrollReveal>
+                  <QualiCharacterTable
+                    data={sprintQualiCharacter.data}
+                    insights={sprintQualiInsights.data ?? []}
+                    sprint
+                  />
+                </ScrollReveal>
+              ) : (
+                <SkeletonCard label="Car character" className="min-h-[520px]" />
+              )}
+              <div className="hidden md:block">
+                {sprintQualiTrace.data ? (
+                  <ScrollReveal delay={0.06}>
+                    <FightToPoleChart data={sprintQualiTrace.data} sprint />
+                  </ScrollReveal>
+                ) : (
+                  <SkeletonCard label="The fight to sprint pole" className="min-h-[640px]" />
+                )}
+              </div>
+              <FightToPoleDesktopNote sprint />
+            </div>
+          </SessionGate>
+        </section>
+      )}
 
       {isSprintWeekend && (
         <section id="sprint" className="mt-20 scroll-mt-24">

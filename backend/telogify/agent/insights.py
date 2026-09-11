@@ -100,14 +100,21 @@ def persist_insights(
     count: int = 3,
     model_used: str | None = None,
     prompt_version: str | None = None,
+    session_type: str | None = None,
 ) -> list:
     """Write the `count` insights (slots 1..count), em-dash-stripped, each carrying the full
     trace. `model` is any SQLModel table shaped like Insight (weekend_id, slot, header,
     explanation_web, explanation_email, source_tool_calls_json); a `team` key in an insight
     dict is only set on the row if the model has a `team` column (QualiInsight does).
     `model_used`/`prompt_version` stamp which LLM and which prompt revision produced this
-    batch, for audit (see agent/prompts.PROMPT_VERSION)."""
-    db.exec(delete(model).where(model.weekend_id == weekend_id))
+    batch, for audit (see agent/prompts.PROMPT_VERSION). `session_type` scopes both the
+    delete-before-insert and the stamped column to that session (e.g. QualiInsight's "Q" vs
+    "SQ" batches share one table/weekend_id, so a plain weekend_id delete would also wipe the
+    other session's batch)."""
+    delete_query = delete(model).where(model.weekend_id == weekend_id)
+    if session_type is not None:
+        delete_query = delete_query.where(model.session_type == session_type)
+    db.exec(delete_query)
     rows = []
     for slot, ins in enumerate(insights[:count], start=1):
         header = round_prose_numbers(strip_em_dashes(ins["header"]))
@@ -120,6 +127,8 @@ def persist_insights(
             print(f"[guardrail] insight {slot} contains unsupported claim phrases: {flagged}")
 
         extra = {"team": ins["team"]} if "team" in ins and hasattr(model, "team") else {}
+        if session_type is not None:
+            extra["session_type"] = session_type
         row = model(
             weekend_id=weekend_id,
             slot=slot,

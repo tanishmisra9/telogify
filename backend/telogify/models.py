@@ -280,6 +280,7 @@ class QualiInsight(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     weekend_id: int = Field(foreign_key="race_weekend.id", index=True)
     slot: int  # 1-2
+    session_type: str = "Q"  # "Q" (main qualifying) or "SQ" (sprint qualifying)
     team: str | None = None
     header: str
     explanation_web: str

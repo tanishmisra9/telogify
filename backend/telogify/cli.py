@@ -85,7 +85,9 @@ def _on_round_complete(result: RoundResult, index: int, total: int) -> None:
         console.print(
             f"  [green]✓[/green] round [bold]{result.round}[/bold] ({index}/{total}): "
             f"[bold]{result.insight_count}[/bold] insight(s), "
-            f"[bold]{result.quali_insight_count}[/bold] qualifying insight(s) persisted [dim]({elapsed})[/dim]"
+            f"[bold]{result.quali_insight_count}[/bold] qualifying insight(s), "
+            f"[bold]{result.sprint_quali_insight_count}[/bold] sprint qualifying insight(s) "
+            f"persisted [dim]({elapsed})[/dim]"
         )
     else:
         console.print(
@@ -128,6 +130,7 @@ def _echo_season_final_summary(summary) -> None:
     table.add_column("Status")
     table.add_column("Insights", justify="right")
     table.add_column("Qualifying", justify="right")
+    table.add_column("Sprint Qualifying", justify="right")
     table.add_column("Time", justify="right")
 
     failed: list[tuple[int, str]] = []
@@ -136,10 +139,11 @@ def _echo_season_final_summary(summary) -> None:
         if result.ok:
             table.add_row(
                 str(result.round), "[green]OK[/green]",
-                str(result.insight_count), str(result.quali_insight_count), elapsed,
+                str(result.insight_count), str(result.quali_insight_count),
+                str(result.sprint_quali_insight_count), elapsed,
             )
         else:
-            table.add_row(str(result.round), "[red]FAILED[/red]", "-", "-", elapsed)
+            table.add_row(str(result.round), "[red]FAILED[/red]", "-", "-", "-", elapsed)
             failed.append((result.round, result.error or ""))
     console.print(table)
 
@@ -153,22 +157,27 @@ def _echo_season_final_summary(summary) -> None:
 def _report_insights_done(state: dict, elapsed: str) -> None:
     insight_count = state.get("insight_count", 0)
     quali_insight_count = state.get("quali_insight_count", 0)
+    sprint_quali_insight_count = state.get("sprint_quali_insight_count", 0)
     console.print(
         f"[green]Done:[/green] persisted [bold]{insight_count}[/bold] insights, "
-        f"[bold]{quali_insight_count}[/bold] qualifying insights [dim]({elapsed})[/dim]."
+        f"[bold]{quali_insight_count}[/bold] qualifying insights, "
+        f"[bold]{sprint_quali_insight_count}[/bold] sprint qualifying insights [dim]({elapsed})[/dim]."
     )
     session_types = state.get("session_types")
     # Zero counts are ambiguous on their own: they also mean "already fully generated on a
-    # prior call, nothing new to do" (the pipeline's insights/quali_insights graph nodes
-    # short-circuit to {} in that case, so the key is simply never set -- not a sign anything
-    # is actually pending). Only genuinely "still in progress" once neither R nor Q -- the
-    # sessions that gate generation -- has been ingested at all.
+    # prior call, nothing new to do" (the pipeline's insights/quali_insights/
+    # sprint_quali_insights graph nodes short-circuit to {} in that case, so the key is simply
+    # never set -- not a sign anything is actually pending). Only genuinely "still in
+    # progress" once none of R/Q/SQ -- the sessions that gate generation -- has been ingested
+    # at all.
     if (
         insight_count == 0
         and quali_insight_count == 0
+        and sprint_quali_insight_count == 0
         and session_types
         and "R" not in session_types
         and "Q" not in session_types
+        and "SQ" not in session_types
     ):
         console.print(
             f"[yellow]Race weekend still in progress[/yellow] "
@@ -584,7 +593,12 @@ def list_insights(
             ).all()
             quali_insights = db.exec(
                 select(QualiInsight)
-                .where(QualiInsight.weekend_id == weekend.id)
+                .where(QualiInsight.weekend_id == weekend.id, QualiInsight.session_type == "Q")
+                .order_by(QualiInsight.slot)
+            ).all()
+            sprint_quali_insights = db.exec(
+                select(QualiInsight)
+                .where(QualiInsight.weekend_id == weekend.id, QualiInsight.session_type == "SQ")
                 .order_by(QualiInsight.slot)
             ).all()
 
@@ -611,6 +625,16 @@ def list_insights(
                 )
             else:
                 blocks.append("[bold]Qualifying:[/bold] [dim](none persisted)[/dim]")
+
+            if sprint_quali_insights:
+                blocks.append("[bold]Sprint Qualifying:[/bold]")
+                blocks.extend(
+                    _render_insight_block(
+                        i.slot, i.header, i.explanation_web, team=i.team,
+                        model_used=i.model_used, prompt_version=i.prompt_version,
+                    )
+                    for i in sprint_quali_insights
+                )
 
             title = (
                 f"{weekend.year} Round {weekend.round}: {escape(weekend.event_name)} "

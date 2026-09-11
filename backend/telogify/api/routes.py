@@ -4,6 +4,7 @@ car character, tyre degradation, finishing order, session progress), plus subscr
 import json
 import re
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -73,7 +74,6 @@ router = APIRouter()
 # sessions absent from a weekend are simply skipped, never shown as blanks or errors.
 SESSION_ORDER = ["FP1", "FP2", "FP3", "SQ", "SPRINT", "Q", "R"]
 PRACTICE_SESSIONS = ("FP1", "FP2", "FP3")
-INDICATIVE_SESSIONS = ("FP1", "FP2", "FP3", "SQ")
 
 
 class SubscribeIn(BaseModel):
@@ -343,10 +343,14 @@ def weekend_insights(year: int, round: int, db: Session = Depends(get_session)):
 
 
 @router.get("/weekends/{year}/{round}/quali-insights")
-def weekend_quali_insights(year: int, round: int, db: Session = Depends(get_session)):
+def weekend_quali_insights(
+    year: int, round: int, session: Literal["Q", "SQ"] = "Q", db: Session = Depends(get_session)
+):
     w = _weekend(db, year, round)
     rows = db.exec(
-        select(QualiInsight).where(QualiInsight.weekend_id == w.id).order_by(QualiInsight.slot)
+        select(QualiInsight)
+        .where(QualiInsight.weekend_id == w.id, QualiInsight.session_type == session)
+        .order_by(QualiInsight.slot)
     ).all()
     return [
         {"slot": r.slot, "team": r.team, "header": r.header, "explanation_web": r.explanation_web}
@@ -419,10 +423,10 @@ def weekend_pace(
 
 @router.get("/weekends/{year}/{round}/sectors")
 def weekend_sectors(year: int, round: int, db: Session = Depends(get_session)):
-    """Best sector 1/2/3 across practice and sprint qualifying, per driver, tagged with which
-    session each best came from. Indicative only: fuel loads and engine modes vary run to run."""
+    """Best sector 1/2/3 across practice sessions, per driver, tagged with which session each
+    best came from. Indicative only: fuel loads and engine modes vary run to run."""
     w = _weekend(db, year, round)
-    sessions = [s for s in _weekend_sessions(db, w.id) if s.session_type in INDICATIVE_SESSIONS]
+    sessions = [s for s in _weekend_sessions(db, w.id) if s.session_type in PRACTICE_SESSIONS]
     if not sessions:
         return {"indicative": True, "drivers": [], "dominance": []}
 
@@ -459,10 +463,10 @@ def weekend_sectors(year: int, round: int, db: Session = Depends(get_session)):
 
 @router.get("/weekends/{year}/{round}/topspeeds")
 def weekend_topspeeds(year: int, round: int, db: Session = Depends(get_session)):
-    """Each driver's highest top speed across practice and sprint qualifying, km/h and mph,
-    tagged with which session it came from. Indicative only."""
+    """Each driver's highest top speed across practice sessions, km/h and mph, tagged with
+    which session it came from. Indicative only."""
     w = _weekend(db, year, round)
-    sessions = [s for s in _weekend_sessions(db, w.id) if s.session_type in INDICATIVE_SESSIONS]
+    sessions = [s for s in _weekend_sessions(db, w.id) if s.session_type in PRACTICE_SESSIONS]
     if not sessions:
         return {"indicative": True, "drivers": []}
 
@@ -490,19 +494,22 @@ def weekend_topspeeds(year: int, round: int, db: Session = Depends(get_session))
 
 
 @router.get("/weekends/{year}/{round}/quali-character")
-def weekend_quali_character(year: int, round: int, db: Session = Depends(get_session)):
+def weekend_quali_character(
+    year: int, round: int, session: Literal["Q", "SQ"] = "Q", db: Session = Depends(get_session)
+):
     """Car-character comparison from the top teams' fastest qualifying laps: lap time,
     top speed, minimum speed, speed through the fastest corner (picked once across the
     compared teams), and full-throttle percentage, with labels derived from those
     numbers. Limited to TOP_TEAMS_N teams so "leader" labels reflect the front of the
-    field being compared, not diluted by the whole grid."""
+    field being compared, not diluted by the whole grid. `session` picks main Qualifying
+    ("Q", default) or Sprint Qualifying ("SQ")."""
     w = _weekend(db, year, round)
     sessions = _weekend_sessions(db, w.id)
-    session = _session_by_type(sessions, "Q")
-    if session is None:
+    session_row = _session_by_type(sessions, session)
+    if session_row is None:
         return {"session_type": None, "rows": [], "fastest_corner_number": None, "sector_dominance": []}
 
-    qc_rows = db.exec(select(QualiCharacter).where(QualiCharacter.session_id == session.id)).all()
+    qc_rows = db.exec(select(QualiCharacter).where(QualiCharacter.session_id == session_row.id)).all()
     driver_rows = [
         {
             "constructor": r.constructor,
@@ -522,13 +529,13 @@ def weekend_quali_character(year: int, round: int, db: Session = Depends(get_ses
     dc = _weekend_driver_constructor(db, w.id)
     sector_rows = [
         {"driver": r.driver, "sector": r.sector, "best_time_s": r.best_time_s, "constructor": dc.get(r.driver)}
-        for r in db.exec(select(SectorBest).where(SectorBest.session_id == session.id)).all()
+        for r in db.exec(select(SectorBest).where(SectorBest.session_id == session_row.id)).all()
     ]
     dominance = sector_dominance(sector_rows)
     fastest_corner_number = pick_fastest_corner(reps)
 
     return {
-        "session_type": session.session_type,
+        "session_type": session_row.session_type,
         "rows": [
             {
                 "constructor": r.constructor,
@@ -554,26 +561,29 @@ def weekend_quali_character(year: int, round: int, db: Session = Depends(get_ses
 
 
 @router.get("/weekends/{year}/{round}/quali-trace")
-def weekend_quali_trace(year: int, round: int, db: Session = Depends(get_session)):
+def weekend_quali_trace(
+    year: int, round: int, session: Literal["Q", "SQ"] = "Q", db: Session = Depends(get_session)
+):
     """Distance-aligned telemetry (speed, throttle, delta-to-pole) for every driver's fastest
-    lap in the MAIN Qualifying session, for "The fight to pole". Q only, never SQ. Rows are
-    ordered by official qualifying classification, so drivers[0]/drivers[1] are P1/P2; every
-    driver with a usable lap is included even though the frontend renders only the top two.
-    `pole_driver`/`pole_lap_time_s` are the OFFICIAL pole sitter and their Q3 time -- when the
-    pole sitter has no usable trace (telemetry scrubbed) they are still reported here while no
-    row is flagged is_pole, so the frontend can relabel the chart honestly."""
+    lap in the requested qualifying-style session, for "the fight to pole" (Q) or "the fight
+    to sprint pole" (SQ). Rows are ordered by official qualifying classification, so
+    drivers[0]/drivers[1] are P1/P2; every driver with a usable lap is included even though the
+    frontend renders only the top two. `pole_driver`/`pole_lap_time_s` are the OFFICIAL pole
+    sitter and their Q3 time -- when the pole sitter has no usable trace (telemetry scrubbed)
+    they are still reported here while no row is flagged is_pole, so the frontend can relabel
+    the chart honestly."""
     empty = {"session_type": None, "grid_m": [], "corners": [], "drivers": [], "pole_driver": None, "pole_lap_time_s": None}
     w = _weekend(db, year, round)
     sessions = _weekend_sessions(db, w.id)
-    session = _session_by_type(sessions, "Q")
-    if session is None:
+    session_row = _session_by_type(sessions, session)
+    if session_row is None:
         return empty
 
-    rows = db.exec(select(QualiTrace).where(QualiTrace.session_id == session.id)).all()
+    rows = db.exec(select(QualiTrace).where(QualiTrace.session_id == session_row.id)).all()
     if not rows:
-        return {**empty, "session_type": session.session_type}
+        return {**empty, "session_type": session_row.session_type}
 
-    results = db.exec(select(SessionResult).where(SessionResult.session_id == session.id)).all()
+    results = db.exec(select(SessionResult).where(SessionResult.session_id == session_row.id)).all()
     positions = {r.driver: r.position for r in results if r.position is not None}
     pole = next((r for r in results if r.position == 1), None)
     pole_lap_time_s = (pole.q3_time_s or pole.q2_time_s or pole.q1_time_s) if pole else None
@@ -582,7 +592,7 @@ def weekend_quali_trace(year: int, round: int, db: Session = Depends(get_session
     rows = sorted(rows, key=lambda r: (positions.get(r.driver) is None, positions.get(r.driver, 0), r.lap_time_s or 0.0))
 
     return {
-        "session_type": session.session_type,
+        "session_type": session_row.session_type,
         "grid_m": rows[0].grid_m,
         "corners": rows[0].corners_json,
         "pole_driver": pole.driver if pole else None,

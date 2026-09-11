@@ -52,7 +52,11 @@ def seeded(test_engine):
             CandidateInsight(
                 weekend_id=wk.id, rank=2, category="quali_character",
                 signal_type="quali_top_speed_delta", magnitude=4.0, confidence=1.0,
-                robustness_score=1.0, source_refs_json={"subject": "McLaren", "refs": []},
+                robustness_score=1.0,
+                source_refs_json={
+                    "subject": "McLaren",
+                    "refs": [{"type": "quali_top_speed_delta", "session_type": "Q"}],
+                },
             )
         )
         quali = SessionRow(weekend_id=wk.id, session_type="Q", status="loaded")
@@ -223,6 +227,84 @@ def test_get_candidate_insights_filters_by_category(seeded):
     out = json.loads(tools["get_candidate_insights"].invoke({"n": 10, "category": "quali_character"}))
     assert len(out) == 1
     assert out[0]["signal_type"] == "quali_top_speed_delta"
+
+
+def test_get_candidate_insights_session_filter_applies_before_truncation(test_engine):
+    """A main-Q quali_character candidate ranked ahead of every SQ one must not crowd the SQ
+    candidates out of the n-limited result -- the session filter has to run before truncation."""
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2025, round=12, circuit_name="X", country="Y", event_name="Z")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+
+        # Rank 1: a Q candidate that would fill the only slot if n=1 and the filter ran after
+        # truncation.
+        db.add(
+            CandidateInsight(
+                weekend_id=wk.id, rank=1, category="quali_character",
+                signal_type="quali_top_speed_delta", magnitude=9.0, confidence=1.0,
+                robustness_score=9.0,
+                source_refs_json={
+                    "subject": "Mercedes",
+                    "refs": [{"type": "quali_top_speed_delta", "session_type": "Q"}],
+                },
+            )
+        )
+        # Rank 2: the SQ candidate that must still come back when filtering for session_type="SQ".
+        db.add(
+            CandidateInsight(
+                weekend_id=wk.id, rank=2, category="quali_character",
+                signal_type="quali_grip_delta", magnitude=3.0, confidence=1.0,
+                robustness_score=3.0,
+                source_refs_json={
+                    "subject": "Red Bull",
+                    "refs": [{"type": "quali_grip_delta", "session_type": "SQ"}],
+                },
+            )
+        )
+        db.commit()
+
+        tools = _by_name(build_tools(2025, 12, session_factory=lambda: db, quali_session="SQ"))
+        out = json.loads(tools["get_candidate_insights"].invoke({"n": 1, "category": "quali_character"}))
+        assert len(out) == 1
+        assert out[0]["signal_type"] == "quali_grip_delta"
+
+
+def test_get_quali_character_tool_defaults_to_bound_quali_session(test_engine):
+    """build_tools(quali_session="SQ") must make get_quali_character() (called with no
+    argument, as the prompt does) read the SQ session, not Q -- otherwise a sprint-quali
+    insight could cite main-Q telemetry under a Sprint Qualifying label."""
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2025, round=13, circuit_name="X", country="Y", event_name="Z")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        q = SessionRow(weekend_id=wk.id, session_type="Q", status="loaded")
+        sq = SessionRow(weekend_id=wk.id, session_type="SQ", status="loaded")
+        db.add(q)
+        db.add(sq)
+        db.commit()
+        db.refresh(q)
+        db.refresh(sq)
+        db.add(
+            QualiCharacter(
+                session_id=q.id, driver="LEC", constructor="Ferrari", lap_time_s=66.3,
+                top_speed_kmh=999.0, min_speed_kmh=71.0, full_throttle_pct=0.64,
+            )
+        )
+        db.add(
+            QualiCharacter(
+                session_id=sq.id, driver="VER", constructor="Red Bull", lap_time_s=65.0,
+                top_speed_kmh=310.0, min_speed_kmh=70.0, full_throttle_pct=0.60,
+            )
+        )
+        db.commit()
+
+        tools = _by_name(build_tools(2025, 13, session_factory=lambda: db, quali_session="SQ"))
+        out = json.loads(tools["get_quali_character"].invoke({}))
+        constructors = {r["constructor"] for r in out["rows"]}
+        assert constructors == {"Red Bull"}
 
 
 def test_get_quali_character_tool(seeded):

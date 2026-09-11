@@ -70,7 +70,7 @@ function DriverBadge({ driver, color }: { driver: QualiTraceDriver; color: strin
   )
 }
 
-export function FightToPoleChart({ data }: { data: QualiTraceData }) {
+export function FightToPoleChart({ data, sprint = false }: { data: QualiTraceData; sprint?: boolean }) {
   const reduce = useReducedMotion()
   const { ref: svgRef, textPx } = useSvgTextScale(WIDTH)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
@@ -79,9 +79,12 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
   const [hoveredY, setHoveredY] = useState(0)
   const [unit, setUnit] = useState<'kmh' | 'mph'>('kmh')
 
+  const title = sprint ? 'The fight to sprint pole' : 'The fight to pole'
+  const lapLabel = sprint ? 'sprint qualifying laps' : 'qualifying laps'
+
   const [p1, p2] = data.drivers
   if (!p1 || !p2 || data.grid_m.length === 0) {
-    return <p className="text-sm text-muted">Not enough qualifying laps yet.</p>
+    return <p className="text-sm text-muted">Not enough {lapLabel} yet.</p>
   }
 
   const p1Color = resolveTeamColor(p1.constructor)
@@ -163,7 +166,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
     <div className="glass w-full select-none rounded-panel p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-6">
-          <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">The fight to pole</h2>
+          <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">{title}</h2>
           <div className="ml-8 flex flex-wrap gap-8">
             <DriverBadge driver={p1} color={p1Color} />
             <DriverBadge driver={p2} color={p2Color} />
@@ -182,7 +185,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
 
       {poleMissing && (
         <p className="mt-2 text-xs text-muted">
-          {driverName(data.pole_driver as string)} took pole
+          {driverName(data.pole_driver as string)} took {sprint ? 'sprint pole' : 'pole'}
           {data.pole_lap_time_s != null ? ` in ${data.pole_lap_time_s.toFixed(3)}s` : ''}. Telemetry
           for that lap isn&apos;t usable here, so this compares the next two.
         </p>
@@ -193,7 +196,7 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="mt-5 w-full max-w-full"
         role="img"
-        aria-label={`Fight to pole: ${driverName(p1.driver)} vs ${driverName(p2.driver)}`}
+        aria-label={`${title}: ${driverName(p1.driver)} vs ${driverName(p2.driver)}`}
       >
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {panels.map((panel) => (
@@ -300,12 +303,13 @@ export function FightToPoleChart({ data }: { data: QualiTraceData }) {
       </svg>
 
       <p className="mt-4 text-sm text-muted">
-        Telemetry from each driver's fastest qualifying lap, aligned by position on track; dotted
-        lines mark turn numbers. Delta is the running time gap to {poleMissing ? `${driverName(p1.driver)}'s lap` : 'the pole lap'}:
-        below the line means ahead at that point, above means behind, and where it ends is the final
-        gap. Throttle is how
-        much of full power the driver is asking for: 100% is flat out, and every dip is a braking
-        zone or a corner taken partly lifted. Move over the chart to scrub through the lap.
+        Telemetry from each driver's fastest {sprint ? 'sprint qualifying' : 'qualifying'} lap,
+        aligned by position on track; dotted lines mark turn numbers. Delta is the running time
+        gap to {poleMissing ? `${driverName(p1.driver)}'s lap` : sprint ? 'the sprint pole lap' : 'the pole lap'}:
+        below the line means ahead at that point, above means behind, and where it ends is the
+        final gap. Throttle is how much of full power the driver is asking for: 100% is flat
+        out, and every dip is a braking zone or a corner taken partly lifted. Move over the
+        chart to scrub through the lap.
       </p>
     </div>
   )

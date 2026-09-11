@@ -432,3 +432,30 @@ def test_driver_name_chip_baseline_matches_live_text():
         f"vertical-align is -{align_px}px but the chip's own bottom ink gap is {got['bot']}px -- "
         f"the glyph will sit {align_px - got['bot']:+.1f}px off the live text's baseline"
     )
+
+
+def test_load_quali_insight_never_returns_a_sprint_qualifying_row(db_session):
+    """Q and SQ insights share the QualiInsight table -- the digest's "Qualifying" block must
+    only ever load a session_type="Q" row, never an SQ one under the wrong label."""
+    wk = RaceWeekend(year=2026, round=6, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+
+    db_session.add(QualiInsight(
+        weekend_id=wk.id, slot=1, session_type="SQ", team="Red Bull",
+        header="SQ header", explanation_web="w", explanation_email="e",
+    ))
+    db_session.commit()
+
+    assert email_module._load_quali_insight(db_session, wk.id) is None
+
+    db_session.add(QualiInsight(
+        weekend_id=wk.id, slot=1, session_type="Q", team="Ferrari",
+        header="Q header", explanation_web="w", explanation_email="e",
+    ))
+    db_session.commit()
+
+    loaded = email_module._load_quali_insight(db_session, wk.id)
+    assert loaded is not None
+    assert loaded.header == "Q header"
