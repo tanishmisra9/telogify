@@ -517,7 +517,7 @@ export function WeekendPage() {
         <SectionTitle delay={0.16}>Practice</SectionTitle>
         {practiceSessionsIngested.length > 0 && (
           <p className="kicker -mt-4 mb-6 text-muted">
-            Pooling from {practiceSessionsIngested.join(' · ')}
+            Pooling from {practiceSessionsIngested.join(', ')}
           </p>
         )}
         <SessionGate
