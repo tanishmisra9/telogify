@@ -1,6 +1,7 @@
 import { useState, type MouseEvent } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
+import { CornerDataNote } from '@/components/CornerDataNote'
 import { driverName } from '@/lib/drivers'
 import { resolveTeamColor, teammateShade } from '@/lib/teamColors'
 import { drawTransition } from '@/lib/motion'
@@ -301,6 +302,8 @@ export function FightToPoleChart({ data, sprint = false }: { data: QualiTraceDat
           )}
         </g>
       </svg>
+
+      {data.corners.length === 0 && <CornerDataNote />}
 
       <p className="mt-4 text-sm text-muted">
         Telemetry from each driver's fastest {sprint ? 'sprint qualifying' : 'qualifying'} lap,

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
+import { CornerDataNote } from '@/components/CornerDataNote'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { TeamMark, TeamRule } from '@/components/TeamMark'
 import { Tooltip } from '@/components/Tooltip'
@@ -139,6 +140,7 @@ export function QualiCharacterTable({
   const topSpeedRanks = rankDesc(rows.map((r) => r.top_speed_kmh))
   const minSpeedRanks = rankDesc(rows.map((r) => r.min_speed_kmh))
   const cornerRanks = rankDesc(rows.map((r) => r.fastest_corner_kmh))
+  const hasCornerData = rows.some((r) => r.fastest_corner_kmh != null)
   const throttleRanks = rankDesc(rows.map((r) => r.full_throttle_pct))
 
   return (
@@ -182,7 +184,7 @@ export function QualiCharacterTable({
                   <Cell bg={heatBg(lapRanks[i], n)}>{r.lap_time_s.toFixed(3)}s</Cell>
                   <Cell bg={heatBg(topSpeedRanks[i], n)}>{r.top_speed_kmh.toFixed(0)} km/h</Cell>
                   <Cell bg={heatBg(minSpeedRanks[i], n)}>{r.min_speed_kmh.toFixed(0)} km/h</Cell>
-                  <Cell bg={heatBg(cornerRanks[i], n)}>
+                  <Cell bg={hasCornerData ? heatBg(cornerRanks[i], n) : 'transparent'}>
                     {r.fastest_corner_kmh != null ? `${r.fastest_corner_kmh.toFixed(0)} km/h` : '–'}
                   </Cell>
                   <Cell bg={heatBg(throttleRanks[i], n)}>{(r.full_throttle_pct * 100).toFixed(1)}%</Cell>
@@ -194,6 +196,8 @@ export function QualiCharacterTable({
       </div>
       <ScrollFadeEdge visible={canScrollRight} />
       </div>
+
+      {!hasCornerData && <CornerDataNote />}
 
       {data.sector_dominance.length > 0 && (
         <div className="mt-6 border-t border-border pt-5">
