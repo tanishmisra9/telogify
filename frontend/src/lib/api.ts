@@ -179,12 +179,21 @@ export interface QualiTraceDriver {
   driver: string
   constructor: string | null
   lap_time_s: number | null
+  // Official classification position; null for a traced driver the results don't classify.
+  position: number | null
   is_pole: boolean
   // Resampled onto grid_m by lap fraction: each point is real telemetry at that fraction of the
   // driver's own lap, so the final point is their finish line (see analysis/quali_trace.py).
   speed_kmh: number[]
   throttle_pct: number[]
   delta_s: number[]
+}
+
+export interface QualiTraceUnavailable {
+  driver: string
+  constructor: string | null
+  position: number | null
+  best_lap_s: number | null
 }
 
 export interface QualiTraceCorner {
@@ -198,11 +207,15 @@ export interface QualiTraceData {
   session_type: string | null
   grid_m: number[]
   corners: QualiTraceCorner[]
-  // Ordered by official qualifying classification: drivers[0]/[1] are P1/P2.
+  // Ordered by official qualifying classification: drivers[0]/[1] are P1/P2. `delta_s` is
+  // measured against the stored reference lap, so the gap between any two drivers is the
+  // difference of their two `delta_s` series (exact: both sit on one fraction-aligned grid).
   drivers: QualiTraceDriver[]
+  // Everyone in the results with no trace. `best_lap_s` set = they set a time but its telemetry
+  // wasn't usable; null = they set no time at all.
+  unavailable: QualiTraceUnavailable[]
   // The official pole sitter and their Q3 time. When their lap telemetry was scrubbed they are
-  // still named here but absent from `drivers` (and no driver has is_pole) -- the chart then
-  // relabels its "delta to pole" reference to whichever lap it fell back to (drivers[0]).
+  // still named here but absent from `drivers` (and no driver has is_pole).
   pole_driver: string | null
   pole_lap_time_s: number | null
 }

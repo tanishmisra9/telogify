@@ -538,7 +538,7 @@ def test_empty_weekend_endpoints_return_placeholder_shapes(test_engine):
         assert qc["session_type"] is None and qc["rows"] == []
         trace = client.get("/weekends/2024/1/quali-trace").json()
         assert trace == {
-            "session_type": None, "grid_m": [], "corners": [], "drivers": [],
+            "session_type": None, "grid_m": [], "corners": [], "drivers": [], "unavailable": [],
             "pole_driver": None, "pole_lap_time_s": None,
         }
         degradation = client.get("/weekends/2024/1/degradation").json()
@@ -664,6 +664,33 @@ def test_quali_trace_flags_no_pole_when_official_pole_sitter_has_no_trace(test_e
         fresh_app.dependency_overrides.clear()
 
 
+def test_quali_trace_reports_classified_drivers_without_a_trace(test_engine):
+    # BOT set a time whose telemetry was unusable; PER set no time and is unclassified. Both are
+    # untraced, but only BOT has a best_lap_s, so the chart can tell "no usable trace" from "no lap".
+    _seed_quali_trace_weekend(
+        test_engine,
+        traces=[("RUS", "Mercedes", 89.076, True), ("PIA", "McLaren", 89.132, False)],
+        results=[("RUS", 1, 89.076), ("PIA", 2, 89.132), ("BOT", 3, 89.5), ("PER", None, None)],
+    )
+
+    def override():
+        with Session(test_engine) as s:
+            yield s
+
+    from telogify.api.main import app as fresh_app
+
+    fresh_app.dependency_overrides[get_session] = override
+    try:
+        out = TestClient(fresh_app).get("/weekends/2099/1/quali-trace").json()
+        assert [d["position"] for d in out["drivers"]] == [1, 2]
+        assert [(u["driver"], u["position"], u["best_lap_s"]) for u in out["unavailable"]] == [
+            ("BOT", 3, 89.5),
+            ("PER", None, None),
+        ]
+    finally:
+        fresh_app.dependency_overrides.clear()
+
+
 def test_degradation_skips_unmapped_constructor_and_missing_tyre_age(client, test_engine):
     with Session(test_engine) as db:
         wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
@@ -766,7 +793,7 @@ def test_quali_trace_endpoint_session_exists_without_rows(client):
     # fixture's Q session has no QualiTrace rows -> the "session exists but no traces" branch
     out = client.get("/weekends/2025/11/quali-trace").json()
     assert out == {
-        "session_type": "Q", "grid_m": [], "corners": [], "drivers": [],
+        "session_type": "Q", "grid_m": [], "corners": [], "drivers": [], "unavailable": [],
         "pole_driver": None, "pole_lap_time_s": None,
     }
 

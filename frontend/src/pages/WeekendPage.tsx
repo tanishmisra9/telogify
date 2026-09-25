@@ -557,7 +557,7 @@ export function WeekendPage() {
             loading={
               <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
                 <SkeletonCard label="Car character" className="min-h-[520px]" />
-                <SkeletonCard label="The fight to sprint pole" className="hidden min-h-[640px] md:block" />
+                <SkeletonCard label="The fight to sprint pole" className="hidden min-h-[757px] lg:min-h-[957px] md:block" />
                 <FightToPoleDesktopNote sprint />
               </div>
             }
@@ -581,10 +581,10 @@ export function WeekendPage() {
               <div className="hidden md:block">
                 {sprintQualiTrace.data ? (
                   <ScrollReveal delay={0.06}>
-                    <FightToPoleChart data={sprintQualiTrace.data} sprint />
+                    <FightToPoleChart key={`${year}-${round}`} data={sprintQualiTrace.data} sprint />
                   </ScrollReveal>
                 ) : (
-                  <SkeletonCard label="The fight to sprint pole" className="min-h-[640px]" />
+                  <SkeletonCard label="The fight to sprint pole" className="min-h-[757px] lg:min-h-[957px]" />
                 )}
               </div>
               <FightToPoleDesktopNote sprint />
@@ -624,7 +624,7 @@ export function WeekendPage() {
           loading={
             <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
               <SkeletonCard label="Car character" className="min-h-[520px]" />
-              <SkeletonCard label="The fight to pole" className="hidden min-h-[640px] md:block" />
+              <SkeletonCard label="The fight to pole" className="hidden min-h-[757px] lg:min-h-[957px] md:block" />
               <FightToPoleDesktopNote />
             </div>
           }
@@ -644,10 +644,10 @@ export function WeekendPage() {
             <div className="hidden md:block">
               {qualiTrace.data ? (
                 <ScrollReveal delay={0.06}>
-                  <FightToPoleChart data={qualiTrace.data} />
+                  <FightToPoleChart key={`${year}-${round}`} data={qualiTrace.data} />
                 </ScrollReveal>
               ) : (
-                <SkeletonCard label="The fight to pole" className="min-h-[640px]" />
+                <SkeletonCard label="The fight to pole" className="min-h-[757px] lg:min-h-[957px]" />
               )}
             </div>
             <FightToPoleDesktopNote />

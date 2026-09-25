@@ -572,7 +572,7 @@ def weekend_quali_trace(
     sitter and their Q3 time -- when the pole sitter has no usable trace (telemetry scrubbed)
     they are still reported here while no row is flagged is_pole, so the frontend can relabel
     the chart honestly."""
-    empty = {"session_type": None, "grid_m": [], "corners": [], "drivers": [], "pole_driver": None, "pole_lap_time_s": None}
+    empty = {"session_type": None, "grid_m": [], "corners": [], "drivers": [], "unavailable": [], "pole_driver": None, "pole_lap_time_s": None}
     w = _weekend(db, year, round)
     sessions = _weekend_sessions(db, w.id)
     session_row = _session_by_type(sessions, session)
@@ -591,16 +591,35 @@ def weekend_quali_trace(
     # official classification first (P1, P2, ...), then any driver without a position by lap time
     rows = sorted(rows, key=lambda r: (positions.get(r.driver) is None, positions.get(r.driver, 0), r.lap_time_s or 0.0))
 
+    # Everyone in the results with no trace row: best_lap_s says whether they set a time at all
+    # (a real lap whose telemetry was unusable) or not (no lap to show), so the chart can say which.
+    traced = {r.driver for r in rows}
+    unavailable = sorted(
+        (
+            {
+                "driver": r.driver,
+                "constructor": r.constructor,
+                "position": r.position,
+                "best_lap_s": r.q3_time_s or r.q2_time_s or r.q1_time_s,
+            }
+            for r in results
+            if r.driver not in traced
+        ),
+        key=lambda u: (u["position"] is None, u["position"] or 0, u["driver"]),
+    )
+
     return {
         "session_type": session_row.session_type,
         "grid_m": rows[0].grid_m,
         "corners": rows[0].corners_json,
         "pole_driver": pole.driver if pole else None,
         "pole_lap_time_s": pole_lap_time_s,
+        "unavailable": unavailable,
         "drivers": [
             {
                 "driver": r.driver,
                 "constructor": r.constructor,
+                "position": positions.get(r.driver),
                 "lap_time_s": r.lap_time_s,
                 "is_pole": (positions.get(r.driver) == 1) if positions else r.is_pole,
                 "speed_kmh": r.speed_kmh,
