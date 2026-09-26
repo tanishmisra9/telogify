@@ -3,7 +3,7 @@ fastapi
 uvicorn[standard]
 
 # DB / migrations
-sqlmodel
+sqlmodel==0.0.39
 alembic
 psycopg2-binary
 
