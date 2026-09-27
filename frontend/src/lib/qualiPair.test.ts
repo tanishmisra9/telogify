@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pickerRows, resolveSelection, sameSet, teamOptions, toggleDriver, type PickerRow } from '@/lib/qualiPair'
+import { pickerRows, pickerTimeLabel, resolveSelection, sameSet, teamOptions, toggleDriver, type PickerRow } from '@/lib/qualiPair'
 
 describe('toggleDriver', () => {
   it('adds up to two and ignores a third', () => {
@@ -63,6 +63,24 @@ describe('teamOptions', () => {
   })
   it('skips drivers with no team', () => {
     expect(teamOptions([row('XXX', null, 1, 90, true)])).toEqual([])
+  })
+})
+
+describe('pickerTimeLabel', () => {
+  it('shows P1 as an absolute time', () => {
+    expect(pickerTimeLabel(88, 88, true)).toBe('88.000s')
+  })
+  it('shows a slower row as a positive delta to pole', () => {
+    expect(pickerTimeLabel(88.433, 88, false)).toBe('+0.433s')
+  })
+  it('shows a row actually faster than pole as a negative delta', () => {
+    expect(pickerTimeLabel(87.9, 88, false)).toBe('-0.100s')
+  })
+  it('falls back to an absolute time when pole has no time', () => {
+    expect(pickerTimeLabel(88, null, false)).toBe('88.000s')
+  })
+  it('returns null when the row has no time', () => {
+    expect(pickerTimeLabel(null, 88, false)).toBe(null)
   })
 })
 

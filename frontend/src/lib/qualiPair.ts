@@ -41,6 +41,17 @@ export function sameSet(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((c) => b.includes(c))
 }
 
+// P1's own row shows its absolute time; every other row shows its gap to P1 (e.g. "+0.433s").
+// A negative gap (a later-position row with an actually-faster raw lap, e.g. a grid penalty)
+// renders with a leading "-", matching the sign convention already used elsewhere (gapLadder,
+// DegradationChart).
+export function pickerTimeLabel(time: number | null, poleTime: number | null, isPole: boolean): string | null {
+  if (time == null) return null
+  if (isPole || poleTime == null) return `${time.toFixed(3)}s`
+  const delta = time - poleTime
+  return `${delta >= 0 ? '+' : ''}${delta.toFixed(3)}s`
+}
+
 export interface TeamOption {
   team: string
   // The team's two plottable drivers, best-classified first (empty when blocked).

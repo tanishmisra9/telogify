@@ -7,6 +7,7 @@ import { driverName } from '@/lib/drivers'
 import {
   MAX_PICKED,
   pickerRows,
+  pickerTimeLabel,
   resolveSelection,
   sameSet,
   surname,
@@ -65,8 +66,6 @@ const ROW = 'grid min-h-11 w-full grid-cols-[1.75rem_minmax(0,1fr)_auto] items-c
 // usable lap) is greyed and inert so it never looks tappable.
 const ROW_BTN = `${ROW} border-[0.75px] border-ink/20 text-left shadow-[inset_0_0_0_1.5px_transparent] transition-[opacity,box-shadow] duration-150 enabled:cursor-pointer enabled:hover:shadow-[inset_0_0_0_1.5px_var(--color-ink)] disabled:cursor-default disabled:opacity-40`
 
-const fmt = (t: number | null) => (t != null ? `${t.toFixed(3)}s` : null)
-
 // The whole qualifying order. Click to add a driver (two at most); once two are chosen every other
 // row greys out until one is unclicked. A driver with no plottable lap stays in place, greyed, with
 // the reason in the row. Selected rows carry their actual line color (the shaded one for a
@@ -83,11 +82,14 @@ function DriverGrid({
   onToggle: (driver: string) => void
 }) {
   const full = selected.length >= MAX_PICKED
+  // Row 0 is P1 (rows are position-sorted); every other row shows its gap to P1 instead of an
+  // absolute time.
+  const poleTime = rows[0]?.time_s ?? null
   return (
     <ol className="mt-2 grid grid-flow-col grid-rows-8 lg:grid-rows-6">
-      {rows.map((r) => {
+      {rows.map((r, i) => {
         const on = selected.includes(r.driver)
-        const time = fmt(r.time_s)
+        const time = pickerTimeLabel(r.time_s, poleTime, i === 0)
         const pos = <span className="num text-xs text-muted">{r.position ?? '-'}</span>
         const mark = (
           <span className="inline-flex min-w-0 items-center gap-2">
