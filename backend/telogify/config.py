@@ -154,6 +154,39 @@ def require_signup_secrets() -> None:
         )
 
 
+def require_production_send_urls() -> None:
+    """Fail loudly before a real send if web_base_url/api_base_url still resolve to localhost in
+    production. Both default to a localhost URL when their env var is unset (see their fields
+    above), which is exactly what let the Dutch GP auto-send go out to real subscribers with
+    every image and link broken -- the poll cron process runs as its own Railway service,
+    distinct from the main web service, and never had these vars set on it since it never had to
+    render an email before poll's auto-send existed. Called from send_digest() itself so every
+    real digest send, manual or automatic, is protected the same way."""
+    if not settings.is_production:
+        return
+    from urllib.parse import urlparse
+
+    def hostname(url: str) -> str | None:
+        # urlparse requires "//" before a netloc to populate .hostname at all -- a scheme-less
+        # value like "localhost:8000" (an easy env-var fat-finger, missing "http://") otherwise
+        # parses as a bare path with hostname=None, silently passing this check.
+        return urlparse(url if "//" in url else f"//{url}").hostname
+
+    bad = [
+        name
+        for name, url in (
+            ("WEB_BASE_URL", settings.web_base_url),
+            ("API_BASE_URL", settings.api_base_url),
+        )
+        if hostname(url) in ("localhost", "127.0.0.1")
+    ]
+    if bad:
+        raise RuntimeError(
+            f"{', '.join(bad)} still points at localhost with ENVIRONMENT=production. "
+            "Refusing to send real mail with broken links/images."
+        )
+
+
 def configured_llm_label() -> str:
     """Provider and model from settings (LLM_PROVIDER + matching *_MODEL)."""
     provider = settings.llm_provider.strip().lower()

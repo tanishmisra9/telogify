@@ -447,6 +447,56 @@ def test_poll_auto_sends_digest_once_race_and_insights_are_ready(monkeypatch, te
         assert db.get(RaceWeekend, weekend_id).digest_sent_at is not None
 
 
+def test_poll_blocked_by_bad_send_urls_leaves_digest_unclaimed_for_retry(monkeypatch, test_engine):
+    """The Dutch GP incident: a Railway service with WEB_BASE_URL unset silently defaulted to
+    localhost and sent a broken digest to real subscribers. The new guard must be checked BEFORE
+    the atomic claim, not just inside send_digest() -- otherwise this exact scenario would
+    permanently mark the weekend "sent" the moment the guard raises, with no auto-retry once a
+    human fixes the misconfigured env var."""
+    from sqlmodel import Session
+
+    from telogify.config import settings as config_settings
+    from telogify.models import Insight, RaceWeekend
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    monkeypatch.setattr(config_settings, "environment", "production")
+    monkeypatch.setattr(config_settings, "web_base_url", "http://localhost:5173")
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2026, round=8, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        db.add(Insight(
+            weekend_id=wk.id, slot=1, header="h", explanation_web="w", explanation_email="e",
+            source_tool_calls_json=[],
+        ))
+        db.commit()
+        weekend_id = wk.id
+
+    now = datetime.utcnow()
+    ready_event = (Event(round=8, name="Ready GP", date=now - timedelta(hours=1)),)
+    monkeypatch.setattr("telogify.analysis.schedule.fetch_season_schedule", lambda year: ready_event)
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round: {"session_types": ["R"], "weekend_id": weekend_id},
+    )
+    sent_calls = []
+    monkeypatch.setattr(
+        "telogify.email.send_digest",
+        lambda year, round, db: sent_calls.append((year, round)) or 5,
+    )
+
+    result = runner.invoke(cli.app, ["poll", "2026"])
+    assert result.exit_code == 0
+    assert sent_calls == [], "must not reach send_digest at all once the pre-check fails"
+    assert "digest send blocked" in plain(result.output)
+
+    with Session(test_engine) as db:
+        assert db.get(RaceWeekend, weekend_id).digest_sent_at is None, (
+            "must stay unclaimed so a later tick retries once the URLs are fixed"
+        )
+
+
 def test_poll_does_not_resend_an_already_sent_digest(monkeypatch, test_engine):
     from sqlmodel import Session
 

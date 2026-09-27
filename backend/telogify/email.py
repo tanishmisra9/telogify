@@ -26,7 +26,7 @@ from telogify.analysis.schedule import fetch_season_schedule, pick_next_event
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
 from telogify.analysis.sessions import pick_session
 from telogify.chipgen import measure_text_chip
-from telogify.config import settings
+from telogify.config import require_production_send_urls, settings
 from telogify.db import set_service_scope
 from telogify.subscriptions import VERIFY_TOKEN_TTL_HOURS, unsubscribe_token
 from telogify.models import Insight, QualiInsight, RaceWeekend
@@ -1282,6 +1282,7 @@ def send_digest(year: int, round: int, db: Session, recipients: list[str] | None
     """Send the digest to subscribers (or `recipients`). Returns the number sent."""
     if not settings.resend_api_key:
         raise RuntimeError("RESEND_API_KEY is not set; cannot send the digest.")
+    require_production_send_urls()
 
     weekend, insights = _load_weekend_and_insights(year, round, db)
 
@@ -1583,6 +1584,9 @@ def send_verification_email(to: str, token: str) -> None:
 
 
 def send_welcome_email(to: str, unsub_token: str) -> None:
+    # Same guard send_digest() uses: this email's List-Unsubscribe header is built from
+    # api_base_url too, so a misconfigured production host would ship it dead just as silently.
+    require_production_send_urls()
     _send(
         to,
         WELCOME_SUBJECT,

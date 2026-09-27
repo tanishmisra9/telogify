@@ -24,6 +24,18 @@ def _no_live_recaptcha(monkeypatch):
     monkeypatch.setattr("telogify.subscriptions.settings.recaptcha_secret", "")
 
 
+@pytest.fixture(autouse=True)
+def _valid_production_send_urls(monkeypatch):
+    """Same principle as `_no_live_recaptcha` above, for `require_production_send_urls`
+    (config.py): local `.env` deliberately sets ENVIRONMENT=production (so web_base_url resolves
+    to the real telogify.com even in local dev) but may not have API_BASE_URL configured, which
+    would otherwise make every send_digest-calling test's outcome depend on whichever developer's
+    .env happens to be loaded. Tests that specifically exercise the guard override this back to a
+    localhost value themselves.
+    """
+    monkeypatch.setattr("telogify.config.settings.api_base_url", "https://api.telogify.com")
+
+
 @pytest.fixture
 def test_engine():
     engine = create_engine(TEST_URL)

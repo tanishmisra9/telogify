@@ -10,6 +10,7 @@ from telogify.email import (
     render_email_neubrutalist,
     render_email_plaintext,
     send_digest,
+    send_welcome_email,
 )
 from telogify.models import Insight, QualiInsight, RaceWeekend
 
@@ -221,6 +222,39 @@ def test_send_digest_raises_without_api_key(db_session, monkeypatch):
         assert False, "expected RuntimeError"
     except RuntimeError as e:
         assert "RESEND_API_KEY" in str(e)
+
+
+def test_send_digest_raises_when_urls_are_still_localhost_in_production(db_session, monkeypatch):
+    """The bug that shipped the Dutch GP digest with every image and link broken: a Railway
+    service missing WEB_BASE_URL/API_BASE_URL silently falls back to localhost. This must now be
+    a loud failure before anything is sent, not a broken email."""
+    monkeypatch.setattr(email_module.settings, "resend_api_key", "fake-key")
+    monkeypatch.setattr(email_module.settings, "environment", "production")
+    monkeypatch.setattr(email_module.settings, "web_base_url", "http://localhost:5173")
+    sent = []
+    monkeypatch.setattr("resend.Emails.send", lambda params: sent.append(params))
+    try:
+        send_digest(2026, 9, db_session)
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "WEB_BASE_URL" in str(e)
+    assert sent == [], "must not send anything once the URL guard fails"
+
+
+def test_send_welcome_email_raises_when_urls_are_still_localhost_in_production(monkeypatch):
+    """send_welcome_email's List-Unsubscribe header is built from api_base_url the same way
+    send_digest's is; it must be blocked by the same guard, not just send_digest."""
+    monkeypatch.setattr(email_module.settings, "resend_api_key", "fake-key")
+    monkeypatch.setattr(email_module.settings, "environment", "production")
+    monkeypatch.setattr(email_module.settings, "api_base_url", "http://localhost:8000")
+    sent = []
+    monkeypatch.setattr("resend.Emails.send", lambda params: sent.append(params))
+    try:
+        send_welcome_email("reader@example.com", "tok")
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "API_BASE_URL" in str(e)
+    assert sent == [], "must not send anything once the URL guard fails"
 
 
 def test_send_digest_returns_zero_with_no_subscribers(db_session, monkeypatch):

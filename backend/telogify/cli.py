@@ -210,10 +210,24 @@ def _maybe_send_digest(year: int, round: int, state: dict) -> None:
         return
     from sqlmodel import Session, update
 
+    from telogify.config import require_production_send_urls
     from telogify.db import engine
     from telogify.email import send_digest as run_send_digest
     from telogify.models import Insight, RaceWeekend
     from telogify.pipeline import _has_existing
+
+    try:
+        # Checked BEFORE the claim below, not just inside send_digest() itself: this is the one
+        # failure mode we can know for certain sent nothing at all (it never reaches Resend), so
+        # unlike a real send attempt, it's safe to leave digest_sent_at unset and let the next
+        # poll tick retry once the misconfiguration is fixed. send_digest() still re-checks this
+        # itself as the single choke point every real send flows through -- this is belt and
+        # braces for the auto-send path specifically, whose claim-then-send ordering would
+        # otherwise permanently mark a weekend "sent" the moment this raises after the claim.
+        require_production_send_urls()
+    except Exception as exc:
+        console.print(f"  [red]✗[/red] digest send blocked: {escape(str(exc))}")
+        return
 
     with Session(engine) as db:
         weekend = db.get(RaceWeekend, state["weekend_id"])
