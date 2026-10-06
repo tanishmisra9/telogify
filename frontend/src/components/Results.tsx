@@ -34,7 +34,10 @@ export function Results({ rows }: { rows: ResultRow[] }) {
           <span className={`${HEAD} text-center`}>Time</span>
         </li>
         {rows.map((r, i) => {
-          const b = i > 0 ? 'border-t border-border' : ''
+          // Strategy comes back empty when there is no tyre data to show (every stint unknown, or
+          // no stints at all, e.g. a DNS); grey the row out so the blank Tyres cell reads as
+          // missing, not as a bug.
+          const b = `${i > 0 ? 'border-t border-border' : ''}${r.strategy === '' ? ' opacity-50' : ''}`
           const cell = { backgroundColor: teamColorWithAlpha(r.constructor, 0.09) }
           return (
             <li key={`${r.position}-${r.driver}`} className="contents">

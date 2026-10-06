@@ -17,6 +17,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from statistics import median
 
+from telogify.compounds import is_known_compound
+
 # A team-compound's slope is flagged when it is at least this many times the field's
 # median slope for that compound (the brief's Ferrari example was 2x; this is a broader net).
 FLAG_MULTIPLIER = 1.5
@@ -116,7 +118,7 @@ def fit_all_groups(rows: list[dict], *, reference_age: int = REFERENCE_AGE_LAPS)
     """
     grouped: dict[tuple[str, str, str], tuple[list[float], list[float]]] = defaultdict(lambda: ([], []))
     for r in rows:
-        if r.get("tyre_age") is None or r.get("lap_time_s") is None:
+        if r.get("tyre_age") is None or r.get("lap_time_s") is None or not is_known_compound(r.get("compound")):
             continue
         ages, times = grouped[(r["constructor"], r["compound"], r.get("driver") or "")]
         ages.append(r["tyre_age"])

@@ -17,6 +17,7 @@ from telogify.ingest.loader import _STALE_AFTER, session_schedule
 
 from telogify.analysis.attribution import _driver_constructor_map
 from telogify.analysis.degradation import REFERENCE_AGE_LAPS, fit_all_groups
+from telogify.compounds import is_known_compound
 from telogify.analysis.quali_character import (
     TOP_TEAMS_N,
     fastest_qualifier_per_constructor,
@@ -647,7 +648,7 @@ def weekend_degradation(
     points: list[dict] = []
     for st in stints:
         constructor = dc.get(st.driver)
-        if constructor is None:
+        if constructor is None or not is_known_compound(st.compound):
             continue
         ages = st.tyre_ages_json or []
         times = st.lap_times_json or []

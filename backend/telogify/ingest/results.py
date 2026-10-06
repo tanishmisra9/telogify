@@ -13,6 +13,7 @@ import pandas as pd
 from sqlmodel import Session as DBSession
 from sqlmodel import delete, select
 
+from telogify.compounds import is_known_compound
 from telogify.ingest.loader import WeekendData
 from telogify.models import Session, SessionResult
 
@@ -66,8 +67,9 @@ def compound_letter(compound: str | None) -> str:
 
 
 def strategy_string(compounds: list[str | None]) -> str:
-    """Compound sequence as letters, e.g. ['MEDIUM','HARD','MEDIUM'] -> 'M-H-M'."""
-    return "-".join(compound_letter(c) for c in compounds)
+    """Compound sequence as letters, e.g. ['MEDIUM','HARD','MEDIUM'] -> 'M-H-M'. Stints with
+    no known compound are left out (see is_known_compound)."""
+    return "-".join(compound_letter(c) for c in compounds if is_known_compound(c))
 
 
 def format_total_time(seconds: float | None) -> str | None:

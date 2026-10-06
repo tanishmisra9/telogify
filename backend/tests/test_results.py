@@ -109,7 +109,10 @@ def test_compound_letter():
 def test_strategy_string():
     assert strategy_string(["MEDIUM", "HARD", "MEDIUM"]) == "M-H-M"
     assert strategy_string(["SOFT", "MEDIUM"]) == "S-M"
-    assert strategy_string([None]) == "?"
+    # A stint with no tyre data (missing, or FastF1's literal "None"/"UNKNOWN") is left out.
+    assert strategy_string(["SOFT", "None", "MEDIUM"]) == "S-M"
+    assert strategy_string([None]) == ""
+    assert strategy_string(["UNKNOWN"]) == ""
     assert strategy_string([]) == ""
 
 

@@ -23,6 +23,7 @@ from telogify.analysis.quali_character import (
 )
 from telogify.analysis.race_pace import constructor_clean_air
 from telogify.analysis.sectors import sector_dominance
+from telogify.compounds import is_known_compound
 from telogify.db import engine
 from telogify.models import (
     AccelSample,
@@ -68,6 +69,11 @@ def _session_id(db: Session, weekend_id: int, session_type: str) -> int | None:
         )
     ).first()
     return s.id if s else None
+
+
+def _tyre(compound: str | None) -> str | None:
+    """The compound as the agent should see it: None when FastF1 had no tyre data for the stint."""
+    return compound if is_known_compound(compound) else None
 
 
 def build_tools(year: int, round_num: int, session_factory=None, quali_session: str = "Q") -> list:
@@ -283,7 +289,7 @@ def build_tools(year: int, round_num: int, session_factory=None, quali_session: 
                     "found": True,
                     "driver": driver,
                     "stint_number": stint_number,
-                    "compound": row.compound,
+                    "compound": _tyre(row.compound),
                     "avg_pace_s": row.avg_pace,
                     "lap_times_s": row.lap_times_json,
                 }
@@ -328,7 +334,7 @@ def build_tools(year: int, round_num: int, session_factory=None, quali_session: 
                 [
                     {
                         "stint_number": r.stint_number,
-                        "compound": r.compound,
+                        "compound": _tyre(r.compound),
                         "lap_start": r.lap_start,
                         "lap_end": r.lap_end,
                         "avg_pace_s": r.avg_pace,
@@ -372,7 +378,7 @@ def build_tools(year: int, round_num: int, session_factory=None, quali_session: 
                 stints = [
                     {
                         "stint_number": r.stint_number,
-                        "compound": r.compound,
+                        "compound": _tyre(r.compound),
                         "lap_start": r.lap_start,
                         "lap_end": r.lap_end,
                         "avg_pace_s": r.avg_pace,

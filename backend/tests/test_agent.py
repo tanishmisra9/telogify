@@ -677,3 +677,38 @@ def test_build_agent_fails_loud_without_api_key(monkeypatch):
     monkeypatch.setattr(settings, "openai_api_key", "")
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
         graph.build_agent(2025, 11)
+
+
+def test_stint_tools_keep_unknown_compound_stint_but_never_show_it_as_a_tyre(db_session):
+    from telogify.models import Stint
+
+    wk = RaceWeekend(year=2026, round=16, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    # LEC: the middle stint is one FastF1 has no tyre data for (stored as the text "None");
+    # it is also his final stint's predecessor, so stop counts must still see 3 stints.
+    db_session.add(Stint(session_id=race.id, driver="LEC", stint_number=1, compound="SOFT", lap_start=1, lap_end=20, avg_pace=90.5))
+    db_session.add(Stint(session_id=race.id, driver="LEC", stint_number=2, compound="None", lap_start=21, lap_end=40, avg_pace=90.0))
+    db_session.add(Stint(session_id=race.id, driver="LEC", stint_number=3, compound="HARD", lap_start=41, lap_end=57, avg_pace=89.2))
+    # HAM: his FINAL stint has no tyre data; the final-stint delta must still use it and list it.
+    db_session.add(Stint(session_id=race.id, driver="HAM", stint_number=1, compound="SOFT", lap_start=1, lap_end=25, avg_pace=91.0))
+    db_session.add(Stint(session_id=race.id, driver="HAM", stint_number=2, compound="None", lap_start=26, lap_end=57, avg_pace=89.0))
+    db_session.commit()
+
+    tools = _by_name(build_tools(2026, 16, session_factory=lambda: db_session))
+    summary = json.loads(tools["get_stint_summary"].invoke({"driver": "LEC", "session_type": "R"}))
+    assert [s["stint_number"] for s in summary] == [1, 2, 3]
+    assert [s["compound"] for s in summary] == ["SOFT", None, "HARD"]
+
+    cmp_ = {r["driver"]: r for r in json.loads(tools["compare_stint_pace"].invoke({"drivers": "LEC,HAM", "session_type": "R"}))}
+    assert [s["compound"] for s in cmp_["HAM"]["stints"]] == ["SOFT", None]
+    assert cmp_["HAM"]["final_stint_delta_vs_best_s_per_lap"] == 0.0  # 89.0 beats LEC's 89.2
+    assert cmp_["LEC"]["final_stint_delta_vs_best_s_per_lap"] == pytest.approx(0.2)
+
+    lap = json.loads(tools["get_lap_evolution"].invoke({"driver": "LEC", "stint_number": 2, "compound": "None"}))
+    assert lap["found"] is True and lap["compound"] is None

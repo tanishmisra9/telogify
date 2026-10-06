@@ -25,6 +25,7 @@ import pandas as pd
 from sqlmodel import Session as DBSession
 from sqlmodel import delete, select
 
+from telogify.compounds import is_known_compound
 from telogify.config import settings
 from telogify.ingest.loader import WeekendData
 from telogify.models import Session, Stint
@@ -93,7 +94,7 @@ def summarize_stint(
     corrected to an empty-tank reference time. Pass None for non-race sessions.
     """
     lap_numbers = [lap["lap_number"] for lap in laps]
-    compound = next((lap["compound"] for lap in laps if lap.get("compound")), None)
+    compound = next((lap["compound"] for lap in laps if is_known_compound(lap.get("compound"))), None)
 
     do_fuel = total_laps is not None and fuel_effect is not None
 

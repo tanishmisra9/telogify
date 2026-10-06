@@ -712,6 +712,24 @@ def test_degradation_skips_unmapped_constructor_and_missing_tyre_age(client, tes
     assert not any(p["tyre_age"] is None for p in data["points"])
 
 
+def test_degradation_and_results_hide_stints_with_no_known_compound(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        # NOR gets a mid-list stint FastF1 has no tyre data for (stored as the text "None")
+        db.add(Stint(
+            session_id=race.id, driver="NOR", stint_number=98, compound="None", lap_start=30, lap_end=35,
+            avg_pace=90.0, lap_times_json=[90.0] * 6, tyre_ages_json=[1, 2, 3, 4, 5, 6],
+        ))
+        db.commit()
+
+    deg = client.get("/weekends/2025/11/degradation").json()
+    assert "None" not in {p["compound"] for p in deg["points"]}
+    assert "None" not in {f["compound"] for f in deg["fits"]}
+    nor = next(r for r in client.get("/weekends/2025/11/results").json() if r["driver"] == "NOR")
+    assert "N" not in nor["strategy"].split("-")
+
+
 def test_session_summary_winner_total_time_takes_priority(client, test_engine):
     with Session(test_engine) as db:
         wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()

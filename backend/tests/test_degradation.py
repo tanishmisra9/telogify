@@ -126,3 +126,13 @@ def test_fit_group_requires_min_laps_boundary(n):
     ages = list(range(n))
     times = [90.0 + a for a in ages]
     assert fit_group("A", "SOFT", ages, times, min_laps=5) is None
+
+
+def test_fit_all_groups_ignores_stints_with_no_known_compound():
+    # A stint FastF1 has no tyre data for (stored as the text "None") must not become a fit.
+    rows = [
+        {"constructor": "Ferrari", "compound": c, "tyre_age": a, "lap_time_s": 90.0 + 0.1 * a}
+        for c in ("None", "UNKNOWN", "TEST_UNKNOWN", None)
+        for a in range(1, 11)
+    ]
+    assert fit_all_groups(rows) == []
