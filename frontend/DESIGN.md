@@ -58,6 +58,16 @@ Undocumented for a long time but load-bearing, all in `index.css`:
 - a global `@media (prefers-reduced-motion: reduce)` kill switch that collapses every animation
   and transition to `0.01ms`.
 
+## Section rail and data tables
+
+- **Section rail** (`components/SectionNav.tsx`): fixed on the left, always visible, shown from
+  1400px up so it never covers content. 17px ring dots (active: accent fill), a hover label, and
+  up/down arrows that use the back button's glow (`hover:bg-accent/10`, `hover:text-accent`) and
+  fade out at the ends rather than greying (their space is reserved so the rail never moves).
+  Dots cover sections and the charts inside them; active state follows scroll position.
+- **Finishing order** (`components/Results.tsx`): Tyres, Pts and Time are centered under centered
+  headers; Driver and Team have no header text. A row with no tyre data is greyed (`opacity-50`).
+
 ## Forms and interactive controls
 
 There were no form primitives in the codebase until the subscribe flow; these are the pattern.
