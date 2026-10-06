@@ -115,5 +115,3 @@ content and never gate visibility on a transition.
   v4 (24 usages shipping at 0px instead of 2px); it is now `rounded-panel` everywhere. If you add
   a token-driven utility, prefer the `@theme` name (`rounded-panel`) over the bare `[--var]`
   bracket form, which v4 no longer supports.
-- `PRODUCT.md` in this directory is stale: it claims Recharts (every chart is hand-rolled SVG),
-  "three surfaces" (there are six routes), and a subscribe tagline that no longer exists.
