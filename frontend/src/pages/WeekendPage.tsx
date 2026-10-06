@@ -381,9 +381,15 @@ export function WeekendPage() {
     topReady && insights.data && insights.data.length > 0 ? { id: 'insights', label: 'Insights' } : null,
     sessionsLoaded ? { id: 'practice', label: 'Practice' } : null,
     sessionsLoaded && isSprintWeekend ? { id: 'sprint-qualifying', label: 'Sprint Qualifying' } : null,
+    sessionsLoaded && isSprintWeekend && sprintQualiTrace.data?.drivers.length
+      ? { id: 'fight-to-sprint-pole', label: 'Fight to Sprint Pole' }
+      : null,
     sessionsLoaded && isSprintWeekend ? { id: 'sprint', label: 'Sprint' } : null,
     sessionsLoaded ? { id: 'qualifying', label: 'Qualifying' } : null,
+    sessionsLoaded && qualiTrace.data?.drivers.length ? { id: 'fight-to-pole', label: 'Fight to Pole' } : null,
     sessionsLoaded ? { id: 'race', label: 'Race' } : null,
+    sessionsLoaded && degradation.data?.points.length ? { id: 'tyre-degradation', label: 'Tyre Degradation' } : null,
+    sessionsLoaded && results.data?.length ? { id: 'finishing-order', label: 'Finishing Order' } : null,
   ].filter((s): s is NavSection => s !== null)
 
   if (weekend.error || sessions.error) {
@@ -578,7 +584,7 @@ export function WeekendPage() {
               ) : (
                 <SkeletonCard label="Car character" className="min-h-[520px]" />
               )}
-              <div className="hidden md:block">
+              <div id="fight-to-sprint-pole" className="hidden scroll-mt-24 md:block">
                 {sprintQualiTrace.data ? (
                   <ScrollReveal delay={0.06}>
                     <FightToPoleChart key={`${year}-${round}`} data={sprintQualiTrace.data} sprint />
@@ -641,7 +647,7 @@ export function WeekendPage() {
             ) : (
               <SkeletonCard label="Car character" className="min-h-[520px]" />
             )}
-            <div className="hidden md:block">
+            <div id="fight-to-pole" className="hidden scroll-mt-24 md:block">
               {qualiTrace.data ? (
                 <ScrollReveal delay={0.06}>
                   <FightToPoleChart key={`${year}-${round}`} data={qualiTrace.data} />
@@ -680,25 +686,29 @@ export function WeekendPage() {
             ) : (
               <SkeletonCard label="Pace spread" className="min-h-[600px]" />
             )}
-            {degradation.data ? (
-              <ScrollReveal delay={0.06}>
-                <DegradationChart data={degradation.data} />
-              </ScrollReveal>
-            ) : (
-              <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
-            )}
-            {results.data ? (
-              <ScrollReveal delay={0.1}>
-                <div className="glass mx-auto w-full max-w-4xl rounded-panel p-6 sm:p-8">
-                  <h3 className="mb-6 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
-                    Finishing order
-                  </h3>
-                  <Results rows={results.data} />
-                </div>
-              </ScrollReveal>
-            ) : (
-              <SkeletonCard label="Finishing order" className="mx-auto min-h-[400px] w-full max-w-4xl" />
-            )}
+            <div id="tyre-degradation" className="min-w-0 scroll-mt-24">
+              {degradation.data ? (
+                <ScrollReveal delay={0.06}>
+                  <DegradationChart data={degradation.data} />
+                </ScrollReveal>
+              ) : (
+                <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
+              )}
+            </div>
+            <div id="finishing-order" className="min-w-0 scroll-mt-24">
+              {results.data ? (
+                <ScrollReveal delay={0.1}>
+                  <div className="glass mx-auto w-full max-w-4xl rounded-panel p-6 sm:p-8">
+                    <h3 className="mb-6 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
+                      Finishing order
+                    </h3>
+                    <Results rows={results.data} />
+                  </div>
+                </ScrollReveal>
+              ) : (
+                <SkeletonCard label="Finishing order" className="mx-auto min-h-[400px] w-full max-w-4xl" />
+              )}
+            </div>
           </div>
         </SessionGate>
       </section>
