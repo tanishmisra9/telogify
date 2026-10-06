@@ -8,7 +8,7 @@ import type { ResultRow } from '@/lib/api'
 // centers content visually.
 // Driver shows the full name on sm+ and just the 3-letter code on mobile, so the column is
 // narrow there. On sm+ driver and team split the slack (1.2fr/1fr) instead of team hoarding it.
-const GRID = 'grid grid-cols-[2.75rem_3.5rem_1fr_7.5rem_3.5rem_6.5rem] sm:grid-cols-[3.5rem_1.2fr_1fr_8.5rem_4rem_7.5rem]'
+const GRID = 'grid grid-cols-[2.75rem_3.5rem_1fr_7.5rem_4.5rem_6.5rem] sm:grid-cols-[3.5rem_1.2fr_1fr_8.5rem_6rem_7.5rem]'
 const HEAD = 'border-b border-border px-2 pb-2 text-sm font-semibold text-ink'
 
 // Cells touch (no grid gap) with matching horizontal padding instead, so a row's border-top
@@ -24,14 +24,14 @@ export function Results({ rows }: { rows: ResultRow[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <ol className={`${GRID} min-w-[434px] sm:min-w-[554px]`} aria-label="Finishing order">
+      <ol className={`${GRID} min-w-[450px] sm:min-w-[586px]`} aria-label="Finishing order">
         <li className="contents" aria-hidden>
           <span className={HEAD} />
-          <span className={HEAD}>Driver</span>
-          <span className={HEAD}>Team</span>
-          <span className={HEAD}>Tyres</span>
-          <span className={`${HEAD} text-right`}>Pts</span>
-          <span className={`${HEAD} text-right`}>Time</span>
+          <span className={HEAD} />
+          <span className={HEAD} />
+          <span className={`${HEAD} text-center`}>Tyres</span>
+          <span className={`${HEAD} text-center`}>Pts</span>
+          <span className={`${HEAD} text-center`}>Time</span>
         </li>
         {rows.map((r, i) => {
           const b = i > 0 ? 'border-t border-border' : ''
@@ -44,9 +44,9 @@ export function Results({ rows }: { rows: ResultRow[] }) {
                 <span className="block font-display text-sm font-medium text-ink sm:hidden">{r.driver}</span>
               </span>
               <span className={`px-2 py-3 text-sm text-ink ${b}`} style={cell}>{r.constructor}</span>
-              <span className={`num px-2 py-3 text-sm tracking-wide text-ink ${b}`} style={cell}>{r.strategy}</span>
-              <span className={`num px-2 py-3 text-right text-sm font-medium text-ink ${b}`} style={cell}>{r.points > 0 ? r.points : ''}</span>
-              <span className={`num px-2 py-3 text-right text-sm text-ink ${b}`} style={cell}>{r.gap_label}</span>
+              <span className={`num px-2 py-3 text-center text-sm tracking-wide text-ink ${b}`} style={cell}>{r.strategy}</span>
+              <span className={`num px-2 py-3 text-center text-sm font-medium text-ink ${b}`} style={cell}>{r.points > 0 ? r.points : ''}</span>
+              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell}>{r.gap_label}</span>
             </li>
           )
         })}
