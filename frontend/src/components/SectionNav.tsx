@@ -61,7 +61,7 @@ export function SectionNav({ sections }: { sections: NavSection[] }) {
         onClick={() => sections[activeIndex - 1] && jump(sections[activeIndex - 1].id)}
         disabled={activeIndex <= 0}
         aria-label="Previous section"
-        className="text-muted transition-colors hover:text-ink disabled:opacity-20"
+        className="-m-3 rounded-full p-3 text-muted transition-[color,background-color,opacity] enabled:hover:bg-accent/10 enabled:hover:text-accent enabled:active:bg-accent/20 disabled:pointer-events-none disabled:opacity-0"
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="m18 15-6-6-6 6" />
@@ -91,7 +91,7 @@ export function SectionNav({ sections }: { sections: NavSection[] }) {
         onClick={() => sections[activeIndex + 1] && jump(sections[activeIndex + 1].id)}
         disabled={activeIndex >= sections.length - 1}
         aria-label="Next section"
-        className="text-muted transition-colors hover:text-ink disabled:opacity-20"
+        className="-m-3 rounded-full p-3 text-muted transition-[color,background-color,opacity] enabled:hover:bg-accent/10 enabled:hover:text-accent enabled:active:bg-accent/20 disabled:pointer-events-none disabled:opacity-0"
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="m6 9 6 6 6-6" />
