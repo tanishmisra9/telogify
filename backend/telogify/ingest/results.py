@@ -21,6 +21,34 @@ _RACE_LIKE = {"Race", "Sprint"}
 _QUALI_LIKE = {"Qualifying", "Sprint Qualifying", "Sprint Shootout"}
 
 
+def requires_complete_results(session_name: str) -> bool:
+    """Whether ingest must wait for a complete results table before storing this session.
+    Race-like only: quali-like results derive from laps FastF1 loads itself (the results service
+    has no Sprint Qualifying), so a results-only probe can't vouch for them."""
+    return session_name in _RACE_LIKE
+
+
+def race_results_complete(res: pd.DataFrame | None) -> bool:
+    """Whether a race-like `session.results` carries what the finishing order needs.
+
+    FastF1 builds results from F1-API driver info (identity only) and an Ergast-compatible
+    results service (Position/Time/Laps/Status); when that service is empty or failing, the
+    failure is swallowed and the table silently degrades to driver info with NaN
+    Time/Laps/Status and positions that ignore post-race classification. Complete means: the
+    P1 row has its total race `Time`, and at least half the rows carry a non-empty `Status`
+    (the degraded table has none; a few blanks in a complete one are tolerated so a single
+    odd row can't block ingest forever)."""
+    if res is None or len(res) == 0:
+        return False
+    if not {"Position", "Time", "Status"} <= set(res.columns):
+        return False
+    winner = res[res["Position"] == 1]
+    if len(winner) == 0 or pd.isna(winner.iloc[0]["Time"]):
+        return False
+    status = res["Status"].fillna("").astype(str).str.strip()
+    return bool((status != "").mean() >= 0.5)
+
+
 @dataclass
 class ResultRow:
     position: int | None

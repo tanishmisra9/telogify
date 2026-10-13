@@ -234,6 +234,68 @@ def test_regen_insights_force_regenerates_already_persisted(db_session, monkeypa
     assert state["quali_insight_count"] == 2
 
 
+def test_regen_insights_only_race_leaves_the_other_batches_untouched(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from sqlmodel import select
+
+    from telogify.models import Insight, QualiInsight, RaceWeekend
+    from telogify.models import Session as SessionModel
+
+    wk = RaceWeekend(year=2025, round=17, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    for code in ("Q", "SQ", "R"):
+        db_session.add(SessionModel(weekend_id=wk.id, session_type=code, status="loaded"))
+    db_session.add(Insight(weekend_id=wk.id, slot=1, header="old race", explanation_web="W", explanation_email="E"))
+    db_session.add(QualiInsight(weekend_id=wk.id, slot=1, session_type="Q", team="T", header="old quali", explanation_web="QW", explanation_email="QE"))
+    db_session.add(QualiInsight(weekend_id=wk.id, slot=1, session_type="SQ", team="T", header="old sprint quali", explanation_web="QW", explanation_email="QE"))
+    db_session.commit()
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: [])
+
+    calls = []
+    state = pipeline.regen_insights(
+        2025,
+        17,
+        agent_runner=lambda y, r, feedback=None: calls.append("race") or _fake_messages(_GOOD_INSIGHTS),
+        quali_agent_runner=lambda y, r, feedback=None: calls.append("quali") or _fake_messages(_GOOD_QUALI_INSIGHTS),
+        sprint_quali_agent_runner=lambda y, r, feedback=None: calls.append("sq") or _fake_messages(_GOOD_QUALI_INSIGHTS),
+        force=True,
+        only="race",
+    )
+
+    assert calls == ["race"]
+    assert state["insight_count"] == 3 and "quali_insight_count" not in state
+    headers = {q.header for q in db_session.exec(select(QualiInsight)).all()}
+    assert headers == {"old quali", "old sprint quali"}  # untouched
+    assert {i.header for i in db_session.exec(select(Insight)).all()} == {"H1", "H2", "H3"}
+
+
+def test_regen_insights_only_errors_when_that_batchs_session_was_never_ingested(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    from telogify.models import RaceWeekend
+    from telogify.models import Session as SessionModel
+
+    wk = RaceWeekend(year=2025, round=18, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    db_session.add(SessionModel(weekend_id=wk.id, session_type="Q", status="loaded"))  # no R
+    db_session.commit()
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: pytest.fail("no work expected"))
+
+    with pytest.raises(RuntimeError, match="--only race has nothing to regenerate"):
+        pipeline.regen_insights(2025, 18, force=True, only="race")
+
+
+def test_regen_insights_rejects_an_unknown_only_before_any_work(db_session, monkeypatch):
+    monkeypatch.setattr(pipeline, "compute_candidates", lambda wid, db: pytest.fail("no work expected"))
+    with pytest.raises(ValueError, match="only must be one of"):
+        pipeline.regen_insights(2025, 17, force=True, only="bogus")
+
+
 def test_regen_insights_errors_without_ingested_weekend(db_session, monkeypatch):
     monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
     monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
@@ -378,6 +440,7 @@ def test_ingest_returns_session_types(db_session, monkeypatch):
     class _FakeData:
         weekend = wk
         sessions = {"FP2": object(), "FP1": object(), "Q": object()}
+        held_back = ["R"]
 
     monkeypatch.setattr(pipeline, "load_weekend", lambda year, round, db, force=False: _FakeData())
     for name in (
@@ -392,6 +455,7 @@ def test_ingest_returns_session_types(db_session, monkeypatch):
         "weekend_id": wk.id,
         "session_types": ["FP1", "FP2", "Q"],
         "new_session_types": ["FP1", "FP2", "Q"],
+        "held_back": ["R"],
     }
 
 
@@ -953,6 +1017,213 @@ def test_run_ingest_returns_merged_state(monkeypatch):
     monkeypatch.setattr(pipeline, "_ingest", lambda s: {"weekend_id": 5, "session_types": ["R"]})
     result = pipeline.run_ingest(2025, 11)
     assert result == {"year": 2025, "round": 11, "force": True, "weekend_id": 5, "session_types": ["R"]}
+
+
+def _official_race_results(*, complete: bool):
+    """FastF1's race results for the Bahrain-like case: stored rows have LEC at P17, the
+    official classification has him P4. `complete=False` is the degraded position-only table."""
+    import pandas as pd
+
+    if not complete:
+        return pd.DataFrame(
+            {
+                "Position": [1.0, 2.0, 3.0],
+                "Abbreviation": ["VER", "LEC", "HAM"],
+                "TeamName": ["Red Bull Racing", "Ferrari", "Ferrari"],
+                "Time": [pd.NaT] * 3,
+                "Laps": [float("nan")] * 3,
+                "Status": [None] * 3,
+            }
+        )
+    return pd.DataFrame(
+        {
+            "Position": [1.0, 4.0, 17.0],
+            "Abbreviation": ["VER", "LEC", "HAM"],
+            "TeamName": ["Red Bull Racing", "Ferrari", "Ferrari"],
+            "Time": [pd.Timedelta(hours=1, minutes=42, seconds=0.785), pd.Timedelta(seconds=7.335), pd.Timedelta(seconds=90)],
+            "Laps": [62.0, 62.0, 61.0],
+            "Status": ["Finished", "Finished", "Lapped"],
+        }
+    )
+
+
+def _degraded_stored_race(db_session):
+    from telogify.models import RaceWeekend, SessionResult
+    from telogify.models import Session as SessionModel
+
+    wk = RaceWeekend(year=2026, round=16, circuit_name="X", country="Y", event_name="Bahrain GP")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionModel(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    for driver, position in (("VER", 1), ("HAM", 4), ("LEC", 17)):
+        db_session.add(
+            SessionResult(
+                session_id=race.id, position=position, driver=driver, constructor="T",
+                gap_to_leader=0.0 if position == 1 else None,
+            )
+        )
+    db_session.commit()
+    # An id, not the row: run_refresh_results' `with Session(...)` closes the (shared, patched)
+    # test session, which detaches the row object.
+    return race.id
+
+
+def _wire_refresh(monkeypatch, db_session, results, *, fetched=None):
+    import types
+
+    import pandas as pd
+
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    monkeypatch.setattr(pipeline, "enable_cache", lambda: None)
+    monkeypatch.setattr(pipeline.fastf1, "get_event", lambda y, r: pd.Series({"Session1": "Race"}))
+
+    def get_session(y, r, name):
+        if fetched is not None:
+            fetched.append(name)
+        return types.SimpleNamespace(name="Race", load=lambda **k: None, results=results)
+
+    monkeypatch.setattr(pipeline.fastf1, "get_session", get_session)
+
+
+def _stored_by_driver(db_session, race_id):
+    from sqlmodel import select
+
+    from telogify.models import SessionResult
+
+    rows = db_session.exec(select(SessionResult).where(SessionResult.session_id == race_id)).all()
+    return {r.driver: r for r in rows}
+
+
+def test_run_refresh_results_repairs_positions_times_and_status(db_session, monkeypatch):
+    race = _degraded_stored_race(db_session)
+    _wire_refresh(monkeypatch, db_session, _official_race_results(complete=True))
+
+    outcomes = pipeline.run_refresh_results(2026, 16)
+
+    assert [(o.code, o.refreshed, o.detail) for o in outcomes] == [("R", True, "rewritten")]
+    assert sorted(outcomes[0].changes) == ["HAM P4 -> P17", "LEC P17 -> P4"]
+    stored = _stored_by_driver(db_session, race)
+    assert stored["LEC"].position == 4 and stored["HAM"].position == 17
+    assert stored["VER"].total_time_s == pytest.approx(6120.785)
+    assert stored["HAM"].status == "Lapped" and stored["HAM"].laps == 61.0
+    assert stored["LEC"].gap_to_leader == pytest.approx(7.335)
+
+
+def test_run_refresh_results_dry_run_writes_nothing(db_session, monkeypatch):
+    race = _degraded_stored_race(db_session)
+    _wire_refresh(monkeypatch, db_session, _official_race_results(complete=True))
+
+    outcomes = pipeline.run_refresh_results(2026, 16, dry_run=True)
+
+    assert outcomes[0].detail == "would rewrite" and "LEC P17 -> P4" in outcomes[0].changes
+    stored = _stored_by_driver(db_session, race)
+    assert stored["LEC"].position == 17 and stored["VER"].total_time_s is None
+
+
+def test_run_refresh_results_never_overwrites_with_an_incomplete_upstream_table(db_session, monkeypatch):
+    race = _degraded_stored_race(db_session)
+    _wire_refresh(monkeypatch, db_session, _official_race_results(complete=False))
+
+    outcomes = pipeline.run_refresh_results(2026, 16)
+
+    assert [(o.refreshed, "incomplete" in o.detail) for o in outcomes] == [(False, True)]
+    assert _stored_by_driver(db_session, race)["LEC"].position == 17
+
+
+def test_run_refresh_results_skips_sessions_that_were_never_ingested(db_session, monkeypatch):
+    from telogify.models import RaceWeekend
+
+    db_session.add(RaceWeekend(year=2026, round=16, circuit_name="X", country="Y", event_name="Z"))
+    db_session.commit()
+    fetched: list[str] = []
+    _wire_refresh(monkeypatch, db_session, _official_race_results(complete=True), fetched=fetched)
+
+    assert pipeline.run_refresh_results(2026, 16) == []
+    assert fetched == []  # no FastF1 fetch for a session we never ingested
+
+
+def test_run_refresh_results_fetches_everything_before_writing_anything(db_session, monkeypatch):
+    """Sprint weekend: if fetching the Race fails after the Sprint was fetched fine, nothing may
+    have been written -- no half-repaired round."""
+    import types
+
+    import pandas as pd
+
+    from telogify.models import RaceWeekend, SessionResult
+    from telogify.models import Session as SessionModel
+
+    wk = RaceWeekend(year=2026, round=17, circuit_name="X", country="Y", event_name="Singapore GP")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    sprint = SessionModel(weekend_id=wk.id, session_type="SPRINT", status="loaded")
+    race = SessionModel(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(sprint)
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(sprint)
+    sprint_id = sprint.id
+    db_session.add(SessionResult(session_id=sprint_id, position=19, driver="HAD", constructor="T"))
+    db_session.commit()
+
+    monkeypatch.setattr(pipeline, "engine", db_session.get_bind())
+    monkeypatch.setattr(pipeline, "Session", lambda *_a, **_k: db_session)
+    monkeypatch.setattr(pipeline, "enable_cache", lambda: None)
+    monkeypatch.setattr(
+        pipeline.fastf1, "get_event", lambda y, r: pd.Series({"Session1": "Sprint", "Session2": "Race"})
+    )
+
+    def boom(**kwargs):
+        raise ConnectionError("results service unreachable")
+
+    sessions = {
+        "Sprint": types.SimpleNamespace(name="Sprint", load=lambda **k: None, results=_official_race_results(complete=True)),
+        "Race": types.SimpleNamespace(name="Race", load=boom, results=None),
+    }
+    monkeypatch.setattr(pipeline.fastf1, "get_session", lambda y, r, name: sessions[name])
+
+    with pytest.raises(ConnectionError):
+        pipeline.run_refresh_results(2026, 17)
+
+    assert _stored_by_driver(db_session, sprint_id)["HAD"].position == 19  # sprint untouched
+    assert set(_stored_by_driver(db_session, sprint_id)) == {"HAD"}
+
+
+def test_run_refresh_results_errors_without_an_ingested_weekend(db_session, monkeypatch):
+    _wire_refresh(monkeypatch, db_session, _official_race_results(complete=True))
+    # The cheap local check comes first: no FastF1 network call for a round we never ingested.
+    monkeypatch.setattr(pipeline.fastf1, "get_event", lambda *a: pytest.fail("network before local check"))
+    with pytest.raises(RuntimeError, match="No ingested weekend"):
+        pipeline.run_refresh_results(2026, 16)
+
+
+def test_run_refresh_results_dry_run_diff_shows_added_and_removed_drivers(db_session, monkeypatch):
+    import pandas as pd
+
+    _degraded_stored_race(db_session)  # stores VER P1, HAM P4, LEC P17
+    official = pd.DataFrame(
+        {
+            "Position": [1.0, 2.0, 17.0],
+            "Abbreviation": ["VER", "NOR", "LEC"],  # NOR is new; HAM is gone
+            "TeamName": ["Red Bull Racing", "McLaren", "Ferrari"],
+            "Time": [pd.Timedelta(hours=1), pd.Timedelta(seconds=5), pd.Timedelta(seconds=9)],
+            "Laps": [62.0, 62.0, 62.0],
+            "Status": ["Finished", "Finished", "Finished"],
+        }
+    )
+    _wire_refresh(monkeypatch, db_session, official)
+
+    changes = pipeline.run_refresh_results(2026, 16, dry_run=True)[0].changes
+
+    # store_results rewrites the whole session, so the preview must show both directions.
+    assert "NOR (not stored) -> P2" in changes
+    assert "HAM P4 -> (not in official results)" in changes
+    assert not any("PNone" in c for c in changes)
 
 
 def test_season_rounds_uses_fetched_schedule(monkeypatch):

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypedDict
 
+import fastf1
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from sqlmodel import Session, select
@@ -42,19 +43,28 @@ from telogify.analysis.schedule import completed_rounds, fetch_season_schedule
 from telogify.analysis.season import build_season_accel_scatter
 from telogify.db import engine
 from telogify.ingest.accel_samples import store_accel_samples
-from telogify.ingest.loader import load_weekend
+from telogify.ingest.fastf1_cache import enable_cache
+from telogify.ingest.loader import WeekendData, list_weekend_sessions, load_weekend
 from telogify.ingest.quali_character import store_quali_character
 from telogify.ingest.quali_trace import store_quali_traces
 from telogify.ingest.deployment import store_deployment
 from telogify.ingest.race_control import store_race_control
-from telogify.ingest.results import store_results
+from telogify.ingest.results import (
+    extract_results,
+    race_results_complete,
+    requires_complete_results,
+    store_results,
+)
 from telogify.ingest.sectors import store_sector_bests
 from telogify.ingest.stints import store_stints
 from telogify.ingest.straights import store_straights
-from telogify.models import Insight, QualiInsight
+from telogify.models import Insight, QualiInsight, RaceWeekend, SessionResult
 from telogify.models import Session as SessionModel
 
 logger = logging.getLogger("telogify.insights")
+
+REGEN_BATCHES = ("race", "quali", "sprint-quali")
+_REGEN_SESSION = {"race": "R", "quali": "Q", "sprint-quali": "SQ"}
 
 
 class PipelineState(TypedDict, total=False):
@@ -63,6 +73,7 @@ class PipelineState(TypedDict, total=False):
     weekend_id: int
     session_types: list[str]
     new_session_types: list[str]
+    held_back: list[str]
     force: bool
     insight_count: int
     quali_insight_count: int
@@ -93,6 +104,7 @@ def _ingest(state: PipelineState) -> dict:
             "weekend_id": data.weekend.id,
             "session_types": sorted(session_types),
             "new_session_types": sorted(data.sessions),
+            "held_back": sorted(data.held_back),
         }
 
 
@@ -407,6 +419,82 @@ def run_ingest(year: int, round: int) -> PipelineState:
 
 
 @dataclass
+class RefreshOutcome:
+    code: str
+    refreshed: bool  # rows were (or, in a dry run, would be) rewritten
+    detail: str
+    changes: list[str] = field(default_factory=list)  # e.g. "LEC P17 -> P4"
+
+
+def _position_changes(db: Session, weekend_id: int, code: str, new_rows) -> list[str]:
+    session_id = db.exec(
+        select(SessionModel.id).where(
+            SessionModel.weekend_id == weekend_id, SessionModel.session_type == code
+        )
+    ).first()
+    stored = {
+        r.driver: r.position
+        for r in db.exec(select(SessionResult).where(SessionResult.session_id == session_id)).all()
+    }
+    new = {r.driver: r.position for r in new_rows}
+    # Both directions: store_results rewrites the whole session, so a dry run must also show a
+    # stored driver that is absent from the official table (it would disappear).
+    changes = [
+        f"{d} P{stored[d]} -> P{p}" if d in stored else f"{d} (not stored) -> P{p}"
+        for d, p in new.items()
+        if d not in stored or stored[d] != p
+    ]
+    changes += [f"{d} P{p} -> (not in official results)" for d, p in stored.items() if d not in new]
+    return changes
+
+
+def run_refresh_results(year: int, round: int, dry_run: bool = False) -> list[RefreshOutcome]:
+    """Results-only repair for a round whose race was ingested from FastF1's degraded results
+    (position-only, ignoring post-race classification; see loader._results_ready). Re-fetches
+    just each already-ingested race-like session's results and rewrites only its SessionResult
+    rows -- unlike `run_ingest`, which force re-runs every extractor and could silently shift
+    data that published insights were built from. An upstream table that is still incomplete is
+    never written (it would just replace one degraded copy with another). Fails loud (no
+    swallowing): this is a manual tool, not the unattended poll. Two phases: every network
+    fetch and extraction happens before the first write, so a failure on a later session of a
+    sprint weekend can't leave an earlier one already rewritten."""
+    outcomes: list[RefreshOutcome] = []
+    with Session(engine) as db:
+        weekend_id = _weekend_id(db, year, round)
+        if weekend_id is None:
+            raise RuntimeError(f"No ingested weekend for {year} round {round}. Run run-weekend first.")
+        # After the cheap local check above, so an un-ingested round fails fast without a
+        # network call.
+        enable_cache()
+        event = fastf1.get_event(year, round)
+        weekend = db.get(RaceWeekend, weekend_id)
+        ingested = _ingested_session_types(db, weekend_id)
+        # Phase 1: fetch + extract everything (no writes). ses is None for an incomplete table.
+        plan: list[tuple[str, object, list[str]]] = []
+        for code, name in list_weekend_sessions(event):
+            if code not in ingested or not requires_complete_results(name):
+                continue
+            ses = fastf1.get_session(year, round, name)
+            ses.load(laps=False, telemetry=False, weather=False, messages=False)
+            if not race_results_complete(ses.results):
+                plan.append((code, None, []))
+                continue
+            plan.append((code, ses, _position_changes(db, weekend_id, code, extract_results(ses))))        # Phase 2: write.
+        for code, ses, changes in plan:
+            if ses is None:
+                outcomes.append(
+                    RefreshOutcome(code, False, "upstream results still incomplete; nothing written")
+                )
+                continue
+            if not dry_run:
+                store_results(WeekendData(weekend=weekend, sessions={code: ses}), db)
+            outcomes.append(
+                RefreshOutcome(code, True, "would rewrite" if dry_run else "rewritten", changes)
+            )
+    return outcomes
+
+
+@dataclass
 class RoundResult:
     round: int
     ok: bool
@@ -547,6 +635,7 @@ def regen_insights(
     quali_agent_runner=None,
     force: bool = False,
     sprint_quali_agent_runner=None,
+    only: str | None = None,
 ) -> dict:
     """Regenerate whichever of the 3 race insights / 2 qualifying insights / 2 sprint
     qualifying insights the ingested data supports, from already-ingested data: recompute
@@ -564,7 +653,13 @@ def regen_insights(
 
     Each batch also skips regenerating (no LLM call at all) if it's already persisted, unless
     `force` -- same cron-safety reasoning as run_weekend's default: a recurring caller shouldn't
-    re-spend an LLM call every tick for a round that hasn't changed since it was last generated."""
+    re-spend an LLM call every tick for a round that hasn't changed since it was last generated.
+
+    `only` ("race" | "quali" | "sprint-quali") restricts regeneration to that one batch, so
+    `force=True, only="race"` redoes the race insights without also re-spending on (and
+    replacing) qualifying batches that were never wrong."""
+    if only is not None and only not in REGEN_BATCHES:
+        raise ValueError(f"only must be one of {REGEN_BATCHES}, got {only!r}")
     runner = agent_runner or _default_agent_runner
     quali_runner = quali_agent_runner or _default_quali_agent_runner
     sprint_quali_runner = sprint_quali_agent_runner or _default_sprint_quali_agent_runner
@@ -581,6 +676,12 @@ def regen_insights(
                 "nothing to regenerate insights from. Run run-weekend once a session has "
                 "completed."
             )
+        if only is not None and _REGEN_SESSION[only] not in session_types:
+            # An explicit request that can't run is an error, not a quiet "persisted 0".
+            raise RuntimeError(
+                f"{year} round {round} has no {_REGEN_SESSION[only]} session ingested, so "
+                f"--only {only} has nothing to regenerate."
+            )
         compute_candidates(weekend_id, db)
         needs_race = force or not _has_existing(db, weekend_id, Insight)
         needs_quali = force or not _has_existing(db, weekend_id, QualiInsight, session_type="Q")
@@ -589,10 +690,10 @@ def regen_insights(
         )
     state: PipelineState = {"year": year, "round": round, "weekend_id": weekend_id}
     result: dict = {"session_types": sorted(session_types)}
-    if "R" in session_types and needs_race:
+    if "R" in session_types and needs_race and only in (None, "race"):
         result.update(_insights(state, runner))
-    if "Q" in session_types and needs_quali:
+    if "Q" in session_types and needs_quali and only in (None, "quali"):
         result.update(_quali_insights(state, quali_runner))
-    if "SQ" in session_types and needs_sprint_quali:
+    if "SQ" in session_types and needs_sprint_quali and only in (None, "sprint-quali"):
         result.update(_sprint_quali_insights(state, sprint_quali_runner))
     return result

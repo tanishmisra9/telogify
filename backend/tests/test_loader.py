@@ -11,11 +11,41 @@ from telogify.models import RaceWeekend, Session
 BASE = datetime(2026, 7, 18, 12, 0, 0)
 
 
-def _healthy_session() -> types.SimpleNamespace:
+def _complete_results() -> pd.DataFrame:
+    """The shape of a complete FastF1 race results table: winner has its total `Time`, every
+    row has a `Status`."""
+    return pd.DataFrame(
+        {
+            "Position": [1.0, 2.0, 3.0],
+            "Time": [pd.Timedelta(hours=1, minutes=42), pd.Timedelta(seconds=7), pd.Timedelta(seconds=24)],
+            "Status": ["Finished", "Finished", "Lapped"],
+        }
+    )
+
+
+def _degraded_results() -> pd.DataFrame:
+    """FastF1's fallback when the results service is empty/failing: positions present, but no
+    Time/Status (the table stored for 2026 rounds 11/13/14/16/17)."""
+    return pd.DataFrame(
+        {
+            "Position": [1.0, 2.0, 3.0],
+            "Time": [pd.NaT, pd.NaT, pd.NaT],
+            "Status": [None, None, None],
+        }
+    )
+
+
+def _healthy_session(results: pd.DataFrame | None = None) -> types.SimpleNamespace:
     """A fake FastF1 session that clears `_has_usable_data`'s probes, for tests exercising
-    date-gating/force logic rather than the completeness check itself."""
+    date-gating/force logic rather than the completeness check itself. `results` defaults to a
+    complete table so a Race-named session also clears the results gate."""
     laps = pd.DataFrame({"DriverNumber": [str(i) for i in range(loader._MIN_DRIVERS)]})
-    return types.SimpleNamespace(load=lambda *a, **k: None, laps=laps, car_data={"1": object()})
+    return types.SimpleNamespace(
+        load=lambda *a, **k: None,
+        laps=laps,
+        car_data={"1": object()},
+        results=_complete_results() if results is None else results,
+    )
 
 
 def _dated_event(**sessions: str) -> pd.Series:
@@ -248,7 +278,8 @@ def test_load_weekend_skips_already_ingested_sessions(db_session, monkeypatch):
     # newly-completed sessions should be (re)fetched.
     fetched.clear()
     data = loader.load_weekend(2025, 11, db_session, now=BASE)
-    assert fetched == ["Practice 3", "Qualifying", "Race"]
+    # Race is fetched twice: the cheap results probe, then the full load.
+    assert fetched == ["Practice 3", "Qualifying", "Race", "Race"]
     assert set(data.sessions) == {"FP3", "Q", "R"}
     types_present = {s.session_type for s in db_session.exec(select(Session)).all()}
     assert types_present == {"FP1", "FP2", "FP3", "Q", "R"}
@@ -380,3 +411,119 @@ def test_load_weekend_force_bypasses_completeness_gate(db_session, monkeypatch):
     assert set(data.sessions) == {"FP1"}
     types_present = {s.session_type for s in db_session.exec(select(Session)).all()}
     assert types_present == {"FP1"}
+
+
+class _StagedSession:
+    """A fake FastF1 session whose `results` differs between the results-only probe
+    (`load(laps=False, ...)`) and the full load, and which records every load call, so the
+    results gate's two stages can be told apart."""
+
+    def __init__(self, name, probe_results, full_results, log, probe_raises=False):
+        self.name = name
+        self._probe, self._full, self._log = probe_results, full_results, log
+        self._probe_raises = probe_raises
+        self._stage = "full"
+        self.laps = pd.DataFrame({"DriverNumber": [str(i) for i in range(loader._MIN_DRIVERS)]})
+        self.car_data = {"1": object()}
+
+    def load(self, **kwargs):
+        self._stage = "probe" if kwargs.get("laps") is False else "full"
+        self._log.append((self.name, self._stage))
+        if self._stage == "probe" and self._probe_raises:
+            raise RuntimeError("results service down")
+
+    @property
+    def results(self):
+        return self._probe if self._stage == "probe" else self._full
+
+
+def _race_weekend_event() -> pd.Series:
+    event = _dated_event(s1="Practice 1", s2="Race")
+    event["EventName"] = "Singapore Grand Prix"
+    event["Country"] = "Singapore"
+    event["Location"] = "Marina Bay"
+    return event
+
+
+def _wire(monkeypatch, event, make_session):
+    monkeypatch.setattr("telogify.ingest.fastf1_cache.enable_cache", lambda: None)
+    monkeypatch.setattr(fastf1, "get_event", lambda y, r: event)
+    monkeypatch.setattr(fastf1, "get_session", make_session)
+
+
+def test_load_weekend_holds_race_until_results_complete(db_session, monkeypatch):
+    """The prod bug: a race whose FastF1 results are the degraded position-only table must NOT
+    be marked loaded (it would then be skipped forever); it's retried once results complete."""
+    log: list = []
+    results = {"now": _degraded_results()}
+    _wire(
+        monkeypatch,
+        _race_weekend_event(),
+        lambda y, r, name: _StagedSession(name, results["now"], results["now"], log),
+    )
+    far_future = BASE + timedelta(days=1)
+
+    data = loader.load_weekend(2025, 11, db_session, now=far_future)
+    assert set(data.sessions) == {"FP1"}
+    assert data.held_back == ["R"]  # surfaced so a manual run can say why nothing was ingested
+    assert {s.session_type for s in db_session.exec(select(Session)).all()} == {"FP1"}
+    # Race got only the cheap results probe, never the full laps+telemetry load; practice is
+    # never probed.
+    assert ("Race", "probe") in log and ("Race", "full") not in log
+    assert ("Practice 1", "probe") not in log and ("Practice 1", "full") in log
+
+    results["now"] = _complete_results()
+    data = loader.load_weekend(2025, 11, db_session, now=far_future)
+    assert set(data.sessions) == {"R"} and data.held_back == []
+    assert {s.session_type for s in db_session.exec(select(Session)).all()} == {"FP1", "R"}
+
+
+def test_load_weekend_holds_race_when_full_load_results_are_degraded(db_session, monkeypatch):
+    # The probe passing is only an early-out: the table that gets STORED is the full load's.
+    log: list = []
+    _wire(
+        monkeypatch,
+        _race_weekend_event(),
+        lambda y, r, name: _StagedSession(name, _complete_results(), _degraded_results(), log),
+    )
+    data = loader.load_weekend(2025, 11, db_session, now=BASE + timedelta(days=1))
+    assert "R" not in data.sessions
+    assert ("Race", "probe") in log and ("Race", "full") in log
+
+
+def test_load_weekend_holds_race_when_results_probe_raises(db_session, monkeypatch):
+    log: list = []
+    _wire(
+        monkeypatch,
+        _race_weekend_event(),
+        lambda y, r, name: _StagedSession(
+            name, _complete_results(), _complete_results(), log, probe_raises=(name == "Race")
+        ),
+    )
+    data = loader.load_weekend(2025, 11, db_session, now=BASE + timedelta(days=1))
+    assert set(data.sessions) == {"FP1"}
+
+
+def test_has_complete_results_logs_why_it_says_no_when_results_are_unreadable(caplog):
+    # A parsing/shape failure must not masquerade as plain "incomplete results" in the logs.
+    class _Broken:
+        @property
+        def results(self):
+            raise ValueError("unexpected column layout")
+
+    with caplog.at_level("WARNING", logger="telogify.ingest"):
+        assert loader._has_complete_results(_Broken()) is False
+    assert "unexpected column layout" in caplog.text
+
+
+def test_load_weekend_force_bypasses_results_gate(db_session, monkeypatch):
+    # Manual escape hatch for a race whose results genuinely never complete.
+    log: list = []
+    _wire(
+        monkeypatch,
+        _race_weekend_event(),
+        lambda y, r, name: _StagedSession(name, _degraded_results(), _degraded_results(), log),
+    )
+    data = loader.load_weekend(2025, 11, db_session, now=BASE + timedelta(days=1), force=True)
+    assert set(data.sessions) == {"FP1", "R"}
+    assert ("Race", "probe") not in log

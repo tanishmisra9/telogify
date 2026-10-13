@@ -21,7 +21,7 @@ from typer.testing import CliRunner
 
 from telogify import cli
 from telogify.analysis.schedule import Event
-from telogify.ingest.loader import _STALE_AFTER
+from telogify.ingest.loader import _POLL_LOOKBACK, _STALE_AFTER
 
 runner = CliRunner()
 
@@ -97,6 +97,37 @@ def test_run_weekend_genuinely_mid_weekend_reports_still_in_progress(monkeypatch
     assert "still in progress" in out
 
 
+def test_run_weekend_reports_a_held_back_race_instead_of_in_progress(monkeypatch):
+    # The race finished but FastF1's results were incomplete, so it was not ingested. That is
+    # neither "Done" with nothing to say nor "still in progress": name it and the override.
+    monkeypatch.setattr(
+        "telogify.pipeline.run_weekend",
+        lambda year, round, force=False: {
+            "insight_count": 0,
+            "quali_insight_count": 0,
+            "session_types": ["FP1", "FP2"],
+            "held_back": ["R"],
+        },
+    )
+    result = runner.invoke(cli.app, ["run-weekend", "2026", "8"])
+    assert result.exit_code == 0
+    out = plain(result.output)
+    assert "Held back: R" in out and "--force" in out
+    # --force would store the incomplete table, so the message must point at the repair command.
+    assert "refresh-results" in out
+    assert "still in progress" not in out
+
+
+def test_run_insights_help_lists_every_regen_batch():
+    # The batch names are spelled out in the --only help text (the CLI imports pipeline lazily,
+    # so it can't build that text from REGEN_BATCHES); this pins the two against drift.
+    from telogify.pipeline import REGEN_BATCHES
+
+    out = re.sub(r"[\s│]+", "", plain(runner.invoke(cli.app, ["run-insights", "--help"]).output))
+    for batch in REGEN_BATCHES:
+        assert batch in out
+
+
 def test_run_weekend_already_done_does_not_report_still_in_progress(monkeypatch):
     # R and Q are both ingested and insights already exist from a prior call, so this call's
     # insights/quali_insights graph nodes short-circuit and never set insight_count/
@@ -142,18 +173,84 @@ def test_run_insights_single_round_passes_force_flag(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "telogify.pipeline.regen_insights",
-        lambda year, round, force=False: calls.append(force) or {"insight_count": 3, "quali_insight_count": 2},
+        lambda year, round, force=False, only=None: calls.append(force)
+        or {"insight_count": 3, "quali_insight_count": 2},
     )
     result = runner.invoke(cli.app, ["run-insights", "2026", "8", "--force"])
     assert result.exit_code == 0
     assert calls == [True]
 
 
+def test_run_insights_only_flag_is_passed_through(monkeypatch):
+    monkeypatch.setattr("telogify.config.configured_llm_label", lambda: "openai / gpt-5.5")
+    calls = []
+    monkeypatch.setattr(
+        "telogify.pipeline.regen_insights",
+        lambda year, round, force=False, only=None: calls.append((force, only))
+        or {"insight_count": 3},
+    )
+    result = runner.invoke(cli.app, ["run-insights", "2026", "11", "--force", "--only", "race"])
+    assert result.exit_code == 0
+    assert calls == [(True, "race")]
+
+
+def test_run_insights_only_rejects_unknown_batch_and_missing_round(monkeypatch):
+    called = []
+    monkeypatch.setattr("telogify.pipeline.regen_insights", lambda *a, **k: called.append(1) or {})
+    bad_batch = runner.invoke(cli.app, ["run-insights", "2026", "11", "--only", "bogus"])
+    no_round = runner.invoke(cli.app, ["run-insights", "2026", "--only", "race"])
+    assert bad_batch.exit_code != 0 and no_round.exit_code != 0
+    assert called == []  # rejected before any LLM work
+
+
+def test_refresh_results_reports_what_changes(monkeypatch):
+    from telogify.pipeline import RefreshOutcome
+
+    monkeypatch.setattr(
+        "telogify.pipeline.run_refresh_results",
+        lambda year, round, dry_run=False: [
+            RefreshOutcome("R", True, "would rewrite" if dry_run else "rewritten", ["LEC P17 -> P4"])
+        ],
+    )
+    result = runner.invoke(cli.app, ["refresh-results", "2026", "16", "--dry-run"])
+    assert result.exit_code == 0
+    out = plain(result.output)
+    assert "would rewrite" in out and "LEC P17 -> P4" in out
+
+
+def test_refresh_results_dry_run_does_not_claim_a_write(monkeypatch):
+    from telogify.pipeline import RefreshOutcome
+
+    monkeypatch.setattr(
+        "telogify.pipeline.run_refresh_results",
+        lambda year, round, dry_run=False: [RefreshOutcome("R", True, "would rewrite" if dry_run else "rewritten")],
+    )
+    dry = plain(runner.invoke(cli.app, ["refresh-results", "2026", "13", "--dry-run"]).output)
+    real = plain(runner.invoke(cli.app, ["refresh-results", "2026", "13"]).output)
+    assert "would be refreshed" in dry and "were refreshed" not in dry
+    assert "were refreshed" in real
+    assert "run-insights" in real and "run-insights" not in dry  # follow-up hint only after a real write
+
+
+def test_refresh_results_says_so_when_upstream_is_still_incomplete(monkeypatch):
+    from telogify.pipeline import RefreshOutcome
+
+    monkeypatch.setattr(
+        "telogify.pipeline.run_refresh_results",
+        lambda year, round, dry_run=False: [
+            RefreshOutcome("R", False, "upstream results still incomplete; nothing written")
+        ],
+    )
+    result = runner.invoke(cli.app, ["refresh-results", "2026", "16"])
+    assert result.exit_code == 0
+    assert "still incomplete" in plain(result.output)
+
+
 def test_run_insights_single_round_reports_counts(monkeypatch):
     monkeypatch.setattr("telogify.config.configured_llm_label", lambda: "openai / gpt-5.5")
     monkeypatch.setattr(
         "telogify.pipeline.regen_insights",
-        lambda year, round, force=False: {"insight_count": 3, "quali_insight_count": 2},
+        lambda year, round, force=False, only=None: {"insight_count": 3, "quali_insight_count": 2},
     )
     result = runner.invoke(cli.app, ["run-insights", "2026", "8"])
     assert result.exit_code == 0
@@ -341,8 +438,62 @@ def test_poll_round_window_includes_race_within_window():
 
 def test_poll_round_window_excludes_stale_race():
     now = datetime(2026, 7, 20, 12, 0)
-    events = (Event(round=12, name="A GP", date=now - _STALE_AFTER - timedelta(minutes=1)),)
+    events = (Event(round=12, name="A GP", date=now - _POLL_LOOKBACK - timedelta(minutes=1)),)
     assert cli._poll_round_window(events, now) == []
+
+
+def test_poll_round_window_keeps_retrying_a_race_past_stale_after():
+    # A race held back by incomplete results (loader._results_ready) must still be polled well
+    # after the old 6h window closed, or the hold-back would silently become "never ingested".
+    now = datetime(2026, 7, 20, 12, 0)
+    events = (
+        Event(round=12, name="A GP", date=now - _STALE_AFTER - timedelta(hours=1)),
+        Event(round=13, name="B GP", date=now - _POLL_LOOKBACK + timedelta(minutes=1)),
+    )
+    assert cli._poll_round_window(events, now) == [12, 13]
+
+
+def test_poll_rounds_only_queries_the_db_when_a_round_is_older_than_stale_after(monkeypatch):
+    monkeypatch.setattr(cli, "_settled_rounds", lambda year: pytest.fail("no DB needed"))
+    now = datetime(2026, 7, 20, 12, 0)
+    events = (Event(round=12, name="A GP", date=now - timedelta(hours=2)),)
+    assert cli._poll_rounds(events, now, 2026) == [12]
+
+
+def test_poll_rounds_keeps_an_old_round_only_while_its_race_is_not_ingested(monkeypatch):
+    now = datetime(2026, 7, 20, 12, 0)
+    events = (
+        Event(round=11, name="Held back GP", date=now - timedelta(hours=12)),
+        Event(round=12, name="Done GP", date=now - timedelta(hours=13)),
+        Event(round=13, name="Fresh GP", date=now - timedelta(hours=1)),
+    )
+    monkeypatch.setattr(cli, "_settled_rounds", lambda year: frozenset({12}))
+    # 11 is >6h old but not settled (held back): still retried. 12 is >6h old and settled:
+    # dropped, so it isn't re-analysed every tick. 13 is fresh: always polled.
+    assert cli._poll_rounds(events, now, 2026) == [11, 13]
+
+
+def test_settled_rounds_waits_for_a_held_back_sprint_even_after_the_race_ingests(db_session, monkeypatch):
+    from telogify.models import RaceWeekend
+    from telogify.models import Session as SessionRow
+
+    monkeypatch.setattr("telogify.db.engine", db_session.get_bind())
+    layouts = {
+        1: ["FP1", "FP2", "FP3", "Q", "R"],  # normal weekend, done
+        2: ["FP1", "SQ", "Q", "R"],  # sprint weekend, Sprint held back: NOT settled
+        3: ["FP1", "SQ", "SPRINT", "Q", "R"],  # sprint weekend, all in: settled
+        4: ["FP1", "FP2", "FP3", "Q"],  # race not ingested yet: not settled
+    }
+    for rnd, codes in layouts.items():
+        wk = RaceWeekend(year=2026, round=rnd, circuit_name="X", country="Y", event_name=f"R{rnd}")
+        db_session.add(wk)
+        db_session.commit()
+        db_session.refresh(wk)
+        for code in codes:
+            db_session.add(SessionRow(weekend_id=wk.id, session_type=code, status="loaded"))
+    db_session.commit()
+
+    assert cli._settled_rounds(2026) == frozenset({1, 3})
 
 
 def test_poll_round_window_excludes_far_future_race():

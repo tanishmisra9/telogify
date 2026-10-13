@@ -11,6 +11,8 @@ from telogify.ingest.results import (
     laps_down,
     points_for_session,
     race_points,
+    race_results_complete,
+    requires_complete_results,
     sprint_points,
     strategy_string,
 )
@@ -239,3 +241,55 @@ def test_store_results_persists_rows_and_skips_unmatched_session(db_session):
     store_results(data, db_session)
     stored_again = db_session.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all()
     assert len(stored_again) == 1
+
+
+def _race_frame(*, winner_time, statuses, positions=None):
+    n = len(statuses)
+    return pd.DataFrame(
+        {
+            "Position": positions if positions is not None else [float(i + 1) for i in range(n)],
+            "Time": [winner_time] + [pd.Timedelta(seconds=5 * i) for i in range(1, n)],
+            "Status": statuses,
+        }
+    )
+
+
+def test_race_results_complete_accepts_a_full_table():
+    res = _race_frame(
+        winner_time=pd.Timedelta(hours=1, minutes=42), statuses=["Finished", "Finished", "Lapped", "Retired"]
+    )
+    assert race_results_complete(res) is True
+
+
+def test_race_results_complete_rejects_the_degraded_table_stored_on_prod():
+    # Position-only fallback: no winner Time, no Status at all (NaN and None both occur).
+    res = _race_frame(winner_time=pd.NaT, statuses=[None, float("nan"), "", None])
+    assert race_results_complete(res) is False
+
+
+def test_race_results_complete_needs_both_winner_time_and_status():
+    statuses = ["Finished"] * 4
+    assert race_results_complete(_race_frame(winner_time=pd.NaT, statuses=statuses)) is False
+    res = _race_frame(winner_time=pd.Timedelta(hours=1), statuses=[None] * 4)
+    assert race_results_complete(res) is False
+
+
+def test_race_results_complete_tolerates_a_few_blank_statuses_but_not_most():
+    t = pd.Timedelta(hours=1)
+    assert race_results_complete(_race_frame(winner_time=t, statuses=["Finished", "Finished", "Lapped", ""])) is True
+    assert race_results_complete(_race_frame(winner_time=t, statuses=["Finished", "", "", ""])) is False
+
+
+def test_race_results_complete_rejects_missing_winner_row_empty_and_none():
+    t = pd.Timedelta(hours=1)
+    no_p1 = _race_frame(winner_time=t, statuses=["Finished"] * 3, positions=[2.0, 3.0, float("nan")])
+    assert race_results_complete(no_p1) is False
+    assert race_results_complete(pd.DataFrame()) is False
+    assert race_results_complete(None) is False
+    assert race_results_complete(pd.DataFrame({"Position": [1.0]})) is False  # columns absent
+
+
+def test_requires_complete_results_is_race_like_only():
+    assert requires_complete_results("Race") and requires_complete_results("Sprint")
+    for name in ("Practice 1", "Qualifying", "Sprint Qualifying", "Sprint Shootout"):
+        assert not requires_complete_results(name)

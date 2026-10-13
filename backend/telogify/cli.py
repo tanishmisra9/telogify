@@ -170,7 +170,18 @@ def _report_insights_done(state: dict, elapsed: str) -> None:
     # never set -- not a sign anything is actually pending). Only genuinely "still in
     # progress" once none of R/Q/SQ -- the sessions that gate generation -- has been ingested
     # at all.
-    if (
+    held_back = state.get("held_back")
+    if held_back:
+        # A finished session that was deliberately not ingested (FastF1's results incomplete),
+        # which "still in progress" would misdescribe: say what happened and how to override.
+        console.print(
+            f"[yellow]Held back: {', '.join(held_back)}[/yellow] finished, but FastF1's results "
+            "are incomplete, so it was not ingested (nothing generated from it). The poll retries "
+            "automatically. --force would ingest the incomplete table anyway (wrong finishing "
+            "order, and it re-runs everything); if you do, repair it afterwards with "
+            "`refresh-results` once FastF1 has the full results."
+        )
+    elif (
         insight_count == 0
         and quali_insight_count == 0
         and sprint_quali_insight_count == 0
@@ -252,13 +263,13 @@ def _maybe_send_digest(year: int, round: int, state: dict) -> None:
     console.print(f"  [green]✓[/green] digest auto-sent to {sent} subscriber(s)")
 
 
-def _run_insights_one(year: int, round: int, force: bool = False) -> None:
+def _run_insights_one(year: int, round: int, force: bool = False, only: str | None = None) -> None:
     from telogify.pipeline import regen_insights
 
     _echo_llm_model()
     started = time.monotonic()
     with console.status(f"[bold cyan]Regenerating insights for {year} round {round}...[/bold cyan]"):
-        state = regen_insights(year, round, force=force)
+        state = regen_insights(year, round, force=force, only=only)
     elapsed = _format_elapsed(time.monotonic() - started)
     _report_insights_done(state, elapsed)
 
@@ -323,15 +334,61 @@ def _resolve_poll_year(year: int | None, now: datetime) -> int:
 
 
 def _poll_round_window(events, now: datetime) -> list[int]:
-    """Round numbers whose race date falls within [`now` - _STALE_AFTER, `now` + 3 days] --
+    """Round numbers whose race date falls within [`now` - _POLL_LOOKBACK, `now` + 3 days] --
     normally one round, occasionally two near back-to-backs. Mirrors
     analysis.schedule.completed_rounds's shape (pure, datetime-only) so it's testable offline
-    against a stubbed schedule, no network."""
-    from telogify.ingest.loader import _STALE_AFTER
+    against a stubbed schedule, no network. This is the OUTER window, wide enough for a race held
+    back by incomplete results (see loader._results_ready) to keep being retried for many ticks;
+    `_poll_rounds` is what `poll` actually uses and narrows it for already-ingested rounds."""
+    from telogify.ingest.loader import _POLL_LOOKBACK
 
-    window_start = now - _STALE_AFTER
+    window_start = now - _POLL_LOOKBACK
     window_end = now + timedelta(days=3)
     return sorted(e.round for e in events if e.round > 0 and window_start <= e.date <= window_end)
+
+
+def _settled_rounds(year: int) -> frozenset[int]:
+    """Rounds with nothing left for the poll to retry: the race is ingested and, on a sprint
+    weekend (identified by Sprint Qualifying, which is never held back), so is the Sprint. A
+    Sprint held back for incomplete results must keep its round in the poll window even after
+    the Sunday race has ingested."""
+    from collections import defaultdict
+
+    from sqlmodel import Session, select
+
+    from telogify.db import engine
+    from telogify.models import RaceWeekend
+    from telogify.models import Session as SessionRow
+
+    with Session(engine) as db:
+        rows = db.exec(
+            select(RaceWeekend.round, SessionRow.session_type)
+            .join(SessionRow, SessionRow.weekend_id == RaceWeekend.id)
+            .where(RaceWeekend.year == year)
+        ).all()
+    types: dict[int, set[str]] = defaultdict(set)
+    for rnd, session_type in rows:
+        types[rnd].add(session_type)
+    return frozenset(
+        rnd for rnd, t in types.items() if "R" in t and ("SQ" not in t or "SPRINT" in t)
+    )
+
+
+def _poll_rounds(events, now: datetime, year: int) -> list[int]:
+    """`_poll_round_window`, narrowed: a round whose race started more than `_STALE_AFTER` ago
+    stays in only while something is still un-ingested (a race or sprint held back for
+    incomplete results, see loader._results_ready). Once settled it drops out as before, so a
+    finished round isn't re-analysed and re-mined on every tick for a full day. The DB is only
+    consulted when some round in the window is that old."""
+    from telogify.ingest.loader import _STALE_AFTER
+
+    window = _poll_round_window(events, now)
+    cutoff = now - _STALE_AFTER
+    old = {e.round for e in events if e.round in window and e.date < cutoff}
+    if not old:
+        return window
+    settled = _settled_rounds(year)
+    return [r for r in window if r not in old or r not in settled]
 
 
 @app.command("poll")
@@ -373,7 +430,7 @@ def poll_cmd(
         )
         return
 
-    rounds = _poll_round_window(events, now)
+    rounds = _poll_rounds(events, now, resolved_year)
     if not rounds:
         console.print(
             f"[yellow]Schedule fetched for {resolved_year}; no rounds in the current window.[/yellow]"
@@ -413,14 +470,27 @@ def run_insights_cmd(
         "whose insights are already generated is left untouched -- safe to call repeatedly "
         "without re-spending LLM credits.",
     ),
+    only: str | None = typer.Option(
+        None,
+        "--only",
+        help="Regenerate just one batch: race, quali or sprint-quali (needs ROUND). With --force "
+        "this redoes e.g. only the race insights, leaving the qualifying batches untouched.",
+    ),
 ) -> None:
     """Regenerate only the 3 insights from already-ingested data (LLM only, no FastF1 ingest).
 
     Recomputes candidates and re-runs the agent. Omitting ROUND runs every completed round on
     the schedule (rounds run in parallel across --workers threads). Use --dry-run to preview
     without API spend. Requires prior ingest via run-weekend."""
+    from telogify.pipeline import REGEN_BATCHES
+
+    if only is not None:
+        if only not in REGEN_BATCHES:
+            raise typer.BadParameter(f"must be one of: {', '.join(REGEN_BATCHES)}", param_hint="--only")
+        if round is None:
+            raise typer.BadParameter("requires a ROUND", param_hint="--only")
     if round is not None:
-        _run_insights_one(year, round, force=force)
+        _run_insights_one(year, round, force=force, only=only)
         return
 
     from telogify.pipeline import run_insights_season, season_rounds
@@ -476,6 +546,41 @@ def run_season_deployment_cmd(year: int) -> None:
         persist_season_deployment(year, verdicts, metrics, db)
     elapsed = _format_elapsed(time.monotonic() - started)
     console.print(f"[green]Done:[/green] persisted [bold]{len(verdicts)}[/bold] verdict(s) [dim]({elapsed})[/dim].")
+
+
+@app.command("refresh-results")
+def refresh_results_cmd(
+    year: int,
+    round: int,
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would change (stored vs official positions); write nothing."
+    ),
+) -> None:
+    """Repair a round's finishing order from FastF1's now-complete results (no LLM, no other tables).
+
+    For a race ingested while FastF1's results were degraded (no times/laps/status, and positions
+    that ignore the official classification). Rewrites only that race's SessionResult rows, and
+    only from a complete upstream table; use --dry-run first."""
+    from telogify.pipeline import run_refresh_results
+
+    outcomes = run_refresh_results(year, round, dry_run=dry_run)
+    if not outcomes:
+        console.print(f"[yellow]No ingested race-like session to refresh for {year} round {round}.[/yellow]")
+        return
+    for o in outcomes:
+        colour = "green" if o.refreshed else "yellow"
+        console.print(f"[{colour}]{o.code}[/{colour}]: {o.detail}")
+        for change in o.changes:
+            console.print(f"    {change}")
+        if o.refreshed and not o.changes:
+            verb = "would be" if dry_run else "were"
+            console.print(f"    (no position changes; times, laps and status {verb} refreshed)")
+    if not dry_run and any(o.refreshed for o in outcomes):
+        console.print(
+            "[dim]Only the finishing order was repaired: insights and any digest already built "
+            "from the old results are unchanged. To regenerate the race insights: "
+            f"telogify run-insights {year} {round} --force --only race[/dim]"
+        )
 
 
 @app.command("ingest")
