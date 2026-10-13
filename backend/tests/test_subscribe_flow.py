@@ -107,6 +107,17 @@ def test_response_is_identical_for_known_and_unknown_addresses(client, test_engi
     assert [to for to, _ in sent["verify"]] == ["known@x.com", "unknown@x.com"]
 
 
+def test_repeat_signup_while_pending_keeps_one_row(client, test_engine, sent):
+    first = client.post("/subscribe", json={"email": "twice@x.com"})
+    second = client.post("/subscribe", json={"email": "twice@x.com"})
+    assert first.json() == second.json() == {"status": "check_your_inbox"}
+
+    with Session(test_engine) as db:
+        set_service_scope(db)
+        subs = db.exec(select(Subscriber).where(Subscriber.email == "twice@x.com")).all()
+    assert len(subs) == 1 and subs[0].status == "pending"
+
+
 def test_verify_rejects_bad_expired_and_reused_tokens(client, test_engine, sent):
     assert client.post("/subscribe/verify", json={"token": ""}).json() == {"status": "invalid"}
     assert client.post("/subscribe/verify", json={"token": "nope"}).json() == {"status": "invalid"}
