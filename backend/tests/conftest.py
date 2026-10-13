@@ -25,6 +25,16 @@ def _no_live_recaptcha(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_live_resend(monkeypatch):
+    """Same principle again, for Resend: `email._send` only no-ops when RESEND_API_KEY is empty,
+    and a developer's local .env carries a real key, so any test that reached a send path mailed
+    real recipients (a@b.com bounced 22 times against the production domain's reputation).
+    Tests that care about a send monkeypatch the `send_*` functions or `resend.Emails.send`.
+    """
+    monkeypatch.setattr("telogify.email.settings.resend_api_key", "")
+
+
+@pytest.fixture(autouse=True)
 def _valid_production_send_urls(monkeypatch):
     """Same principle as `_no_live_recaptcha` above, for `require_production_send_urls`
     (config.py): local `.env` deliberately sets ENVIRONMENT=production (so web_base_url resolves
