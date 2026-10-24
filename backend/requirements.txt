@@ -14,7 +14,7 @@ pydantic-settings
 typer
 
 # Telemetry ingest
-fastf1
+fastf1>=3.9.0
 
 # Insight agent (LangGraph ReAct + Anthropic)
 langgraph
