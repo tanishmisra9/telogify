@@ -9,6 +9,7 @@ import { spring } from '@/lib/motion'
 const LINKS = [
   { to: '/weekends', label: 'Weekends', hint: 'Browse analysed race weekends' },
   { to: '/season', label: 'Season', hint: 'Season-long constructor competitiveness' },
+  { to: '/how-it-works', label: 'How it works', hint: 'How a weekend becomes five verdicts' },
   { to: '/subscribe', label: 'Subscribe', hint: 'Get the weekly email digest' },
 ]
 
@@ -127,7 +128,7 @@ export function Nav() {
                     to={l.to}
                     aria-current={active ? 'page' : undefined}
                     aria-label={l.label}
-                    className={`kicker border-b-2 px-3 py-2 transition-colors ${
+                    className={`kicker whitespace-nowrap border-b-2 px-3 py-2 transition-colors ${
                       active
                         ? 'border-accent font-semibold text-ink'
                         : 'border-transparent text-muted hover:border-ink hover:text-ink'

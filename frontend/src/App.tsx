@@ -12,6 +12,7 @@ import { Landing } from '@/pages/Landing'
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 const Weekends = lazy(() => import('@/pages/Weekends').then((m) => ({ default: m.Weekends })))
 const WeekendPage = lazy(() => import('@/pages/WeekendPage').then((m) => ({ default: m.WeekendPage })))
+const HowItWorksPage = lazy(() => import('@/pages/HowItWorksPage').then((m) => ({ default: m.HowItWorksPage })))
 const SeasonPage = lazy(() => import('@/pages/SeasonPage').then((m) => ({ default: m.SeasonPage })))
 const SubscribePage = lazy(() => import('@/pages/SubscribePage').then((m) => ({ default: m.SubscribePage })))
 const VerifyPage = lazy(() => import('@/pages/VerifyPage').then((m) => ({ default: m.VerifyPage })))
@@ -56,6 +57,7 @@ export default function App() {
                 <Route path="/weekends/:year/:round" element={<WeekendPage />} />
                 <Route path="/season" element={<SeasonPage />} />
                 <Route path="/season/:year" element={<SeasonPage />} />
+                <Route path="/how-it-works" element={<HowItWorksPage />} />
                 <Route path="/subscribe" element={<SubscribePage />} />
                 {/* Nav highlights by pathname.startsWith, so /subscribe/verify keeps the
                     Subscribe tab active. /unsubscribe matches no nav entry, which is right. */}
