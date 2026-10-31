@@ -189,9 +189,9 @@ const REPLIES = [
   { quote: 'Love the design.', from: 'F1 data project maintainers' },
 ]
 
-const rowGrid = 'grid grid-cols-[3rem_minmax(0,1fr)] gap-x-4 sm:grid-cols-[5rem_minmax(0,1fr)] sm:gap-x-6'
+const rowGrid = 'grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-4 sm:grid-cols-[5rem_minmax(0,1fr)] sm:gap-x-6'
 const cell = 'min-w-0 lg:grid lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)] lg:gap-12'
-const numeral = 'font-display text-5xl leading-none text-accent sm:text-6xl'
+const numeral = 'font-display text-4xl leading-none text-accent sm:text-6xl'
 
 export function HowItWorksPage() {
   return (
