@@ -28,7 +28,7 @@ from sqlmodel import Session as DBSession
 from sqlmodel import delete, select
 
 from telogify.ingest.loader import WeekendData
-from telogify.ingest.segment import corner_windows, get_corners
+from telogify.ingest.segment import corner_windows, get_corners, lap_rainfall
 from telogify.models import QualiCharacter, Session
 
 FULL_THROTTLE_PCT = 99.0  # throttle reading (0-100) counted as "full throttle"
@@ -56,20 +56,19 @@ def select_representative_laps(session) -> "pd.DataFrame":
     if len(laps) == 0:
         return laps
 
-    weather = laps.get_weather_data().reset_index(drop=True)
+    rainfall = lap_rainfall(laps, session.weather_data)
     laps_reset = laps.reset_index(drop=True)
 
     keep = []
     for i in range(len(laps_reset)):
         lap = laps_reset.iloc[i]
-        w = weather.iloc[i]
         in_out = pd.notna(lap.get("PitInTime")) or pd.notna(lap.get("PitOutTime"))
         keep.append(
             is_representative_lap(
                 is_accurate=bool(lap.get("IsAccurate", False)),
                 deleted=bool(lap.get("Deleted", False)),
                 in_out_lap=bool(in_out),
-                rainfall=bool(w.get("Rainfall", False)),
+                rainfall=rainfall[i],
             )
         )
     return laps[pd.Series(keep, index=laps.index)]

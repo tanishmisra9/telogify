@@ -6,6 +6,7 @@ the FastF1 DataFrame plumbing wraps them.
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 # ponytail: half-width (m) of the per-corner distance window. Widen on long corners.
@@ -44,19 +45,51 @@ def is_clean_lap(
     return str(track_status) == "1"
 
 
+def lap_rainfall(laps: "pd.DataFrame", weather: "pd.DataFrame") -> list[bool]:
+    """Per lap: was it raining? One bool per row of `laps`, never NaN.
+
+    Same selection rule as FastF1's `Laps.get_weather_data()`: the first sample inside the lap's
+    [LapStartTime, Time], else the last sample at or before the lap's end. Replaces it because
+    that call returns an all-NaN row for a lap ending before the first sample and then casts the
+    whole frame back to the weather dtypes (WindDirection is int64), so one early lap raised
+    "cannot convert float NaN to integer" for the entire session (Mexico City 2026 FP3: first
+    sample at 46.7 s, 18 laps ended before it). Such laps take the earliest sample instead; no
+    weather table at all means dry (a NaN would read as `True` and mark every lap wet)."""
+    if len(weather) == 0:
+        return [False] * len(laps)
+    w = weather.sort_values("Time")
+    times = w["Time"].to_numpy()
+    wet = w["Rainfall"].fillna(False).astype(bool).to_numpy()
+    out = []
+    for start, end in zip(laps["LapStartTime"], laps["Time"]):
+        idx = 0
+        if pd.notna(end):
+            end64 = end.to_timedelta64()
+            first_in_lap = (
+                int(np.searchsorted(times, start.to_timedelta64(), side="left"))
+                if pd.notna(start)
+                else len(times)
+            )
+            if first_in_lap < len(times) and times[first_in_lap] <= end64:
+                idx = first_in_lap
+            else:
+                idx = max(int(np.searchsorted(times, end64, side="right")) - 1, 0)
+        out.append(bool(wet[idx]))
+    return out
+
+
 def select_clean_laps(session) -> "pd.DataFrame":
     """Filter a loaded FastF1 session's laps down to clean laps."""
     laps = session.laps
     if len(laps) == 0:
         return laps
 
-    weather = laps.get_weather_data().reset_index(drop=True)
+    rainfall = lap_rainfall(laps, session.weather_data)
     laps_reset = laps.reset_index(drop=True)
 
     keep = []
     for i in range(len(laps_reset)):
         lap = laps_reset.iloc[i]
-        w = weather.iloc[i]
         in_out = pd.notna(lap.get("PitInTime")) or pd.notna(lap.get("PitOutTime"))
         keep.append(
             is_clean_lap(
@@ -64,7 +97,7 @@ def select_clean_laps(session) -> "pd.DataFrame":
                 deleted=bool(lap.get("Deleted", False)),
                 in_out_lap=bool(in_out),
                 track_status=lap.get("TrackStatus", ""),
-                rainfall=bool(w.get("Rainfall", False)),
+                rainfall=rainfall[i],
             )
         )
     return laps[pd.Series(keep, index=laps.index)]
