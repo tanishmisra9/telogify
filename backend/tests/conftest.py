@@ -25,6 +25,15 @@ def _no_live_recaptcha(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_live_openf1(monkeypatch):
+    """Same principle for OpenF1: a developer's .env carries real credentials, which would switch
+    the ingest fallback on and hit the live API from any loader test. Tests that exercise the
+    fallback set credentials (and stub `load_session`) explicitly."""
+    monkeypatch.setattr("telogify.config.settings.openf1_username", "")
+    monkeypatch.setattr("telogify.config.settings.openf1_password", "")
+
+
+@pytest.fixture(autouse=True)
 def _no_live_resend(monkeypatch):
     """Same principle again, for Resend: `email._send` only no-ops when RESEND_API_KEY is empty,
     and a developer's local .env carries a real key, so any test that reached a send path mailed

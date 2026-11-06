@@ -13,6 +13,7 @@ import pandas as pd
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
+from telogify.ingest import openf1
 from telogify.ingest.fastf1_cache import enable_cache
 from telogify.models import RaceWeekend, Session
 
@@ -50,6 +51,15 @@ _DATA_LAG = timedelta(hours=1)
 # washed-out session still clears it -- a false negative here means the session never
 # auto-ingests, which is worse than a marginal false positive.
 _MIN_DRIVERS = 5
+
+# A load whose fastest car never exceeds this is stationary junk, not telemetry (FastF1 3.9.1
+# decoded Mexico's race to cars sitting at 0 km/h). Far below any real session's top speed.
+_MIN_TOP_SPEED_KMH = 50.0
+
+# How many laps shorter than the classified race the lap table may be before the load is treated
+# as truncated (FastF1's Mexico 2026 race feed stopped at lap 56 of 71). Every 2026 race ingested so
+# far matches exactly; the slack only absorbs a missing final-lap record.
+_MAX_MISSING_LAPS = 2
 
 # How far past a session's scheduled START it's treated as stale/cancelled rather than merely
 # running late. Shared by the poll command's round window and the API's cancellation-guard
@@ -168,7 +178,42 @@ def _has_usable_data(ses: "fastf1.core.Session") -> bool:
         car_data = ses.car_data
     except Exception:
         return False
-    return bool(car_data)
+    if not car_data:
+        return False
+    try:
+        top_speed = max(float(tel["Speed"].max()) for tel in car_data.values())
+    except Exception:
+        return False
+    if not top_speed > _MIN_TOP_SPEED_KMH:
+        logger.warning("telemetry never moves (top speed %s km/h)", top_speed)
+        return False
+    return not _laps_truncated(ses)
+
+
+def _laps_truncated(ses: "fastf1.core.Session") -> bool:
+    """Whether a race-like session's lap table stops short of the classified race, e.g. a feed cut
+    off mid-race. Without this, such a load is stored as a shorter race: wrong total laps (fuel
+    correction), missing laps in every stint, and insights about a race that did not happen.
+    Judged against the leader's classified laps from `results`; unreadable results mean "cannot
+    tell", which the results gate already handles."""
+    from telogify.ingest.results import requires_complete_results
+
+    if not requires_complete_results(getattr(ses, "name", "") or ""):
+        return False
+    try:
+        res = ses.results
+        classified = float(res[res["Position"] == 1].iloc[0]["Laps"])
+        longest = float(ses.laps["LapNumber"].max())
+    except Exception:
+        return False
+    if pd.isna(classified) or pd.isna(longest):
+        return False
+    if classified - longest > _MAX_MISSING_LAPS:
+        logger.warning(
+            "lap data truncated: laps end at %d of %d classified", int(longest), int(classified)
+        )
+        return True
+    return False
 
 
 def _has_complete_results(ses: "fastf1.core.Session") -> bool:
@@ -191,8 +236,8 @@ def _results_ready(year: int, round: int, name: str) -> bool:
     """Cheap pre-check before the full (laps + telemetry) load: probe only the results. A race
     whose results are still lagging would otherwise cost a full cold load on every poll tick
     (minutes each, with no cache volume on Railway) just to be discarded afterwards."""
-    probe = fastf1.get_session(year, round, name)
     try:
+        probe = fastf1.get_session(year, round, name)
         probe.load(laps=False, telemetry=False, weather=False, messages=False)
     except Exception as exc:
         logger.warning("%s %s %s: results probe failed (%s)", year, round, name, exc)
@@ -232,6 +277,47 @@ def _existing_session_types(db: DBSession, weekend_id: int) -> set[str]:
     return {r.session_type for r in rows}
 
 
+def _load_fastf1(
+    year: int, round: int, name: str, gated: bool, force: bool, swallow_errors: bool
+) -> tuple["fastf1.core.Session | None", str]:
+    """FastF1 load + the usable/complete gates. Returns (session, "ok") or (None, why) where why is
+    "unusable" (skip, retry next tick) or "held_back" (results incomplete). An exception from
+    FastF1 propagates -- the cron run should fail visibly -- unless `swallow_errors`, i.e. a
+    fallback exists to take over."""
+    try:
+        ses = fastf1.get_session(year, round, name)
+        ses.load()
+    except Exception as exc:
+        if not swallow_errors:
+            raise
+        logger.warning("%s round %s %s: FastF1 load failed (%s: %s)", year, round, name, type(exc).__name__, exc)
+        return None, "unusable"
+    if not force and not _has_usable_data(ses):
+        return None, "unusable"
+    if gated and not _has_complete_results(ses):
+        return None, "held_back"
+    return ses, "ok"
+
+
+def _load_openf1(
+    year: int, round: int, name: str, start: datetime, gated: bool, fastf1_outcome: str
+) -> tuple["fastf1.core.Session | None", str]:
+    """OpenF1 rebuild held to the same gates as a FastF1 load. Any failure is logged and leaves
+    the session un-ingested for the next tick, with the FastF1 outcome kept for the caller."""
+    logger.warning("%s round %s %s: FastF1 unusable, falling back to OpenF1", year, round, name)
+    try:
+        ses = openf1.load_session(year, round, name, start)
+    except Exception as exc:
+        logger.warning("%s round %s %s: OpenF1 fallback failed (%s: %s)", year, round, name, type(exc).__name__, exc)
+        return None, fastf1_outcome
+    if not _has_usable_data(ses):
+        return None, "unusable"
+    if gated and not _has_complete_results(ses):
+        return None, "held_back"
+    logger.warning("%s round %s %s: ingested from OpenF1", year, round, name)
+    return ses, "ok"
+
+
 def load_weekend(
     year: int, round: int, db: DBSession, now: datetime | None = None, force: bool = False
 ) -> WeekendData:
@@ -264,21 +350,27 @@ def load_weekend(
 
     sessions: dict[str, fastf1.core.Session] = {}
     held_back: list[str] = []
-    for code, name in completed_weekend_sessions(event, now or datetime.utcnow()):
+    now = now or datetime.utcnow()
+    starts = {code: start for code, _, start in weekend_session_dates(event)}
+    for code, name in completed_weekend_sessions(event, now):
         if code in already:
             continue
+        start = starts.get(code)
+        # OpenF1 steps in only for a session that started long enough ago that FastF1 not
+        # having it is a failure, not lag: an ingested session is never re-fetched, so falling
+        # back early could lock in coarser data FastF1 would have had an hour later.
+        may_fall_back = openf1.enabled() and start is not None and now - start > _STALE_AFTER
         gated = not force and requires_complete_results(name)
-        if gated and not _results_ready(year, round, name):
-            logger.warning("%s round %s %s: results incomplete, will retry next poll", year, round, name)
-            held_back.append(code)
-            continue
-        ses = fastf1.get_session(year, round, name)
-        ses.load()
-        if not force and not _has_usable_data(ses):
-            continue
-        if gated and not _has_complete_results(ses):
-            logger.warning("%s round %s %s: results incomplete, will retry next poll", year, round, name)
-            held_back.append(code)
+
+        ses, outcome = None, "held_back"
+        if not gated or _results_ready(year, round, name):
+            ses, outcome = _load_fastf1(year, round, name, gated, force, may_fall_back)
+        if ses is None and may_fall_back:
+            ses, outcome = _load_openf1(year, round, name, start, gated, outcome)
+        if ses is None:
+            if outcome == "held_back":
+                logger.warning("%s round %s %s: results incomplete, will retry next poll", year, round, name)
+                held_back.append(code)
             continue
         _upsert_session(db, weekend.id, code, status="loaded")
         sessions[code] = ses

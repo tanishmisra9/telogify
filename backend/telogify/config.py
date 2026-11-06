@@ -45,6 +45,11 @@ class Settings(BaseSettings):
 
     fastf1_cache: str = ".fastf1_cache"
 
+    # OpenF1 fallback for sessions FastF1 can't deliver (see ingest/openf1.py). Both optional:
+    # unset = the fallback is simply off and ingest behaves exactly as before.
+    openf1_username: str = ""
+    openf1_password: str = ""
+
     web_base_url: str = "http://localhost:5173"
 
     # The deployed API's own public URL (Railway) -- distinct from web_base_url (the frontend,

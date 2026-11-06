@@ -10,6 +10,9 @@ from telogify.models import RaceWeekend, Session
 
 BASE = datetime(2026, 7, 18, 12, 0, 0)
 
+# Telemetry that actually moves: `_has_usable_data` rejects frames whose top speed is ~0.
+_MOVING = {"1": pd.DataFrame({"Speed": [0.0, 310.0]})}
+
 
 def _complete_results() -> pd.DataFrame:
     """The shape of a complete FastF1 race results table: winner has its total `Time`, every
@@ -43,7 +46,7 @@ def _healthy_session(results: pd.DataFrame | None = None) -> types.SimpleNamespa
     return types.SimpleNamespace(
         load=lambda *a, **k: None,
         laps=laps,
-        car_data={"1": object()},
+        car_data=_MOVING,
         results=_complete_results() if results is None else results,
     )
 
@@ -346,12 +349,12 @@ def test_has_usable_data_laps_raises():
 
 
 def test_has_usable_data_laps_empty():
-    ses = _FakeSession(laps=_EMPTY_LAPS, car_data={"1": object()})
+    ses = _FakeSession(laps=_EMPTY_LAPS, car_data=_MOVING)
     assert loader._has_usable_data(ses) is False
 
 
 def test_has_usable_data_below_driver_floor():
-    ses = _FakeSession(laps=_FEW_DRIVER_LAPS, car_data={"1": object()})
+    ses = _FakeSession(laps=_FEW_DRIVER_LAPS, car_data=_MOVING)
     assert loader._has_usable_data(ses) is False
 
 
@@ -366,7 +369,7 @@ def test_has_usable_data_car_data_empty():
 
 
 def test_has_usable_data_healthy():
-    ses = _FakeSession(laps=_HEALTHY_LAPS, car_data={"1": object()})
+    ses = _FakeSession(laps=_HEALTHY_LAPS, car_data=_MOVING)
     assert loader._has_usable_data(ses) is True
 
 
@@ -424,7 +427,7 @@ class _StagedSession:
         self._probe_raises = probe_raises
         self._stage = "full"
         self.laps = pd.DataFrame({"DriverNumber": [str(i) for i in range(loader._MIN_DRIVERS)]})
-        self.car_data = {"1": object()}
+        self.car_data = _MOVING
 
     def load(self, **kwargs):
         self._stage = "probe" if kwargs.get("laps") is False else "full"
@@ -527,3 +530,179 @@ def test_load_weekend_force_bypasses_results_gate(db_session, monkeypatch):
     data = loader.load_weekend(2025, 11, db_session, now=BASE + timedelta(days=1), force=True)
     assert set(data.sessions) == {"FP1", "R"}
     assert ("Race", "probe") not in log
+
+
+# --- telemetry / lap-completeness guards and the OpenF1 fallback --------------------------------
+
+
+def _race_session(name="Race", longest_lap=71, classified_laps=71, speed=310.0, results=None):
+    """A fake race session: `longest_lap` is where the lap table stops, `classified_laps` is the
+    leader's lap count in results (a feed cut off mid-race has longest_lap < classified_laps)."""
+    res = _complete_results() if results is None else results
+    if results is None:
+        res["Laps"] = [float(classified_laps)] * len(res)
+    return types.SimpleNamespace(
+        name=name,
+        load=lambda *a, **k: None,
+        laps=pd.DataFrame(
+            {
+                "DriverNumber": [str(i) for i in range(loader._MIN_DRIVERS)],
+                "LapNumber": [float(longest_lap)] * loader._MIN_DRIVERS,
+            }
+        ),
+        car_data={"1": pd.DataFrame({"Speed": [0.0, speed]})},
+        results=res,
+    )
+
+
+def test_has_usable_data_rejects_telemetry_that_never_moves():
+    # FastF1 3.9.1 on Mexico: laps + results fine, every car stationary at 0 km/h.
+    assert not loader._has_usable_data(_race_session(speed=0.0))
+
+
+def test_has_usable_data_rejects_telemetry_without_a_speed_channel():
+    ses = _race_session()
+    ses.car_data = {"1": object()}
+    assert not loader._has_usable_data(ses)
+
+
+def test_has_usable_data_rejects_race_laps_cut_short_of_the_classified_race():
+    # FastF1 3.9.2 on Mexico: laps stop at 56, the classified race was 71.
+    assert not loader._has_usable_data(_race_session(longest_lap=56, classified_laps=71))
+
+
+def test_has_usable_data_tolerates_a_missing_final_lap_record():
+    assert loader._has_usable_data(_race_session(longest_lap=69, classified_laps=71))
+
+
+def test_has_usable_data_lap_check_applies_to_race_like_sessions_only():
+    # A practice session has no classified lap count; short laps there are normal.
+    ses = _race_session(name="Practice 1", longest_lap=5, classified_laps=71)
+    assert loader._has_usable_data(ses)
+
+
+def test_has_usable_data_lap_check_skipped_when_results_unreadable():
+    # No readable leader lap count means "cannot tell"; the results gate owns that case.
+    ses = _race_session(results=_degraded_results())
+    assert loader._has_usable_data(ses)
+
+
+_FB_NOW = BASE + timedelta(days=1)  # well past the grace period for every session in the event
+
+
+def _fallback_setup(monkeypatch, make_fastf1, openf1_session=None, openf1_raises=False, enabled=True):
+    """Wire FastF1 (via `make_fastf1`) and a stubbed OpenF1; returns the list of OpenF1 calls."""
+    calls: list = []
+
+    def fake_load(year, round, name, start):
+        calls.append(name)
+        if openf1_raises:
+            raise RuntimeError("openf1 down")
+        return openf1_session if openf1_session is not None else _race_session(name=name)
+
+    _wire(monkeypatch, _race_weekend_event(), make_fastf1)
+    monkeypatch.setattr(loader.openf1, "enabled", lambda: enabled)
+    monkeypatch.setattr(loader.openf1, "load_session", fake_load)
+    return calls
+
+
+def _fastf1_race_truncated(y, r, name):
+    return _race_session(name=name, longest_lap=56, classified_laps=71) if name == "Race" else _healthy_session()
+
+
+def test_fallback_used_when_fastf1_race_is_truncated(db_session, monkeypatch):
+    calls = _fallback_setup(monkeypatch, _fastf1_race_truncated)
+    data = loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
+    assert calls == ["Race"]  # practice loaded fine from FastF1, only the broken race fell back
+    assert set(data.sessions) == {"FP1", "R"}
+    assert data.held_back == []
+
+
+def test_fallback_not_used_within_grace_period(db_session, monkeypatch):
+    # Race is "ready" 3h after its start but FastF1 may still be lagging: not yet a failure.
+    calls = _fallback_setup(monkeypatch, _fastf1_race_truncated)
+    race_start = BASE - timedelta(days=1) + timedelta(hours=2)
+    data = loader.load_weekend(2025, 11, db_session, now=race_start + timedelta(hours=4))
+    assert calls == []
+    assert "R" not in data.sessions
+
+
+def test_fallback_never_called_when_fastf1_is_healthy(db_session, monkeypatch):
+    calls = _fallback_setup(monkeypatch, lambda y, r, name: _race_session(name=name))
+    data = loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
+    assert calls == []
+    assert set(data.sessions) == {"FP1", "R"}
+
+
+def test_fallback_disabled_without_credentials(db_session, monkeypatch):
+    calls = _fallback_setup(monkeypatch, _fastf1_race_truncated, enabled=False)
+    data = loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
+    assert calls == []
+    assert set(data.sessions) == {"FP1"}  # truncated race skipped, retried next tick
+
+
+def test_fallback_used_when_fastf1_raises(db_session, monkeypatch):
+    def boom(y, r, name):
+        if name == "Race":
+            raise RuntimeError("day-prefixed timestamp")
+        return _healthy_session()
+
+    calls = _fallback_setup(monkeypatch, boom)
+    data = loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
+    assert calls == ["Race"]
+    assert set(data.sessions) == {"FP1", "R"}
+
+
+def test_fastf1_exception_still_propagates_without_a_fallback(db_session, monkeypatch):
+    import pytest
+
+    def boom(y, r, name):
+        raise RuntimeError("fastf1 broke")
+
+    _fallback_setup(monkeypatch, boom, enabled=False)
+    with pytest.raises(RuntimeError, match="fastf1 broke"):
+        loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
+
+
+def test_openf1_failure_leaves_session_for_next_tick(db_session, monkeypatch):
+    calls = _fallback_setup(monkeypatch, _fastf1_race_truncated, openf1_raises=True)
+    data = loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
+    assert calls == ["Race"]
+    assert set(data.sessions) == {"FP1"}
+    assert {s.session_type for s in db_session.exec(select(Session)).all()} == {"FP1"}
+
+
+def test_openf1_result_held_to_the_same_usable_gate(db_session, monkeypatch):
+    calls = _fallback_setup(
+        monkeypatch, _fastf1_race_truncated, openf1_session=_race_session(speed=0.0)
+    )
+    data = loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
+    assert calls == ["Race"]
+    assert "R" not in data.sessions
+
+
+def test_fallback_used_when_fastf1_results_probe_fails(db_session, monkeypatch):
+    # With FastF1 down the results probe fails too; that must not hold the race back forever.
+    log: list = []
+
+    def make(y, r, name):
+        return _StagedSession(name, _degraded_results(), _degraded_results(), log, probe_raises=True)
+
+    calls = _fallback_setup(monkeypatch, make)
+    data = loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
+    assert calls == ["Race"]
+    assert "R" in data.sessions
+    assert data.held_back == []
+
+
+def test_poll_timeout_is_not_swallowed_by_the_fallback(db_session, monkeypatch):
+    import pytest
+
+    from telogify.cli import _PollTimeout
+
+    def timeout(y, r, name):
+        raise _PollTimeout()
+
+    _fallback_setup(monkeypatch, timeout)
+    with pytest.raises(_PollTimeout):
+        loader.load_weekend(2025, 11, db_session, now=_FB_NOW)
