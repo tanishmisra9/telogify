@@ -42,6 +42,13 @@ MAX_WINDOW_S = 8.0
 # Speed band whose straight-line fit gives a car's launch moment: clear of the grid-creep
 # quantisation below it and of the gear-change flattening above it.
 _FIT_LOW_KMH, _FIT_HIGH_KMH = 10.0, 60.0
+# A car whose launch moment is more than this after the field's median did not start from the grid
+# (a pit-lane starter leaves when the pit exit opens). Measured on 16 real 2026 races: grid starters
+# launched at most +0.50 s after the median; pit-lane starters launched 6.5 to 12.2 s after it (or
+# never inside the window). 3 s is 6x the largest grid delay and under half the smallest pit one. Used
+# instead of lap 1's pit-out time, which OpenF1 sets for EVERY car (all 22 at Mexico 2026) and FastF1
+# leaves empty for grid starters.
+LATE_LAUNCH_S = 3.0
 # Too few readable cars and the field's median launch is not trustworthy.
 MIN_FIELD = 5
 # Share of the readable-start cars that must have a figure for that figure to be shown.
@@ -90,11 +97,18 @@ def launch_moment(time_s: list[float], speed_kmh: list[float]) -> float | None:
     return float(-intercept / slope)
 
 
-def field_lights_out(moments: list[float]) -> float | None:
-    """The shared start instant: the median of every readable car's launch moment."""
+def grid_field(moments: dict[str, float]) -> tuple[float | None, dict[str, float]]:
+    """(the shared start instant, the grid starters' launch moments). The instant is the median
+    launch moment of the cars that started from the grid: a first median over every car finds the
+    field, cars launching more than `LATE_LAUNCH_S` after it (pit-lane starters) are dropped, and
+    the median is retaken over the rest. (None, {}) when too few cars remain."""
     if len(moments) < MIN_FIELD:
-        return None
-    return median(moments)
+        return None, {}
+    rough = median(moments.values())
+    grid = {d: m for d, m in moments.items() if m - rough <= LATE_LAUNCH_S}
+    if len(grid) < MIN_FIELD:
+        return None, {}
+    return median(grid.values()), grid
 
 
 def covers_field(n_timed: int, n_readable: int) -> bool:

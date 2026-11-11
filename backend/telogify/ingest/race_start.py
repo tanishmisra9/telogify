@@ -11,7 +11,7 @@ from sqlmodel import delete, select
 
 from telogify.analysis.race_start import (
     covers_field,
-    field_lights_out,
+    grid_field,
     launch_moment,
     launch_times,
     speed_at_distance,
@@ -53,8 +53,10 @@ def extract_race_start(session) -> dict[str, dict]:
     cars: dict[str, tuple[str, list[float], list[float]]] = {}
     for _, lap in lap1.iterrows():
         team = lap.get("Team")
-        if pd.isna(lap["LapStartDate"]) or pd.notna(lap.get("PitOutTime")) or not isinstance(team, str) or not team:
-            continue  # a pit-lane start leaves from the pits, not the grid
+        # Pit-lane starters are NOT filtered on lap 1's PitOutTime: OpenF1 sets it for every car.
+        # They are told apart by launching late (see `grid_field`).
+        if pd.isna(lap["LapStartDate"]) or not isinstance(team, str) or not team:
+            continue
         try:
             car = car_data.get(lap["DriverNumber"])
         except Exception:
@@ -73,13 +75,18 @@ def extract_race_start(session) -> dict[str, dict]:
             window["Speed"].astype(float).tolist(),
         )
 
-    moments = [m for _, t, v in cars.values() if (m := launch_moment(t, v)) is not None]
-    lights_out = field_lights_out(moments)
+    moments = {d: m for d, (_, t, v) in cars.items() if (m := launch_moment(t, v)) is not None}
+    lights_out, grid = grid_field(moments)
     if lights_out is None:
         return {}
 
     rows: dict[str, dict] = {}
     for driver, (team, t, v) in cars.items():
+        if driver in moments and driver not in grid:
+            continue  # launched late: a pit-lane start, not a grid start
+        # A car with no readable launch moment of its own stays eligible: `launch_times` still
+        # needs it stationary at the shared instant and 100 km/h inside the window, which a
+        # pit-lane car that has not left yet cannot satisfy.
         result = launch_times(t, v, lights_out)
         if result is not None:
             rows[driver] = {
@@ -90,8 +97,8 @@ def extract_race_start(session) -> dict[str, dict]:
             }
 
     # Each figure is shown only when most of the cars that sat on the grid and launched have it
-    # (`moments` is that field). 0-100 km/h is the floor: no round without it.
-    n_field = len(moments)
+    # (`grid` is that field). 0-100 km/h is the floor: no round without it.
+    n_field = len(grid)
     if not covers_field(len(rows), n_field):
         return {}
     if covers_field(sum(r["t_0_200_s"] is not None for r in rows.values()), n_field):

@@ -2,7 +2,7 @@ import pytest
 
 from telogify.analysis.race_start import (
     covers_field,
-    field_lights_out,
+    grid_field,
     launch_moment,
     launch_times,
     speed_at_distance,
@@ -29,12 +29,29 @@ def test_launch_moment_none_when_already_moving_or_flat():
     assert launch_moment([0.0, 1.0], [0.0, 5.0]) is None
 
 
-def test_field_lights_out_is_median_launch():
-    assert field_lights_out([0.3, 0.4, 0.5, 0.6, 0.9]) == pytest.approx(0.5)
+def test_grid_field_instant_is_the_median_launch_of_the_grid_starters():
+    t0, grid = grid_field({"A": 0.3, "B": 0.4, "C": 0.5, "D": 0.6, "E": 0.9})
+    assert t0 == pytest.approx(0.5)
+    assert set(grid) == {"A", "B", "C", "D", "E"}
 
 
-def test_field_lights_out_needs_enough_cars():
-    assert field_lights_out([0.4, 0.5]) is None
+def test_grid_field_drops_late_pit_lane_launchers_and_retakes_the_median():
+    moments = {"A": 0.3, "B": 0.4, "C": 0.5, "D": 0.6, "E": 0.7, "PIT1": 9.4, "PIT2": 12.2}
+    t0, grid = grid_field(moments)
+    assert set(grid) == {"A", "B", "C", "D", "E"}  # launching 9+ s late is not a grid start
+    assert t0 == pytest.approx(0.5)  # median of the grid starters only, not dragged by the pit cars
+
+
+def test_grid_field_keeps_the_latest_real_grid_delay():
+    # +0.50 s after the median was the largest delay seen on real grid starters (16 races).
+    _, grid = grid_field({"A": 0.4, "B": 0.4, "C": 0.4, "D": 0.4, "E": 0.9})
+    assert "E" in grid
+
+
+def test_grid_field_needs_enough_cars():
+    assert grid_field({"A": 0.4, "B": 0.5}) == (None, {})
+    # ...including after the late ones are dropped.
+    assert grid_field({"A": 0.4, "B": 0.5, "C": 0.5, "PIT1": 9.0, "PIT2": 10.0, "PIT3": 11.0}) == (None, {})
 
 
 def test_exact_crossings_from_a_shared_start():
@@ -162,10 +179,18 @@ class _FakeSession:
 _FIELD = {f"D{i:02d}": 0.4 + 0.02 * i for i in range(10)}
 
 
-def test_extractor_times_the_field_and_skips_pit_lane_starters():
-    out = extract_race_start(_FakeSession(_FIELD, pit_out=("D03",)))
-    assert "D03" not in out and len(out) == 9
+def test_extractor_skips_a_pit_lane_starter_by_its_late_launch():
+    field = {**_FIELD, "PIT": 9.0}  # leaves the pits 9 s after the field launched
+    out = extract_race_start(_FakeSession(field))
+    assert "PIT" not in out and len(out) == 10
     assert all(0 < v["t_0_100_s"] < v["t_0_200_s"] < 8 for v in out.values())
+
+
+def test_extractor_does_not_trust_pit_out_time_which_openf1_sets_for_every_car():
+    # Regression: Mexico 2026 (OpenF1-built) had a PitOutTime on all 22 lap-1 rows, so every car
+    # was skipped as a "pit-lane start" and the round got no card.
+    out = extract_race_start(_FakeSession(_FIELD, pit_out=tuple(_FIELD)))
+    assert len(out) == 10
 
 
 def test_extractor_skips_a_nan_team_instead_of_writing_it():
@@ -378,3 +403,14 @@ def test_refresh_extracts_once_and_never_replaces_good_rows_with_an_empty_read(t
     pipeline.run_refresh_race_start(2033, 1, dry_run=True)
     with Session(test_engine) as db:
         assert len(db.exec(select(RaceStart)).all()) == before
+
+
+def test_extractor_keeps_a_car_with_no_readable_launch_moment_of_its_own():
+    # Australia 2026: a car whose first climb is too ragged to fit still launched with the field and
+    # is timed from the shared instant. Only a car that LAUNCHED LATE is dropped.
+    sess = _FakeSession(_FIELD)
+    ragged = sess._cars["1"].copy()
+    ragged["Speed"] = [0.0 if x < 0.9 else 90.0 + 30.0 * (x - 0.9) for x in [(d - _T0).total_seconds() for d in ragged["Date"]]]
+    sess._cars["1"] = ragged  # no 10-60 km/h climb at all: launch_moment is None
+    out = extract_race_start(sess)
+    assert "D00" in out
