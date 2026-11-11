@@ -19,6 +19,7 @@ import { SectionNav, type NavSection } from '@/components/SectionNav'
 import { SectionTitle } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
 import { Tooltip } from '@/components/Tooltip'
+import { circuitPath } from '@/lib/circuitPaths'
 import { expandTransition } from '@/lib/motion'
 import {
   useApi,
@@ -304,6 +305,48 @@ function PracticeSkeleton() {
   )
 }
 
+/* Paper chip: ink border, small hard shadow, stroke icon in the accent. An optional track
+   outline sits in its own ruled cell on the right. */
+function InfoChip({ icon, track, children }: { icon: React.ReactNode; track?: string | null; children: React.ReactNode }) {
+  return (
+    <p className="inline-flex items-center border-[1.5px] border-ink bg-surface text-base leading-snug sm:text-xl shadow-[3px_3px_0_var(--color-shadow)]">
+      <span className="flex items-center gap-2 px-3 py-2 sm:gap-2.5 sm:px-3.5">
+        <span className="text-accent" aria-hidden>{icon}</span>
+        <span>{children}</span>
+      </span>
+      {track ? (
+        <span className="flex self-stretch items-center border-l-[1.5px] border-ink px-2 sm:px-3" aria-hidden>
+          <svg viewBox="-4 -4 108 108" fill="none" className="size-12 text-accent sm:size-16">
+            <path d={track} stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      ) : null}
+    </p>
+  )
+}
+
+/* Classic map pin: teardrop with a hole punched in it. */
+function WaypointIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22C8 17.6 5 14.2 5 10a7 7 0 0 1 14 0c0 4.2-3 7.6-7 12Z" />
+      <circle cx="12" cy="10" r="2.6" />
+    </svg>
+  )
+}
+
+/* Chequered flag on a pole: laps. */
+function LapsIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 22V3" />
+      <path d="M5 4h14v10H5" />
+      <path d="M5 9h14M10 4v10M15 4v10" strokeWidth="1.5" />
+      <path d="M5 4h5v5H5ZM10 9h5v5h-5ZM15 4h4v5h-4Z" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function WeekendPage() {
   const { year, round } = useParams()
   const base = `/weekends/${year}/${round}`
@@ -433,7 +476,7 @@ export function WeekendPage() {
             <Skeleton className="h-[29px] w-10" />
             <Skeleton className="mt-6 h-6 w-40" />
             <Skeleton className="mt-3 h-[103px] w-2/3 sm:h-[82px]" />
-            <Skeleton className="mt-3 h-7 w-52" />
+            <Skeleton className="mt-4 h-[50px] w-64 sm:h-[67px]" />
           </>
         }
       >
@@ -456,11 +499,18 @@ export function WeekendPage() {
         <h1 className="mt-3 font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-[5.4rem]">
           {weekend.data?.event_name}
         </h1>
-        <p className="mt-3 text-lg text-muted">
-          {weekend.data?.circuit_name}
-          {weekend.data?.country ? `, ${weekend.data.country}` : ''}
-          {weekend.data?.race_laps ? ` · ${weekend.data.race_laps} laps` : ''}
-        </p>
+        <div className="mt-4 flex flex-wrap items-stretch gap-3">
+          <InfoChip
+            icon={<WaypointIcon />}
+            track={circuitPath(weekend.data?.circuit_name, weekend.data?.country)}
+          >
+            {weekend.data?.circuit_name}
+            {weekend.data?.country ? `, ${weekend.data.country}` : ''}
+          </InfoChip>
+          {weekend.data?.race_laps ? (
+            <InfoChip icon={<LapsIcon />}>{weekend.data.race_laps} laps</InfoChip>
+          ) : null}
+        </div>
       </LoadingSwap>
 
       <section id="insights" className="mt-16 scroll-mt-24">
