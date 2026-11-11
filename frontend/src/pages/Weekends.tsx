@@ -183,15 +183,6 @@ export function Weekends() {
                                     {w.event_name}
                                   </span>
                                 </span>
-                                {/* Affordance: rows are links; the arrow arrives on hover in the same
-                                    direction the title nudges, so the whole row reads as one gesture.
-                                    (The year moved up into the group header, so it is no longer repeated here.) */}
-                                <span
-                                  aria-hidden
-                                  className="w-6 pr-1 text-xl text-accent opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-100"
-                                >
-                                  →
-                                </span>
                               </Link>
                             </li>
                           </ScrollReveal>
