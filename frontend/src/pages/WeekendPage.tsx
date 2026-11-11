@@ -19,7 +19,6 @@ import { SectionNav, type NavSection } from '@/components/SectionNav'
 import { SectionTitle } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
 import { Tooltip } from '@/components/Tooltip'
-import { circuitPath } from '@/lib/circuitPaths'
 import { expandTransition } from '@/lib/motion'
 import {
   useApi,
@@ -305,22 +304,14 @@ function PracticeSkeleton() {
   )
 }
 
-/* Paper chip: ink border, small hard shadow, stroke icon in the accent. An optional track
-   outline sits in its own ruled cell on the right. */
-function InfoChip({ icon, track, children }: { icon: React.ReactNode; track?: string | null; children: React.ReactNode }) {
+/* Paper card: ink border, small hard shadow, stroke icon in the accent. */
+const CHIP = 'inline-flex min-h-[50px] items-center sm:min-h-[67px] border-[1.5px] border-ink bg-surface shadow-[3px_3px_0_var(--color-shadow)]'
+
+function InfoChip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <p className="inline-flex items-center border-[1.5px] border-ink bg-surface text-base leading-snug sm:text-xl shadow-[3px_3px_0_var(--color-shadow)]">
-      <span className="flex items-center gap-2 px-3 py-2 sm:gap-2.5 sm:px-3.5">
-        <span className="text-accent" aria-hidden>{icon}</span>
-        <span>{children}</span>
-      </span>
-      {track ? (
-        <span className="flex self-stretch items-center border-l-[1.5px] border-ink px-2 sm:px-3" aria-hidden>
-          <svg viewBox="-4 -4 108 108" fill="none" className="size-12 text-accent sm:size-16">
-            <path d={track} stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-      ) : null}
+    <p className={`${CHIP} gap-2 px-3 py-2 text-base leading-snug sm:gap-2.5 sm:px-3.5 sm:text-xl`}>
+      <span className="text-accent" aria-hidden>{icon}</span>
+      <span>{children}</span>
     </p>
   )
 }
@@ -500,10 +491,7 @@ export function WeekendPage() {
           {weekend.data?.event_name}
         </h1>
         <div className="mt-4 flex flex-wrap items-stretch gap-3">
-          <InfoChip
-            icon={<WaypointIcon />}
-            track={circuitPath(weekend.data?.circuit_name, weekend.data?.country)}
-          >
+          <InfoChip icon={<WaypointIcon />}>
             {weekend.data?.circuit_name}
             {weekend.data?.country ? `, ${weekend.data.country}` : ''}
           </InfoChip>
