@@ -7,7 +7,6 @@ import { LoadingSwap } from '@/components/LoadingSwap'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { Skeleton } from '@/components/Skeleton'
 import { Tooltip } from '@/components/Tooltip'
-import { expandTransition } from '@/lib/motion'
 import { useApi, type SeasonWeekendRow, type WeekendSummary } from '@/lib/api'
 
 // Only the first screenful cascades on load; rows reached by scrolling fade in one at a time as
@@ -17,6 +16,13 @@ const STAGGERED_ROWS = 6
 // Enough rows to fill past the fold on a phone, so the loading state holds the page's real
 // footprint (a full season is ~24 rounds, so this under-reserves rather than leaving a gap).
 const SKELETON_ROWS = 8
+
+// A year's list is ~2000px tall, so the shared stiff spring (`expandTransition`) crosses the whole
+// viewport in ~2 frames and the footer visibly snaps; a fixed-duration ease reads as a smooth wipe.
+const PANEL_TRANSITION = {
+  height: { duration: 0.45, ease: [0.4, 0, 0.2, 1] as const },
+  opacity: { duration: 0.25 },
+}
 
 export function Weekends() {
   const currentYear = new Date().getFullYear()
@@ -170,7 +176,7 @@ export function Weekends() {
                         initial={reduce ? false : { height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-                        transition={reduce ? { duration: 0 } : expandTransition}
+                        transition={reduce ? { duration: 0 } : PANEL_TRANSITION}
                       >
                         {rows.map((w, i) => (
                           <Reveal key={`${w.year}-${w.round}`} {...(Reveal === ScrollReveal ? { delay: yi === 0 && i < STAGGERED_ROWS ? 0.04 * i : 0 } : {})}>
