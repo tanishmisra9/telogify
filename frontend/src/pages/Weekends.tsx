@@ -116,6 +116,11 @@ export function Weekends() {
               const rows = weekends.filter((w) => w.year === year)
               const open = isOpen(year)
               const panelId = `weekends-${year}`
+              // The load-time blur-fade cascade only belongs to the first render. Re-running it on
+              // every expand stacks a per-row blur/translate inside the height animation, and the
+              // filter dropping to `none` at its end re-rasterizes the rows (a visible snap on iOS
+              // Safari). Once a user has toggled a year, the panel's own height/opacity is the reveal.
+              const Reveal = toggled[year] === undefined ? ScrollReveal : 'div'
               return (
                 <section key={year} className={yi === 0 ? 'mt-8' : 'mt-10'}>
                   <h2>
@@ -168,7 +173,7 @@ export function Weekends() {
                         transition={reduce ? { duration: 0 } : expandTransition}
                       >
                         {rows.map((w, i) => (
-                          <ScrollReveal key={`${w.year}-${w.round}`} delay={yi === 0 && i < STAGGERED_ROWS ? 0.04 * i : 0}>
+                          <Reveal key={`${w.year}-${w.round}`} {...(Reveal === ScrollReveal ? { delay: yi === 0 && i < STAGGERED_ROWS ? 0.04 * i : 0 } : {})}>
                             <li className="border-b border-border">
                               <Link
                                 to={`/weekends/${w.year}/${w.round}`}
@@ -185,7 +190,7 @@ export function Weekends() {
                                 </span>
                               </Link>
                             </li>
-                          </ScrollReveal>
+                          </Reveal>
                         ))}
                       </m.ul>
                     )}
