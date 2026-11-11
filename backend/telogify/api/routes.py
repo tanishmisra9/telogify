@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from telogify.chipgen import render_text_chip_png
+from telogify.subscriber_status import SubscriberStatus, can_transition
 
 from telogify.analysis.schedule import Event, fetch_season_schedule, pick_next_event
 from telogify.ingest.loader import _STALE_AFTER, session_schedule
@@ -922,7 +923,7 @@ def subscribe(body: SubscribeIn, request: Request, db: Session = Depends(get_ses
         raise HTTPException(400, "Could not verify that you are human. Please try again.")
 
     existing = db.exec(select(Subscriber).where(Subscriber.email == email)).first()
-    if existing and existing.status in ("confirmed", "bounced", "complained"):
+    if existing and not can_transition(existing.status, SubscriberStatus.PENDING):
         # Deliberately silent: no second email, and the same response as everyone else. Also
         # blocks a hard-bounced or complained address from being quietly reactivated by
         # resubmitting the same form -- see resend_webhooks.py for how those statuses get set.
@@ -1085,6 +1086,10 @@ async def resend_webhook(request: Request, db: Session = Depends(get_session)):
 
     for raw_address in payload.get("data", {}).get("to", []):
         email = normalize_email(raw_address)
+    # Only an unsubscribe is undoable. Without this an old unsubscribe link revived a
+    # bounced/complained address (terminal) or confirmed one that never verified (pending).
+    if subscriber.status not in (SubscriberStatus.UNSUBSCRIBED, SubscriberStatus.CONFIRMED):
+        return {"status": "invalid"}
         if email is None:
             continue
         subscriber = db.exec(select(Subscriber).where(Subscriber.email == email)).first()

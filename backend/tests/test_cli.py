@@ -898,3 +898,47 @@ def test_poll_timeout_survives_real_console_script_invocation():
     )
     assert result.returncode != 0
     assert "_PollTimeout" in result.stderr
+
+
+def test_send_digest_to_subscribers_asks_again_when_already_sent(monkeypatch, test_engine):
+    """poll's auto-send may have already mailed the list. The manual blast used to ignore the
+    marker entirely and double-send; now it needs an explicit second yes."""
+    from sqlmodel import Session
+
+    from telogify.db import set_service_scope
+    from telogify.models import RaceWeekend, Subscriber
+
+    monkeypatch.setattr("telogify.db.engine", test_engine)
+    with Session(test_engine) as db:
+        set_service_scope(db)
+        db.add(
+            RaceWeekend(
+                year=2026, round=8, circuit_name="X", country="Y", event_name="Z GP",
+                digest_sent_at=datetime.utcnow(),
+            )
+        )
+        db.add(Subscriber(email="a@x.com", status="confirmed"))
+        db.commit()
+
+    calls = []
+    monkeypatch.setattr("telogify.email.send_digest", lambda year, round, db: calls.append(1) or 1)
+
+    declined = runner.invoke(cli.app, ["send-digest", "2026", "8", "--to-subscribers"], input="y\nn\n")
+    assert declined.exit_code == 0 and calls == []
+
+    forced = runner.invoke(cli.app, ["send-digest", "2026", "8", "--to-subscribers"], input="y\ny\n")
+    assert forced.exit_code == 0 and calls == [1]
+
+
+def test_claim_digest_has_exactly_one_winner(test_engine):
+    from sqlmodel import Session
+
+    from telogify.models import RaceWeekend
+
+    with Session(test_engine) as db:
+        w = RaceWeekend(year=2026, round=9, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(w)
+        db.commit()
+        db.refresh(w)
+        assert cli._claim_digest(db, w.id) is True
+        assert cli._claim_digest(db, w.id) is False

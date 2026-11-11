@@ -196,6 +196,23 @@ def _report_insights_done(state: dict, elapsed: str) -> None:
         )
 
 
+def _claim_digest(db, weekend_id: int) -> bool:
+    """Atomically set `RaceWeekend.digest_sent_at` iff it is still NULL. True means this caller
+    won the claim and may send. The one definition shared by poll's auto-send and the manual
+    `send-digest --to-subscribers`, so neither can send a weekend the other already sent."""
+    from sqlmodel import update
+
+    from telogify.models import RaceWeekend
+
+    claim = db.exec(
+        update(RaceWeekend)
+        .where(RaceWeekend.id == weekend_id, RaceWeekend.digest_sent_at.is_(None))
+        .values(digest_sent_at=datetime.utcnow())
+    )
+    db.commit()
+    return claim.rowcount == 1
+
+
 def _maybe_send_digest(year: int, round: int, state: dict) -> None:
     """Auto-send the real digest to every confirmed subscriber the first time this weekend's
     race is ingested and its insights are persisted. Fires from `poll` only -- never from the
@@ -219,7 +236,7 @@ def _maybe_send_digest(year: int, round: int, state: dict) -> None:
     marker on success, so it and `poll` never race each other for the same weekend either)."""
     if "R" not in state.get("session_types", ()):
         return
-    from sqlmodel import Session, update
+    from sqlmodel import Session
 
     from telogify.config import require_production_send_urls
     from telogify.db import engine
@@ -246,13 +263,7 @@ def _maybe_send_digest(year: int, round: int, state: dict) -> None:
             return
         if not _has_existing(db, weekend.id, Insight):
             return
-        claim = db.exec(
-            update(RaceWeekend)
-            .where(RaceWeekend.id == weekend.id, RaceWeekend.digest_sent_at.is_(None))
-            .values(digest_sent_at=datetime.utcnow())
-        )
-        db.commit()
-        if claim.rowcount == 0:
+        if not _claim_digest(db, weekend.id):
             return  # another poll invocation, or a manual send-digest, claimed it first
 
         try:
@@ -807,19 +818,23 @@ def send_digest(
                 console.print("[yellow]Aborted.[/yellow]")
                 return
 
-        sent = run_send(year, round, db)
         if to_subscribers:
-            # Marks the same guard poll's auto-send checks, so a manual subscriber blast here
-            # and an unattended poll tick never end up racing to send the same weekend twice.
+            # Claims the same guard poll's auto-send uses, BEFORE sending, so a manual blast
+            # and an unattended poll tick can never both send the same weekend. If poll (or an
+            # earlier manual send) already claimed it, sending again needs a second yes.
             from telogify.models import RaceWeekend
 
             weekend = db.exec(
                 select(RaceWeekend).where(RaceWeekend.year == year, RaceWeekend.round == round)
             ).first()
-            if weekend is not None:
-                weekend.digest_sent_at = datetime.utcnow()
-                db.add(weekend)
-                db.commit()
+            if weekend is not None and not _claim_digest(db, weekend.id):
+                console.print(
+                    f"[yellow]This digest was already sent ({weekend.digest_sent_at}).[/yellow]"
+                )
+                if not typer.confirm("Send it to every subscriber AGAIN?"):
+                    console.print("[yellow]Aborted.[/yellow]")
+                    return
+        sent = run_send(year, round, db)
     console.print(f"[green]Sent digest to {sent} recipient(s).[/green]")
 
 

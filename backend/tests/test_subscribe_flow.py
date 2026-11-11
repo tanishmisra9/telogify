@@ -228,3 +228,42 @@ def test_unsubscribed_address_can_opt_in_again(client, test_engine, sent):
     client.post("/subscribe", json={"email": "again@x.com"})
     assert len(sent["verify"]) == 2, "a returning address gets a fresh verification"
     assert _subscriber(test_engine, "again@x.com").status == "pending"
+
+
+@pytest.mark.parametrize("terminal", ["bounced", "complained", "pending"])
+def test_resubscribe_cannot_revive_a_terminal_or_unverified_address(
+    client, test_engine, terminal
+):
+    """An old unsubscribe link must only undo an unsubscribe. It used to set `confirmed`
+    unconditionally, reactivating bounced/complained addresses and never-verified ones."""
+    from telogify.subscriptions import unsubscribe_token
+
+    with Session(test_engine) as s:
+        set_service_scope(s)
+        sub = Subscriber(email="gone@x.com", status=terminal)
+        s.add(sub)
+        s.commit()
+        s.refresh(sub)
+        token = unsubscribe_token(sub.id)
+
+    assert client.post(f"/subscribe/resubscribe?t={token}").json() == {"status": "invalid"}
+    assert _subscriber(test_engine, "gone@x.com").status == terminal
+
+
+def test_status_check_constraint_rejects_unknown_status(test_engine):
+    from sqlalchemy.exc import IntegrityError
+
+    with Session(test_engine) as s:
+        set_service_scope(s)
+        s.add(Subscriber(email="bogus@x.com", status="bogus"))
+        with pytest.raises(IntegrityError):
+            s.commit()
+
+
+def test_allowed_transitions_table():
+    from telogify.subscriber_status import ALLOWED, SubscriberStatus as S, can_transition
+
+    assert ALLOWED[S.BOUNCED] == ALLOWED[S.COMPLAINED] == frozenset()
+    assert not can_transition("confirmed", S.PENDING)  # signup form must stay silent
+    assert can_transition("unsubscribed", S.PENDING)
+    assert not can_transition("bogus", S.PENDING)

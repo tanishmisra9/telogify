@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -318,7 +318,8 @@ class Subscriber(SQLModel, table=True):
     followed_constructor: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    status: str = Field(default="pending", index=True)  # pending/confirmed/unsubscribed
+    # States and allowed moves live in subscriber_status.py; the CHECK above mirrors them.
+    status: str = Field(default="pending", index=True)
     confirmed_at: datetime | None = None
     # Only the SHA-256 of the verification token is stored, so a DB dump cannot confirm
     # anyone. Cleared on confirmation, which is what makes the token single-use.
@@ -332,6 +333,12 @@ class SubscriberAudit(SQLModel, table=True):
     a row-change trigger on `subscriber` (see security_sql.py) records inserts/updates/deletes,
     and the API appends security events that never reach a row at all (rate-limit and captcha
     rejections). Immutability is enforced in the DB by a BEFORE UPDATE OR DELETE trigger that
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','confirmed','unsubscribed','bounced','complained')",
+            name="ck_subscriber_status",
+        ),
+    )
     raises, not by convention here. Doubles as the rate limiter's store, which is why
     (actor_ip_hash, created_at) and (email, created_at) are indexed.
     """
