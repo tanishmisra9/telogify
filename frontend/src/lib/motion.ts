@@ -22,7 +22,10 @@ export const morphTransition: Transition = { duration: 0.6, ease: [0.65, 0, 0.35
 
 export const blurFadeIn = {
   initial: { opacity: 0, filter: 'blur(10px)', y: 10 },
-  animate: { opacity: 1, filter: 'blur(0px)', y: 0 },
+  // transitionEnd drops the filter once settled: a lingering `blur(0px)` keeps the card on its own
+  // compositing layer forever, and hover repaints inside it (tab underline, tooltip fade) then
+  // re-rasterize its 1.5px borders and flicker them.
+  animate: { opacity: 1, filter: 'blur(0px)', y: 0, transitionEnd: { filter: 'none' } },
 }
 
 // Exit state for a loading placeholder in LoadingSwap: fades/blurs out in place (no y-shift,
