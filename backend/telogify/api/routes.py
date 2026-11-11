@@ -33,9 +33,12 @@ from telogify.analysis.race_pace import (
 )
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
 from telogify.analysis.season import build_season_accel_scatter, build_season_snapshot
-from telogify.analysis.season_deployment import PU_GROUPS
+from telogify.analysis.season_deployment import PU_GROUPS, pu_map_applies
+from telogify.analysis.season_start import build_season_start
+from telogify.analysis.race_start import SPEED_DISTANCE_M
 from telogify.analysis.season_stats import build_season_stats
 from telogify.ingest.results import (
+    compound_letter,
     format_gap_label,
     format_total_time,
     points_for_session,
@@ -59,6 +62,7 @@ from telogify.models import (
     QualiCharacter,
     QualiInsight,
     QualiTrace,
+    RaceStart,
     RaceWeekend,
     SeasonDeploymentInsight,
     SectorBest,
@@ -680,6 +684,59 @@ def weekend_degradation(
     }
 
 
+@router.get("/weekends/{year}/{round}/race-start")
+def weekend_race_start(year: int, round: int, db: Session = Depends(get_session)):
+    """Standing-start figures off the grid: seconds from lights out to 100 (and, when the field gets
+    there, 200) km/h, and speed after `speed_distance_m` metres. Fastest first. Main race only (no session parameter: a sprint has no such card). `compound`
+    is the letter of the tyre the driver started on (their first stint), null when unknown."""
+    w = _weekend(db, year, round)
+    race = _race_session(db, w.id)
+    if race is None:
+        return {"rows": []}
+    rows = db.exec(select(RaceStart).where(RaceStart.session_id == race.id)).all()
+    # Only a driver's FIRST stint: if its compound is unknown the start tyre is unknown, never
+    # the next stint's compound.
+    first_compound: dict[str, str | None] = {}
+    for s in db.exec(
+        select(Stint).where(Stint.session_id == race.id).order_by(Stint.stint_number)
+    ).all():
+        if s.driver not in first_compound:
+            first_compound[s.driver] = compound_letter(s.compound) if is_known_compound(s.compound) else None
+    # The round's time metric: to 200 km/h when it has those times, else to 100 km/h.
+    to_kmh = 200 if any(r.t_0_200_s is not None for r in rows) else 100
+
+    def total(r: RaceStart) -> float:
+        # Same fallback as the frontend's rowTotal: a 200 round's row without a 0-200 time is ranked
+        # on its 0-100, never a None that would 500 the sort.
+        return r.t_0_200_s if to_kmh == 200 and r.t_0_200_s is not None else r.t_0_100_s
+
+    # Power-unit grouping, only when the supply map applies to this season AND covers every team
+    # in the field (a partial map would silently drop cars from the power-unit view).
+    pu_groups = (
+        [{"name": g.name, "works_team": g.works_team, "teams": list(g.teams)} for g in PU_GROUPS]
+        if pu_map_applies(year, {r.constructor for r in rows})
+        else []
+    )
+
+    return {
+        "to_kmh": to_kmh,
+        "speed_distance_m": SPEED_DISTANCE_M,
+        "pu_groups": pu_groups,
+        "rows": [
+            {
+                "driver": r.driver,
+                "constructor": r.constructor,
+                "t_0_100_s": r.t_0_100_s,
+                "t_100_200_s": None if r.t_0_200_s is None else r.t_0_200_s - r.t_0_100_s,
+                "t_0_200_s": r.t_0_200_s,
+                "v_75m_kmh": r.v_75m_kmh,
+                "compound": first_compound.get(r.driver),
+            }
+            for r in sorted(rows, key=total)
+        ],
+    }
+
+
 @router.get("/weekends/{year}/{round}/results")
 def weekend_results(
     year: int, round: int, session: str = "R", db: Session = Depends(get_session)
@@ -842,6 +899,15 @@ def season_stats(year: int, db: Session = Depends(get_session)):
     if stats is None:
         raise HTTPException(status_code=404, detail="no weekends for year")
     return stats
+
+
+@router.get("/season/{year}/race-start")
+def season_race_start(year: int, db: Session = Depends(get_session)):
+    """Season race starts, teams and power units only: per round the gap to that round's best
+    start (median of each group's cars), plus a recency-weighted season gap and rank movement.
+    `views.pu` is present only when the power-unit supply map describes this season. No 404 for
+    an empty season (`views` is just empty), like /deployment."""
+    return build_season_start(year, db)
 
 
 @router.get("/season/{year}/deployment")
@@ -1041,6 +1107,10 @@ def resubscribe(request: Request, t: str = "", db: Session = Depends(get_session
     subscriber = _load_by_unsubscribe_token(db, t, request)
     if subscriber is None:
         return {"status": "invalid"}
+    # Only an unsubscribe is undoable. Without this an old unsubscribe link revived a
+    # bounced/complained address (terminal) or confirmed one that never verified (pending).
+    if subscriber.status not in (SubscriberStatus.UNSUBSCRIBED, SubscriberStatus.CONFIRMED):
+        return {"status": "invalid"}
 
     subscriber.status = "confirmed"
     subscriber.confirmed_at = subscriber.confirmed_at or datetime.utcnow()
@@ -1086,10 +1156,6 @@ async def resend_webhook(request: Request, db: Session = Depends(get_session)):
 
     for raw_address in payload.get("data", {}).get("to", []):
         email = normalize_email(raw_address)
-    # Only an unsubscribe is undoable. Without this an old unsubscribe link revived a
-    # bounced/complained address (terminal) or confirmed one that never verified (pending).
-    if subscriber.status not in (SubscriberStatus.UNSUBSCRIBED, SubscriberStatus.CONFIRMED):
-        return {"status": "invalid"}
         if email is None:
             continue
         subscriber = db.exec(select(Subscriber).where(Subscriber.email == email)).first()

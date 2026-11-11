@@ -9,10 +9,14 @@ export function Tooltip({
   label,
   children,
   align = 'center',
+  className = 'relative inline-flex',
 }: {
   label: string
   children: ReactElement
   align?: 'center' | 'start'
+  // The wrapper's own classes (must keep `relative`): lets a caller make it fill a positioned
+  // parent, e.g. a bar segment, instead of shrink-wrapping its child.
+  className?: string
 }) {
   const [open, setOpen] = useState(false)
   const id = useId()
@@ -45,7 +49,7 @@ export function Tooltip({
 
   return (
     <span
-      className="relative inline-flex"
+      className={className}
       onMouseEnter={() => show(500)}
       onMouseLeave={hide}
       onFocusCapture={() => show(0)}

@@ -446,7 +446,7 @@ def test_ingest_returns_session_types(db_session, monkeypatch):
     for name in (
         "store_straights", "store_stints", "store_results", "store_fingerprints",
         "store_sector_bests", "store_quali_character", "store_quali_traces",
-        "store_race_control", "store_deployment", "store_accel_samples",
+        "store_race_control", "store_deployment", "store_accel_samples", "store_race_start",
     ):
         monkeypatch.setattr(pipeline, name, lambda data, db: None)
 

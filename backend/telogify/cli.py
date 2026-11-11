@@ -559,6 +559,34 @@ def run_season_deployment_cmd(year: int) -> None:
     console.print(f"[green]Done:[/green] persisted [bold]{len(verdicts)}[/bold] verdict(s) [dim]({elapsed})[/dim].")
 
 
+@app.command("refresh-race-start")
+def refresh_race_start_cmd(
+    year: int,
+    round: int,
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the times that would be written; write nothing."),
+) -> None:
+    """Backfill a round's race-start (0-100 / 0-200 km/h) numbers from lap-1 telemetry.
+
+    For a race ingested before race starts were extracted. Re-fetches only that race's telemetry
+    and rewrites only its RaceStart rows (no LLM, no other tables)."""
+    from telogify.pipeline import run_refresh_race_start
+
+    found = run_refresh_race_start(year, round, dry_run=dry_run)
+    if found is None:
+        console.print(f"[yellow]No usable race-start data for {year} round {round} (no telemetry, or too few cars reached 200 km/h); nothing written.[/yellow]")
+        return
+    def fmt(v: float | None, spec: str) -> str:
+        return "   -  " if v is None else format(v, spec)
+
+    for driver, d in sorted(found.items(), key=lambda kv: kv[1]["t_0_200_s"] or kv[1]["t_0_100_s"]):
+        console.print(
+            f"{driver:>4}  0-100 {d['t_0_100_s']:.2f}s   0-200 {fmt(d['t_0_200_s'], '.2f')}s   "
+            f"{fmt(d['v_75m_kmh'], '.0f')} km/h @ 75 m"
+        )
+    verb = "would be written" if dry_run else "written"
+    console.print(f"[green]{len(found)} drivers {verb}.[/green]")
+
+
 @app.command("refresh-results")
 def refresh_results_cmd(
     year: int,

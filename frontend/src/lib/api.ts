@@ -1,3 +1,4 @@
+import type { StartRow } from '@/lib/raceStart'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -86,6 +87,15 @@ export interface PaceRow {
   team: string | null
   gap_to_fastest_s: number
   stats: BoxStats
+}
+
+export interface RaceStartData {
+  rows: StartRow[]
+  // 200 when the round has 0-200 km/h times, 100 when only 0-100 (Monaco/Baku-style).
+  to_kmh?: number
+  speed_distance_m?: number
+  // Team -> power-unit supply map; empty when it doesn't apply to this season.
+  pu_groups?: PuGroup[]
 }
 
 export interface PaceData {
@@ -294,6 +304,35 @@ export interface SeasonDeploymentInsightItem extends InsightItem {
   pu: string
   works_team: string
   teams: string[]
+}
+
+export interface SeasonStartPoint {
+  round: number
+  // 200: gap on the full 0-200 km/h time; 100: that round only had 0-100 (plotted, but kept out
+  // of the weighted gap and the ranks because the two scales differ).
+  metric: 100 | 200
+  gap_pct: number // % slower than that round's best group
+  gap_s: number
+  n_cars: number
+}
+
+export interface SeasonStartRow {
+  key: string
+  label: string
+  color_team: string
+  points: SeasonStartPoint[]
+  weighted_gap_pct: number | null
+  flat_gap_pct: number | null
+  rank_weighted: number | null
+  rank_flat: number | null
+  // Places gained (+) or lost (-) on recent form vs the whole season; null below 4 rounds.
+  form_places: number | null
+  n_rounds: number
+}
+
+export interface SeasonStartData {
+  rounds: SeasonRound[]
+  views: { teams?: { rows: SeasonStartRow[] }; pu?: { rows: SeasonStartRow[] } }
 }
 
 export interface SeasonDeployment {

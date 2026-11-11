@@ -8,6 +8,7 @@ from telogify.models import (
     Insight,
     QualiCharacter,
     QualiInsight,
+    RaceStart,
     RaceWeekend,
     SeasonDeploymentInsight,
     SectorBest,
@@ -405,6 +406,50 @@ def test_degradation(client):
     assert "McLaren" not in fits
 
 
+def test_race_start_is_race_only_fastest_first_with_the_split_derived(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(
+            select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")
+        ).first()
+        sprint = SessionRow(weekend_id=wk.id, session_type="SPRINT", status="loaded")
+        db.add(sprint)
+        db.commit()
+        db.refresh(sprint)
+        db.add(RaceStart(session_id=race.id, driver="LEC", constructor="Ferrari", t_0_100_s=2.8, t_0_200_s=5.1))
+        db.add(RaceStart(session_id=race.id, driver="NOR", constructor="McLaren", t_0_100_s=2.5, t_0_200_s=4.6))
+        db.add(RaceStart(session_id=race.id, driver="ALO", constructor="Aston Martin", t_0_100_s=3.0, t_0_200_s=5.5))
+        # A sprint start must never leak into the main race card.
+        db.add(RaceStart(session_id=sprint.id, driver="VER", constructor="Red Bull", t_0_100_s=2.0, t_0_200_s=4.0))
+        db.commit()
+
+    data = client.get("/weekends/2025/11/race-start").json()
+    rows = data["rows"]
+    assert [r["driver"] for r in rows] == ["NOR", "LEC", "ALO"]  # fastest to 200 first, no sprint row
+    assert rows[0]["t_100_200_s"] == pytest.approx(2.1)
+    assert rows[0]["v_75m_kmh"] is None and data["to_kmh"] == 200
+    # 2025 weekend: the 2026 supply map must not be applied to it.
+    assert data["pu_groups"] == []
+    assert rows[0]["t_0_200_s"] == pytest.approx(4.6)
+    # Starting tyre = first known compound from the driver's stints; ALO has no stint seeded.
+    assert [r["compound"] for r in rows] == ["M", "M", None]
+
+
+def test_race_start_compound_is_none_when_the_first_stint_is_unknown(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(
+            select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")
+        ).first()
+        db.add(RaceStart(session_id=race.id, driver="ALB", constructor="Williams", t_0_100_s=2.6, t_0_200_s=4.9))
+        db.add(Stint(session_id=race.id, driver="ALB", stint_number=1, compound="None", lap_start=1, lap_end=5, avg_pace=90.0, lap_times_json=[90.0], tyre_ages_json=[1]))
+        db.add(Stint(session_id=race.id, driver="ALB", stint_number=2, compound="HARD", lap_start=6, lap_end=20, avg_pace=90.0, lap_times_json=[90.0], tyre_ages_json=[1]))
+        db.commit()
+    rows = client.get("/weekends/2025/11/race-start").json()["rows"]
+    # Not the second stint's "H": the start tyre is unknown, and must read as unknown.
+    assert next(r for r in rows if r["driver"] == "ALB")["compound"] is None
+
+
 def test_results(client):
     rows = client.get("/weekends/2025/11/results").json()
     assert [r["driver"] for r in rows] == ["NOR", "LEC", "ALO"]
@@ -543,6 +588,7 @@ def test_empty_weekend_endpoints_return_placeholder_shapes(test_engine):
         degradation = client.get("/weekends/2024/1/degradation").json()
         assert degradation == {"fits": [], "points": [], "reference_age_laps": None}
         assert client.get("/weekends/2024/1/results").json() == []
+        assert client.get("/weekends/2024/1/race-start").json() == {"rows": []}
         summary = client.get("/weekends/2024/1/session-summary?session=Q").json()
         assert summary["session_type"] is None and summary["order"] == []
     finally:
@@ -916,3 +962,78 @@ def test_cors_origin_regex_scopes_preview_deployments():
     assert pattern.fullmatch("https://telogify-abc123.vercel.app")
     assert not pattern.fullmatch("https://evil.vercel.app")
     assert not pattern.fullmatch("https://telogify-x.vercel.app.evil.dev")
+
+
+def test_race_start_falls_back_to_0_100_and_carries_the_km_h_figure(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(
+            select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")
+        ).first()
+        db.add(RaceStart(session_id=race.id, driver="NOR", constructor="McLaren", t_0_100_s=2.9, t_0_200_s=None, v_75m_kmh=151.0))
+        db.add(RaceStart(session_id=race.id, driver="LEC", constructor="Ferrari", t_0_100_s=2.6, t_0_200_s=None, v_75m_kmh=None))
+        db.commit()
+    data = client.get("/weekends/2025/11/race-start").json()
+    assert data["to_kmh"] == 100 and data["speed_distance_m"] == 75.0
+    assert [r["driver"] for r in data["rows"]] == ["LEC", "NOR"]  # sorted by 0-100 on a 100 round
+    assert data["rows"][0]["t_0_200_s"] is None and data["rows"][0]["t_100_200_s"] is None
+    assert data["rows"][1]["v_75m_kmh"] == 151.0
+
+
+def test_race_start_sends_the_power_unit_map_only_for_the_season_it_describes(client, test_engine):
+    with Session(test_engine) as db:
+        wk26 = RaceWeekend(year=2026, round=3, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(wk26)
+        db.commit()
+        db.refresh(wk26)
+        race = SessionRow(weekend_id=wk26.id, session_type="R", status="loaded")
+        db.add(race)
+        db.commit()
+        db.refresh(race)
+        db.add(RaceStart(session_id=race.id, driver="HAM", constructor="Ferrari", t_0_100_s=2.5, t_0_200_s=4.6))
+        db.add(RaceStart(session_id=race.id, driver="NOR", constructor="McLaren", t_0_100_s=2.6, t_0_200_s=4.7))
+        db.commit()
+        wid = wk26.id
+    groups = client.get("/weekends/2026/3/race-start").json()["pu_groups"]
+    by_name = {g["name"]: g for g in groups}
+    assert "McLaren" in by_name["Mercedes"]["teams"] and by_name["Honda"]["works_team"] == "Aston Martin"
+    # A team the map doesn't know -> no grouping at all, rather than silently dropping its cars.
+    with Session(test_engine) as db:
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wid, SessionRow.session_type == "R")).first()
+        db.add(RaceStart(session_id=race.id, driver="XXX", constructor="Brand New Team", t_0_100_s=2.9, t_0_200_s=5.0))
+        db.commit()
+    assert client.get("/weekends/2026/3/race-start").json()["pu_groups"] == []
+
+
+def test_season_race_start_endpoint_shape_and_empty_season(client, test_engine):
+    assert client.get("/season/2019/race-start").json() == {"rounds": [], "views": {}}  # no 404
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2026, round=7, circuit_name="X", country="Y", event_name="Test GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+        db.add(race)
+        db.commit()
+        db.refresh(race)
+        db.add(RaceStart(session_id=race.id, driver="HAM", constructor="Ferrari", t_0_100_s=2.4, t_0_200_s=4.5))
+        db.add(RaceStart(session_id=race.id, driver="NOR", constructor="McLaren", t_0_100_s=2.5, t_0_200_s=4.7))
+        db.commit()
+    data = client.get("/season/2026/race-start").json()
+    assert [r["round"] for r in data["rounds"]] == [7]
+    row = data["views"]["teams"]["rows"][0]
+    assert row["key"] == "Ferrari" and row["points"][0]["metric"] == 200
+    assert {"weighted_gap_pct", "flat_gap_pct", "rank_weighted", "form_places", "n_rounds", "color_team"} <= set(row)
+    assert "pu" in data["views"]
+
+
+def test_race_start_sort_survives_a_row_without_a_0_200_time_on_a_200_round(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        db.add(RaceStart(session_id=race.id, driver="AAA", constructor="Ferrari", t_0_100_s=2.5, t_0_200_s=4.6))
+        db.add(RaceStart(session_id=race.id, driver="BBB", constructor="McLaren", t_0_100_s=2.4, t_0_200_s=None))
+        db.commit()
+    resp = client.get("/weekends/2025/11/race-start")
+    assert resp.status_code == 200  # used to be a TypeError comparing None with a float
+    assert {r["driver"] for r in resp.json()["rows"]} == {"AAA", "BBB"}

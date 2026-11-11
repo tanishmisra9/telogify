@@ -9,15 +9,17 @@ import { smoothPath } from '@/lib/svgPath'
 import { useScrollFade } from '@/lib/useScrollFade'
 import type { SeasonConstructorRow, SeasonRound } from '@/lib/api'
 
-const HEIGHT = 440
-const MARGIN = { top: 16, right: 16, bottom: 52, left: 56 }
-const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
+// Exported so the Race starts chart shares one round width and one axis gutter, and the two
+// "by round" charts line up when scrolled.
+export const HEIGHT = 440
+export const MARGIN = { top: 16, right: 16, bottom: 52, left: 56 }
+export const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 // Structural, not fluid: each round gets this many real pixels of x-axis space no matter the
 // container size, same reasoning as BarChart/PaceSpreadChart. Generous on purpose, not just
 // enough to avoid tick overlap: this chart draws up to ~10 overlapping team lines per round, and
 // a fluid-scaled axis squeezed thin later in a season reads as a tangle -- a heart monitor, not
 // a comparison. Scrolling a wider chart beats cramming a full season into one screenful.
-const MIN_ROUND_SLOT = 64
+export const MIN_ROUND_SLOT = 64
 
 type Metric = 'pace' | 'quali' | 'cumulative'
 const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualifying', cumulative: 'Cumulative' }

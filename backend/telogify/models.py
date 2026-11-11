@@ -217,6 +217,26 @@ class AccelSample(SQLModel, table=True):
     longitudinal_accel_ms2_json: list = Field(default_factory=list, sa_column=Column(JSON))
 
 
+class RaceStart(SQLModel, table=True):
+    """Standing-start acceleration off the grid, main race only: seconds from lights out to 100
+    and to 200 km/h (cumulative; the 100-200 split is derived at read time). Lights out is a
+    single instant shared by the whole field (see analysis/race_start.py), so reaction time is
+    included. A driver whose start could not be read cleanly has no row."""
+
+    __tablename__ = "race_start"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    driver: str = Field(index=True)
+    constructor: str | None = None
+    t_0_100_s: float
+    # None on rounds where too few cars reach 200 km/h before the first braking zone (Monaco, Baku).
+    t_0_200_s: float | None = None
+    # Speed (km/h) after 75 m from the car's own launch; None when it lifted first or the round
+    # lacks enough cars with a reading. Carries no reaction time (see analysis/race_start.py).
+    v_75m_kmh: float | None = None
+
+
 class Attribution(SQLModel, table=True):
     __tablename__ = "attribution"
 
@@ -312,6 +332,12 @@ class SeasonDeploymentInsight(SQLModel, table=True):
 
 class Subscriber(SQLModel, table=True):
     __tablename__ = "subscriber"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','confirmed','unsubscribed','bounced','complained')",
+            name="ck_subscriber_status",
+        ),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)  # normalized: trimmed + lowercased
@@ -333,12 +359,6 @@ class SubscriberAudit(SQLModel, table=True):
     a row-change trigger on `subscriber` (see security_sql.py) records inserts/updates/deletes,
     and the API appends security events that never reach a row at all (rate-limit and captcha
     rejections). Immutability is enforced in the DB by a BEFORE UPDATE OR DELETE trigger that
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('pending','confirmed','unsubscribed','bounced','complained')",
-            name="ck_subscriber_status",
-        ),
-    )
     raises, not by convention here. Doubles as the rate limiter's store, which is why
     (actor_ip_hash, created_at) and (email, created_at) are indexed.
     """

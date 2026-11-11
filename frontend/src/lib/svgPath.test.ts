@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { smoothPath } from './svgPath'
+import { monotonePath, smoothPath } from './svgPath'
 
 type Point = { x: number; y: number }
 
@@ -59,5 +59,57 @@ describe('smoothPath', () => {
     // point: p1 + (p2 - p0) / 6, with p0 = points[0], p1 = points[1], p2 = points[2].
     expect(curves[1].cp1.x).toBeCloseTo(10 + (20 - 0) / 6, 4)
     expect(curves[1].cp1.y).toBeCloseTo(0 + (10 - 0) / 6, 4)
+  })
+})
+
+describe('monotonePath', () => {
+  const lerpX = (n: number) => Array.from({ length: n }, (_, i) => i * 10)
+  const mk = (ys: number[]): Point[] => ys.map((y, i) => ({ x: lerpX(ys.length)[i], y }))
+  // A cubic Bezier lies inside the hull of its 4 control points, so if both inner control points
+  // stay within the segment's end-point range the curve cannot leave it.
+  const stays = (ys: number[]) => {
+    const { curves, moveTo } = parsePath(monotonePath(mk(ys)))
+    let prev = moveTo!
+    return curves.every((c) => {
+      const lo = Math.min(prev.y, c.to.y) - 1e-9
+      const hi = Math.max(prev.y, c.to.y) + 1e-9
+      const ok = [c.cp1.y, c.cp2.y].every((y) => y >= lo && y <= hi)
+      prev = c.to
+      return ok
+    })
+  }
+
+  it('passes through every point, in order', () => {
+    const { moveTo, curves } = parsePath(monotonePath(mk([5, 20, 8, 8, 30])))
+    expect(moveTo).toEqual({ x: 0, y: 5 })
+    expect(curves.map((c) => c.to)).toEqual(mk([5, 20, 8, 8, 30]).slice(1))
+  })
+
+  it('never overshoots a segment: a zigzag, a plateau into a jump, a spike', () => {
+    expect(stays([0, 30, 0, 30, 0])).toBe(true)
+    expect(stays([0, 0, 30, 30])).toBe(true)
+    expect(stays([10, 10, 10, 50, 10, 10])).toBe(true)
+    expect(stays([3, 4, 40, 41, 2, 90, 0])).toBe(true)
+  })
+
+  it('is exactly the case Catmull-Rom (smoothPath) gets wrong: it bulges above the floor', () => {
+    const pts = mk([0, 0, 30, 30]) // floor is y = 0 (the round's best start)
+    const catmull = parsePath(smoothPath(pts)).curves
+    expect(Math.min(...catmull.flatMap((c) => [c.cp1.y, c.cp2.y]))).toBeLessThan(0)
+    const mono = parsePath(monotonePath(pts)).curves
+    expect(Math.min(...mono.flatMap((c) => [c.cp1.y, c.cp2.y]))).toBeGreaterThanOrEqual(0)
+  })
+
+  it('a flat run stays flat', () => {
+    const { curves } = parsePath(monotonePath(mk([7, 7, 7])))
+    expect(curves.flatMap((c) => [c.cp1.y, c.cp2.y])).toEqual([7, 7, 7, 7])
+  })
+
+  it('degenerate inputs: one point is a bare move, none is empty, two is a straight run', () => {
+    expect(monotonePath([])).toBe('')
+    expect(monotonePath([{ x: 1, y: 2 }])).toBe('M1,2')
+    const { curves } = parsePath(monotonePath(mk([0, 10])))
+    expect(curves[0].cp1.y).toBeCloseTo(10 / 3)
+    expect(curves[0].cp2.y).toBeCloseTo((2 * 10) / 3)
   })
 })

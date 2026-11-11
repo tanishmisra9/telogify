@@ -13,6 +13,7 @@ import { Insight } from '@/components/Insight'
 import { LoadingSwap } from '@/components/LoadingSwap'
 import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
+import { RaceStartChart } from '@/components/RaceStartChart'
 import { Results } from '@/components/Results'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
@@ -28,6 +29,7 @@ import {
   type QualiCharacterData,
   type QualiInsightItem,
   type QualiTraceData,
+  type RaceStartData,
   type ResultRow,
   type SectorBestRow,
   type SectorsData,
@@ -356,6 +358,7 @@ export function WeekendPage() {
   const sprintPace = useApi<PaceData>(`${base}/pace?session=SPRINT`)
   const pace = useApi<PaceData>(`${base}/pace`)
   const degradation = useApi<DegradationData>(`${base}/degradation`)
+  const raceStart = useApi<RaceStartData>(`${base}/race-start`)
   const results = useApi<ResultRow[]>(`${base}/results`)
 
   // One readiness signal for the header + insights block, so they blur in together the moment
@@ -422,6 +425,7 @@ export function WeekendPage() {
     sessionsLoaded ? { id: 'qualifying', label: 'Qualifying' } : null,
     sessionsLoaded && qualiTrace.data?.drivers.length ? { id: 'fight-to-pole', label: 'Fight to Pole' } : null,
     sessionsLoaded ? { id: 'race', label: 'Race' } : null,
+    sessionsLoaded && raceStart.data?.rows.length ? { id: 'race-start', label: 'Race Start' } : null,
     sessionsLoaded && degradation.data?.points.length ? { id: 'tyre-degradation', label: 'Tyre Degradation' } : null,
     sessionsLoaded && results.data?.length ? { id: 'finishing-order', label: 'Finishing Order' } : null,
   ].filter((s): s is NavSection => s !== null)
@@ -723,6 +727,17 @@ export function WeekendPage() {
               </ScrollReveal>
             ) : (
               <SkeletonCard label="Pace spread" className="min-h-[600px]" />
+            )}
+            {/* No skeleton on purpose: many rounds legitimately have no race start (circuits whose
+                first braking zone comes before 200 km/h, rounds ingested before this existed, an
+                API that predates the endpoint), and a reserved ~1.4k px placeholder would collapse
+                and shift everything below it. The card simply appears when it has rows. */}
+            {(raceStart.data?.rows.length ?? 0) > 0 && raceStart.data && (
+              <div id="race-start" className="min-w-0 scroll-mt-24">
+                <ScrollReveal>
+                  <RaceStartChart data={raceStart.data} />
+                </ScrollReveal>
+              </div>
             )}
             <div id="tyre-degradation" className="min-w-0 scroll-mt-24">
               {degradation.data ? (

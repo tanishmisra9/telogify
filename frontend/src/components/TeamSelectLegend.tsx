@@ -12,6 +12,8 @@ export interface TeamSelectRow {
   // (e.g. SeasonDeploymentChart's power-unit toggle: color from the works team, label from
   // the manufacturer name).
   label?: string
+  // Native tooltip on the row's button (e.g. what a rank-movement arrow means).
+  title?: string
 }
 
 const COL_SIZE = 5
@@ -22,6 +24,7 @@ function Row({
   selected,
   isFiltering,
   onToggle,
+  stackValue,
 }: {
   row: TeamSelectRow
   // Absolute 1-based rank across the whole (pre-split) list, not the position within whichever
@@ -30,6 +33,7 @@ function Row({
   selected: Set<string>
   isFiltering: boolean
   onToggle: (team: string) => void
+  stackValue: boolean
 }) {
   if (row.disabled) {
     return (
@@ -50,15 +54,26 @@ function Row({
         type="button"
         onClick={() => onToggle(row.team)}
         aria-pressed={isSelected}
+        title={row.title}
         aria-label={isSelected ? 'Show every team again' : `Isolate ${row.label ?? row.team}'s line`}
-        className={`grid min-h-11 w-full cursor-pointer grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 border-[0.75px] border-ink/20 px-2 py-1 text-left text-sm shadow-[inset_0_0_0_1.5px_transparent] transition-[opacity,box-shadow] duration-150 hover:shadow-[inset_0_0_0_1.5px_var(--color-ink)] ${
+        className={`grid min-h-11 w-full cursor-pointer ${stackValue ? 'grid-cols-[1.25rem_minmax(0,1fr)]' : 'grid-cols-[1.25rem_minmax(0,1fr)_auto]'} items-center gap-x-3 border-[0.75px] border-ink/20 px-2 py-1 text-left text-sm shadow-[inset_0_0_0_1.5px_transparent] transition-[opacity,box-shadow] duration-150 hover:shadow-[inset_0_0_0_1.5px_var(--color-ink)] ${
           isDimmed ? 'opacity-40' : ''
         }`}
         style={{ backgroundColor: teamColorWithAlpha(row.team, isSelected ? 0.2 : 0.09) }}
       >
         <span className="num text-xs text-muted">{rank}</span>
-        <TeamMark team={row.team} label={row.label} className={isSelected ? 'font-semibold' : 'font-medium'} />
-        {row.value && <span className="num text-xs text-ink">{row.value}</span>}
+        {stackValue ? (
+          // Narrow screens: the value sits under the name so a long name never gets cut to make room.
+          <span className="flex min-w-0 flex-col">
+            <TeamMark team={row.team} label={row.label} className={isSelected ? 'font-semibold' : 'font-medium'} />
+            {row.value && <span className="num pl-[11px] text-xs text-ink">{row.value}</span>}
+          </span>
+        ) : (
+          <>
+            <TeamMark team={row.team} label={row.label} className={isSelected ? 'font-semibold' : 'font-medium'} />
+            {row.value && <span className="num text-xs text-ink">{row.value}</span>}
+          </>
+        )}
       </button>
     </li>
   )
@@ -80,11 +95,14 @@ export function TeamSelectLegend({
   selected,
   onToggle,
   isFiltering,
+  stackValue = false,
 }: {
   rows: TeamSelectRow[]
   selected: Set<string>
   onToggle: (team: string) => void
   isFiltering: boolean
+  // Put each row's value under its name (for phones) instead of beside it.
+  stackValue?: boolean
 }) {
   const col1 = rows.slice(0, COL_SIZE)
   const col2 = rows.slice(COL_SIZE, COL_SIZE * 2)
@@ -95,12 +113,12 @@ export function TeamSelectLegend({
       <div className="grid grid-cols-2">
         <ol>
           {col1.map((r, i) => (
-            <Row key={r.team} row={r} rank={i + 1} selected={selected} isFiltering={isFiltering} onToggle={onToggle} />
+            <Row key={r.team} row={r} rank={i + 1} selected={selected} isFiltering={isFiltering} onToggle={onToggle} stackValue={stackValue} />
           ))}
         </ol>
         <ol>
           {col2.map((r, i) => (
-            <Row key={r.team} row={r} rank={i + 1 + COL_SIZE} selected={selected} isFiltering={isFiltering} onToggle={onToggle} />
+            <Row key={r.team} row={r} rank={i + 1 + COL_SIZE} selected={selected} isFiltering={isFiltering} onToggle={onToggle} stackValue={stackValue} />
           ))}
         </ol>
       </div>
@@ -114,6 +132,7 @@ export function TeamSelectLegend({
               selected={selected}
               isFiltering={isFiltering}
               onToggle={onToggle}
+              stackValue={stackValue}
             />
           ))}
         </ol>

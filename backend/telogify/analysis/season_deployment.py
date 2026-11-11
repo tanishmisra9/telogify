@@ -25,6 +25,9 @@ class PuGroup:
 
 
 # 2026 power unit supply map. Season-specific by nature, like the hardcoded frontend team colors.
+# The season this team -> power-unit supply map describes. It is NOT valid for other years (Red Bull
+# ran Honda in 2025), so anything keyed on it must check the year.
+PU_GROUPS_YEAR = 2026
 PU_GROUPS: tuple[PuGroup, ...] = (
     PuGroup("Mercedes", "Mercedes", ("Mercedes", "Alpine", "McLaren", "Williams")),
     PuGroup("Ferrari", "Ferrari", ("Ferrari", "Haas F1 Team", "Cadillac")),
@@ -32,6 +35,12 @@ PU_GROUPS: tuple[PuGroup, ...] = (
     PuGroup("Honda", "Aston Martin", ("Aston Martin",)),
     PuGroup("Audi", "Audi", ("Audi",)),
 )
+
+def pu_map_applies(year: int, teams: set[str]) -> bool:
+    """True when the supply map describes `year` AND covers every team in `teams` (a partial map
+    would silently drop cars from a power-unit view). The one place that decision lives."""
+    return year == PU_GROUPS_YEAR and teams <= {t for g in PU_GROUPS for t in g.teams}
+
 
 MIN_BIN_N = 5  # a bin's median is meaningless on fewer samples
 MIN_BINS_PER_BAND = 2  # a band needs at least two solid bins to be a read

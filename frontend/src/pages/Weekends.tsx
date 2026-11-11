@@ -1,9 +1,13 @@
+import { useState } from 'react'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { BackHomeButton } from '@/components/BackHomeButton'
 import { BlurFade } from '@/components/BlurFade'
 import { LoadingSwap } from '@/components/LoadingSwap'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { Skeleton } from '@/components/Skeleton'
+import { Tooltip } from '@/components/Tooltip'
+import { expandTransition } from '@/lib/motion'
 import { useApi, type SeasonWeekendRow, type WeekendSummary } from '@/lib/api'
 
 // Only the first screenful cascades on load; rows reached by scrolling fade in one at a time as
@@ -41,6 +45,14 @@ export function Weekends() {
   ].sort((a, b) => a.year - b.year || a.round - b.round)
   const loggedCount = weekends.filter((w) => w.ingested).length
 
+  // One collapsible group per year, newest first; rounds stay in calendar order inside a year.
+  // Only the newest year opens by default (a user's own toggle, tracked by year, always wins), so
+  // a long archive doesn't push the current season off the screen.
+  const years = [...new Set(weekends.map((w) => w.year))].sort((a, b) => b - a)
+  const [toggled, setToggled] = useState<Record<number, boolean>>({})
+  const reduce = useReducedMotion()
+  const isOpen = (year: number) => toggled[year] ?? year === years[0]
+
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
       <BlurFade>
@@ -65,7 +77,7 @@ export function Weekends() {
             {loading ? ' ' : `${loggedCount} logged`}
           </span>
         </div>
-        <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
+        <p className="mt-4 max-w-4xl text-lg leading-relaxed text-muted">
           Every race weekend of the season, each analysed weekend traced to official timing data.
         </p>
       </BlurFade>
@@ -78,16 +90,20 @@ export function Weekends() {
         loading={loading}
         delay={0.08}
         placeholder={
-          <ul className="mt-8">
+          <div className="mt-8">
+            {/* Reserves the year header's measured height so the crossfade into the list does not shift. */}
+            <Skeleton className="h-[68px] sm:h-[87px]" />
+          <ul>
             {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
               <li key={i} className="border-b border-border py-6">
-                {/* Measured against a real row (110.5px desktop / 133px mobile, the difference
-                    being the event name wrapping to two lines in a narrow column) minus this
-                    li's own py-6 and border, so the reserved rows match what replaces them. */}
-                <Skeleton className="h-[84px] md:h-[62px]" />
+                {/* Measured against a real row (86.5px desktop; 109px on a phone when the event
+                    name wraps to two lines, 81px when it fits one) minus this li's own py-6 and
+                    border, so the reserved rows match what replaces them. */}
+                <Skeleton className="h-[60px] md:h-[38px]" />
               </li>
             ))}
           </ul>
+          </div>
         }
       >
         {error ? (
@@ -95,41 +111,98 @@ export function Weekends() {
         ) : !loading && weekends.length === 0 ? (
           <p className="mt-8 text-muted">No weekends processed yet.</p>
         ) : (
-          <ul>
-            {weekends.map((w, i) => (
-              <ScrollReveal key={`${w.year}-${w.round}`} delay={i < STAGGERED_ROWS ? 0.04 * i : 0}>
-                <li className="border-b border-border">
-                  <Link
-                    to={`/weekends/${w.year}/${w.round}`}
-                    aria-label={`${w.event_name}, round ${w.round}, ${w.year}`}
-                    className="group flex items-center gap-5 py-6 transition-colors hover:bg-surface"
-                  >
-                    <span className="num w-14 text-2xl font-bold text-accent">
-                      {String(w.round).padStart(2, '0')}
-                    </span>
-                    <span className="flex-1">
-                      <span className="block font-display text-2xl leading-tight transition-transform duration-200 group-hover:translate-x-1 sm:text-3xl">
-                        {w.event_name}
-                      </span>
-                      {/* Circuit only, no country: the event name directly above already carries
-                          the nationality ("Chinese Grand Prix" / "Shanghai"), so appending the
-                          country repeated it on nearly every row. */}
-                      <span className="mt-1 block text-sm text-muted">{w.circuit_name}</span>
-                    </span>
-                    <span className="num text-sm text-muted">{w.year}</span>
-                    {/* Affordance: rows are links; the arrow arrives on hover in the same
-                        direction the title nudges, so the whole row reads as one gesture. */}
-                    <span
-                      aria-hidden
-                      className="w-6 pr-1 text-xl text-accent opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-100"
+          <div>
+            {years.map((year, yi) => {
+              const rows = weekends.filter((w) => w.year === year)
+              const open = isOpen(year)
+              const panelId = `weekends-${year}`
+              return (
+                <section key={year} className={yi === 0 ? 'mt-8' : 'mt-10'}>
+                  <h2>
+                    <Tooltip
+                      align="start"
+                      className="relative flex w-full"
+                      label={`${open ? 'Collapse' : 'Expand'} ${year}: ${rows.length} race weekend${rows.length === 1 ? '' : 's'}`}
                     >
-                      →
-                    </span>
-                  </Link>
-                </li>
-              </ScrollReveal>
-            ))}
-          </ul>
+                      <button
+                        type="button"
+                        onClick={() => setToggled((t) => ({ ...t, [year]: !open }))}
+                        aria-expanded={open}
+                        aria-controls={panelId}
+                        className="group flex w-full cursor-pointer items-center justify-between gap-4 border-b-[1.5px] border-ink py-3 text-left transition-colors hover:bg-surface sm:py-4"
+                      >
+                        <span className="font-display text-[2.7rem] leading-none tracking-tight sm:text-[3.375rem]">
+                          {year}
+                        </span>
+                        <span className="flex items-center gap-4">
+                          <span className="num text-sm text-muted">
+                            {rows.length} {rows.length === 1 ? 'weekend' : 'weekends'}
+                          </span>
+                          {/* Drawn chevron (not a glyph): points right when closed, turns down
+                              when open. Accent so it reads as the control. */}
+                          <svg
+                            aria-hidden
+                            viewBox="0 0 24 24"
+                            className={`h-6 w-6 shrink-0 text-accent transition-transform duration-200 ease-out ${open ? 'rotate-90' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.25"
+                            strokeLinecap="square"
+                            strokeLinejoin="miter"
+                          >
+                            <path d="M9 5l7 7-7 7" />
+                          </svg>
+                        </span>
+                      </button>
+                    </Tooltip>
+                  </h2>
+                  <AnimatePresence initial={false}>
+                    {open && (
+                      <m.ul
+                        id={panelId}
+                        key="rows"
+                        className="overflow-hidden"
+                        initial={reduce ? false : { height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                        transition={reduce ? { duration: 0 } : expandTransition}
+                      >
+                        {rows.map((w, i) => (
+                          <ScrollReveal key={`${w.year}-${w.round}`} delay={yi === 0 && i < STAGGERED_ROWS ? 0.04 * i : 0}>
+                            <li className="border-b border-border">
+                              <Link
+                                to={`/weekends/${w.year}/${w.round}`}
+                                aria-label={`${w.event_name}, round ${w.round}, ${w.year}`}
+                                className="group flex items-center gap-5 py-6 transition-colors hover:bg-surface"
+                              >
+                                <span className="num w-14 text-2xl font-bold text-accent">
+                                  {String(w.round).padStart(2, '0')}
+                                </span>
+                                <span className="flex-1">
+                                  <span className="block font-display text-2xl leading-tight transition-transform duration-200 group-hover:translate-x-1 sm:text-3xl">
+                                    {w.event_name}
+                                  </span>
+                                </span>
+                                {/* Affordance: rows are links; the arrow arrives on hover in the same
+                                    direction the title nudges, so the whole row reads as one gesture.
+                                    (The year moved up into the group header, so it is no longer repeated here.) */}
+                                <span
+                                  aria-hidden
+                                  className="w-6 pr-1 text-xl text-accent opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-100"
+                                >
+                                  →
+                                </span>
+                              </Link>
+                            </li>
+                          </ScrollReveal>
+                        ))}
+                      </m.ul>
+                    )}
+                  </AnimatePresence>
+                </section>
+              )
+            })}
+          </div>
         )}
       </LoadingSwap>
     </main>

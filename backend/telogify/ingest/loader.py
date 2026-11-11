@@ -376,3 +376,22 @@ def load_weekend(
         sessions[code] = ses
     db.commit()
     return WeekendData(weekend=weekend, sessions=sessions, held_back=held_back)
+
+
+def load_race_for_backfill(year: int, round: int, now: datetime | None = None) -> "fastf1.core.Session | None":
+    """Just the Race session's laps + telemetry, through the same FastF1-then-OpenF1 path and
+    usable-data gates as `load_weekend`, with no DB writes and no other session loaded. For
+    repairing one table on an already-ingested round (see pipeline.run_refresh_race_start).
+    None when the race has not happened or neither source has usable data."""
+    enable_cache()
+    event = fastf1.get_event(year, round)
+    now = now or datetime.utcnow()
+    names = dict(list_weekend_sessions(event))
+    start = {code: s for code, _, s in weekend_session_dates(event)}.get("R")
+    if "R" not in names or "R" not in {c for c, _ in completed_weekend_sessions(event, now)}:
+        return None
+    may_fall_back = openf1.enabled() and start is not None and now - start > _STALE_AFTER
+    ses, outcome = _load_fastf1(year, round, names["R"], gated=False, force=False, swallow_errors=may_fall_back)
+    if ses is None and may_fall_back:
+        ses, outcome = _load_openf1(year, round, names["R"], start, gated=False, fastf1_outcome=outcome)
+    return ses

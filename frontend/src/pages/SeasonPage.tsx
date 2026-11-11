@@ -9,6 +9,7 @@ import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
 import { SectionTitle } from '@/components/SectionTitle'
+import { SeasonStartChart } from '@/components/SeasonStartChart'
 import { SkeletonCard } from '@/components/Skeleton'
 import { TeamRule } from '@/components/TeamMark'
 import { deploymentInsights } from '@/lib/deploymentInsights'
@@ -20,6 +21,7 @@ import {
   type SeasonConstructorRow,
   type SeasonDeployment,
   type SeasonDeploymentInsightItem,
+  type SeasonStartData,
   type SeasonSnapshot,
   type WeekendSummary,
 } from '@/lib/api'
@@ -187,13 +189,16 @@ function SeasonView({ year }: { year: number }) {
   const isMobile = useIsMobile()
   const season = useApi<SeasonSnapshot>(`/season/${year}`)
   const deployment = useApi<SeasonDeployment>(`/season/${year}/deployment`)
+  const raceStart = useApi<SeasonStartData>(`/season/${year}/race-start`)
   const rows = season.data?.constructors ?? []
+  const hasRaceStart = !!raceStart.data && Object.keys(raceStart.data.views).length > 0
   const hasDeployment = !!deployment.data && Object.keys(deployment.data.scatter).length > 0
   const deploymentPanelItems = deployment.data ? deploymentPanels(deployment.data) : []
 
   const navSections: NavSection[] = [
     rows.length > 0 ? { id: 'ranking', label: 'Ranking' } : null,
     rows.length > 0 ? { id: 'gap-by-round', label: 'Gap by round' } : null,
+    rows.length > 0 && hasRaceStart ? { id: 'race-starts', label: 'Race starts' } : null,
     rows.length > 0 && hasDeployment ? { id: 'deployment', label: 'Deployment' } : null,
   ].filter((s): s is NavSection => s !== null)
 
@@ -268,12 +273,26 @@ function SeasonView({ year }: { year: number }) {
             </LoadingSwap>
           </section>
 
+          {(raceStart.loading || hasRaceStart) && (
+            <section id="race-starts" className="mt-20 scroll-mt-24">
+              <SectionTitle delay={0.24}>Race starts</SectionTitle>
+              <LoadingSwap
+                loading={raceStart.loading}
+                delay={0.24}
+                // Measured on the real card: 947px desktop (Teams), 1199px phone (legend stacks).
+                placeholder={<SkeletonCard className="min-h-[1200px] md:min-h-[950px]" />}
+              >
+                {raceStart.data && <SeasonStartChart data={raceStart.data} />}
+              </LoadingSwap>
+            </section>
+          )}
+
           {(deployment.loading || hasDeployment) && (
             <section id="deployment" className="mt-20 scroll-mt-24">
-              <SectionTitle delay={0.24}>Deployment</SectionTitle>
+              <SectionTitle delay={0.32}>Deployment</SectionTitle>
               <LoadingSwap
                 loading={deployment.loading}
-                delay={0.24}
+                delay={0.32}
                 placeholder={
                   <>
                     {/* 5 placeholders, one per PU_GROUPS entry (backend/telogify/analysis/

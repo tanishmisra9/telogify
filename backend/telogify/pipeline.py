@@ -44,9 +44,15 @@ from telogify.analysis.season import build_season_accel_scatter
 from telogify.db import engine
 from telogify.ingest.accel_samples import store_accel_samples
 from telogify.ingest.fastf1_cache import enable_cache
-from telogify.ingest.loader import WeekendData, list_weekend_sessions, load_weekend
+from telogify.ingest.loader import (
+    WeekendData,
+    list_weekend_sessions,
+    load_race_for_backfill,
+    load_weekend,
+)
 from telogify.ingest.quali_character import store_quali_character
 from telogify.ingest.quali_trace import store_quali_traces
+from telogify.ingest.race_start import extract_race_start, store_race_start, write_race_start
 from telogify.ingest.deployment import store_deployment
 from telogify.ingest.race_control import store_race_control
 from telogify.ingest.results import (
@@ -95,6 +101,7 @@ def _ingest(state: PipelineState) -> dict:
         store_race_control(data, db)
         store_deployment(data, db)
         store_accel_samples(data, db)
+        store_race_start(data, db)
         # session_types is the full current DB state (sessions can now be skipped as
         # already-ingested, so data.sessions alone no longer reflects "everything ingested so
         # far"); new_session_types is just what THIS call actually (re)loaded, needed only to
@@ -492,6 +499,31 @@ def run_refresh_results(year: int, round: int, dry_run: bool = False) -> list[Re
                 RefreshOutcome(code, True, "would rewrite" if dry_run else "rewritten", changes)
             )
     return outcomes
+
+
+def run_refresh_race_start(year: int, round: int, dry_run: bool = False) -> dict[str, dict] | None:
+    """Race-start-only backfill for an already-ingested round: re-fetches just the race's
+    laps/telemetry (FastF1, then OpenF1 as in a normal ingest) and rewrites only its RaceStart
+    rows, so published insights and every other table are untouched. Returns driver -> times
+    (what was, or with `dry_run` would be, written), or None when no source has usable data or too few
+    cars could be timed (nothing is written then). Everything is fetched and extracted before the first write."""
+    with Session(engine) as db:
+        weekend_id = _weekend_id(db, year, round)
+        if weekend_id is None or "R" not in _ingested_session_types(db, weekend_id):
+            raise RuntimeError(f"Race not ingested for {year} round {round}. Run run-weekend first.")
+        ses = load_race_for_backfill(year, round)
+        if ses is None:
+            return None
+        found = extract_race_start(ses)
+        if not found:
+            return None  # an empty read must never replace rows from an earlier good ingest
+        if not dry_run:
+            race = db.exec(
+                select(SessionModel).where(SessionModel.weekend_id == weekend_id, SessionModel.session_type == "R")
+            ).first()
+            write_race_start(db, race.id, found)  # reuse the read above: no second extraction
+            db.commit()
+        return found
 
 
 @dataclass
