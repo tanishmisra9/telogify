@@ -43,7 +43,16 @@ export function SectionNav({ sections }: { sections: NavSection[] }) {
   )
 
   function jump(id: string) {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const el = document.getElementById(id)
+    // A chart inside a collapsed CollapsibleSection is display:none, so scrollIntoView would no-op:
+    // open its section (click the toggle that controls it), then scroll once React has un-hidden it.
+    const body = el?.closest<HTMLElement>('[hidden]')
+    if (body) {
+      document.querySelector<HTMLElement>(`[aria-controls="${body.id}"]`)?.click()
+      requestAnimationFrame(() => el?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+      return
+    }
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   if (sections.length < 2) return null

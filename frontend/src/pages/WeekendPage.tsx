@@ -17,7 +17,7 @@ import { RaceStartChart } from '@/components/RaceStartChart'
 import { Results } from '@/components/Results'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
-import { SectionTitle } from '@/components/SectionTitle'
+import { CollapsibleSection } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
 import { Tooltip } from '@/components/Tooltip'
 import { expandTransition } from '@/lib/motion'
@@ -531,239 +531,245 @@ export function WeekendPage() {
             </>
           }
         >
-          <SectionTitle delay={0.08}>Your three insights</SectionTitle>
-          {!insights.data || insights.data.length === 0 ? (
-            sessionsLoaded && !raceHappened ? (
-              <Upcoming>No insights yet.</Upcoming>
+          <CollapsibleSection title="Your three insights" delay={0.08}>
+            {!insights.data || insights.data.length === 0 ? (
+              sessionsLoaded && !raceHappened ? (
+                <Upcoming>No insights yet.</Upcoming>
+              ) : (
+                <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
+              )
             ) : (
-              <p className="text-muted">No insights yet. Run the pipeline for this weekend.</p>
-            )
-          ) : (
-            // Full section width, matching the heading above (same call as the Season page's
-            // Deployment panels): the narrower max-w-5xl just left-aligned with dead space
-            // beside it on wider screens.
-            <div>
-              <div className="grid gap-4">
-                {insights.data.map((item, i) => (
-                  // Offset past the heading's own 0.08 delay (+ a 0.06 gap) so a card's reveal
-                  // never starts before the heading above it has -- otherwise the fixed 0.06*i
-                  // stagger would put card 0 at delay 0, ahead of its own section heading.
-                  <BlurFade key={item.slot} delay={0.08 + 0.06 * (i + 1)}>
-                    <Insight item={item} collapsible contextLabel={weekend.data?.event_name ?? ''} />
-                  </BlurFade>
-                ))}
+              // Full section width, matching the heading above (same call as the Season page's
+              // Deployment panels): the narrower max-w-5xl just left-aligned with dead space
+              // beside it on wider screens.
+              <div>
+                <div className="grid gap-4">
+                  {insights.data.map((item, i) => (
+                    // Offset past the heading's own 0.08 delay (+ a 0.06 gap) so a card's reveal
+                    // never starts before the heading above it has -- otherwise the fixed 0.06*i
+                    // stagger would put card 0 at delay 0, ahead of its own section heading.
+                    <BlurFade key={item.slot} delay={0.08 + 0.06 * (i + 1)}>
+                      <Insight item={item} collapsible contextLabel={weekend.data?.event_name ?? ''} />
+                    </BlurFade>
+                  ))}
+                </div>
+                <BlurFade delay={0.08 + 0.06 * (insights.data.length + 1) + 0.06}>
+                  <MethodologyDisclosure />
+                </BlurFade>
               </div>
-              <BlurFade delay={0.08 + 0.06 * (insights.data.length + 1) + 0.06}>
-                <MethodologyDisclosure />
-              </BlurFade>
-            </div>
-          )}
+            )}
+          </CollapsibleSection>
         </LoadingSwap>
       </section>
 
       <section id="practice" className="mt-20 scroll-mt-24">
-        <SectionTitle delay={0.16}>Practice</SectionTitle>
-        {practiceSessionsIngested.length > 0 && (
-          <p className="kicker -mt-4 mb-6 text-muted">
-            Pooling from {practiceSessionsIngested.join(', ')}
-          </p>
-        )}
-        <SessionGate
-          sessionsLoaded={sessionsLoaded}
-          delay={0.16}
-          loading={<PracticeSkeleton />}
-          target={nextSessionTarget(['FP1'])}
-          label="Practice"
-          happened={practiceHappened}
-          noData={practiceNoData}
-        >
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-            {sectors.data ? (
-              <ScrollReveal>
-                <PracticeSectors data={sectors.data} />
-              </ScrollReveal>
-            ) : (
-              <SkeletonCard label="Best sectors" className="min-h-[560px]" />
-            )}
-            {topspeeds.data ? (
-              <ScrollReveal delay={0.06}>
-                <PracticeTopSpeeds data={topspeeds.data} />
-              </ScrollReveal>
-            ) : (
-              <SkeletonCard label="Top speeds" className="min-h-[300px]" />
-            )}
-          </div>
-        </SessionGate>
+        <CollapsibleSection title="Practice" delay={0.16}>
+          {practiceSessionsIngested.length > 0 && (
+            <p className="kicker -mt-4 mb-6 text-muted">
+              Pooling from {practiceSessionsIngested.join(', ')}
+            </p>
+          )}
+          <SessionGate
+            sessionsLoaded={sessionsLoaded}
+            delay={0.16}
+            loading={<PracticeSkeleton />}
+            target={nextSessionTarget(['FP1'])}
+            label="Practice"
+            happened={practiceHappened}
+            noData={practiceNoData}
+          >
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+              {sectors.data ? (
+                <ScrollReveal>
+                  <PracticeSectors data={sectors.data} />
+                </ScrollReveal>
+              ) : (
+                <SkeletonCard label="Best sectors" className="min-h-[560px]" />
+              )}
+              {topspeeds.data ? (
+                <ScrollReveal delay={0.06}>
+                  <PracticeTopSpeeds data={topspeeds.data} />
+                </ScrollReveal>
+              ) : (
+                <SkeletonCard label="Top speeds" className="min-h-[300px]" />
+              )}
+            </div>
+          </SessionGate>
+        </CollapsibleSection>
       </section>
 
       {isSprintWeekend && (
         <section id="sprint-qualifying" className="mt-20 scroll-mt-24">
-          <SectionTitle delay={0.2}>Sprint Qualifying</SectionTitle>
-          <SessionGate
-            sessionsLoaded={sessionsLoaded}
-            delay={0.2}
-            loading={
+          <CollapsibleSection title="Sprint Qualifying" delay={0.2}>
+            <SessionGate
+              sessionsLoaded={sessionsLoaded}
+              delay={0.2}
+              loading={
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+                  <SkeletonCard label="Car character" className="min-h-[520px]" />
+                  <SkeletonCard label="The fight to sprint pole" className="hidden min-h-[757px] lg:min-h-[957px] md:block" />
+                  <FightToPoleDesktopNote sprint />
+                </div>
+              }
+              target={nextSessionTarget(['SQ'])}
+              label="Sprint Qualifying"
+              happened={sprintQualiHappened}
+              noData={sprintQualiNoData}
+            >
               <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-                <SkeletonCard label="Car character" className="min-h-[520px]" />
-                <SkeletonCard label="The fight to sprint pole" className="hidden min-h-[757px] lg:min-h-[957px] md:block" />
-                <FightToPoleDesktopNote sprint />
-              </div>
-            }
-            target={nextSessionTarget(['SQ'])}
-            label="Sprint Qualifying"
-            happened={sprintQualiHappened}
-            noData={sprintQualiNoData}
-          >
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-              {sprintQualiCharacter.data ? (
-                <ScrollReveal>
-                  <QualiCharacterTable
-                    data={sprintQualiCharacter.data}
-                    insights={sprintQualiInsights.data ?? []}
-                    sprint
-                  />
-                </ScrollReveal>
-              ) : (
-                <SkeletonCard label="Car character" className="min-h-[520px]" />
-              )}
-              <div id="fight-to-sprint-pole" className="hidden scroll-mt-24 md:block">
-                {sprintQualiTrace.data ? (
-                  <ScrollReveal delay={0.06}>
-                    <FightToPoleChart key={`${year}-${round}`} data={sprintQualiTrace.data} sprint />
+                {sprintQualiCharacter.data ? (
+                  <ScrollReveal>
+                    <QualiCharacterTable
+                      data={sprintQualiCharacter.data}
+                      insights={sprintQualiInsights.data ?? []}
+                      sprint
+                    />
                   </ScrollReveal>
                 ) : (
-                  <SkeletonCard label="The fight to sprint pole" className="min-h-[757px] lg:min-h-[957px]" />
+                  <SkeletonCard label="Car character" className="min-h-[520px]" />
                 )}
+                <div id="fight-to-sprint-pole" className="hidden scroll-mt-24 md:block">
+                  {sprintQualiTrace.data ? (
+                    <ScrollReveal delay={0.06}>
+                      <FightToPoleChart key={`${year}-${round}`} data={sprintQualiTrace.data} sprint />
+                    </ScrollReveal>
+                  ) : (
+                    <SkeletonCard label="The fight to sprint pole" className="min-h-[757px] lg:min-h-[957px]" />
+                  )}
+                </div>
+                <FightToPoleDesktopNote sprint />
               </div>
-              <FightToPoleDesktopNote sprint />
-            </div>
-          </SessionGate>
+            </SessionGate>
+          </CollapsibleSection>
         </section>
       )}
 
       {isSprintWeekend && (
         <section id="sprint" className="mt-20 scroll-mt-24">
-          <SectionTitle delay={0.24}>Sprint</SectionTitle>
-          <SessionGate
-            sessionsLoaded={sessionsLoaded}
-            delay={0.24}
-            loading={<SkeletonCard label="Pace spread" className="min-h-[600px]" />}
-            target={nextSessionTarget(['SPRINT'])}
-            label="Sprint"
-            happened={sprintHappened}
-            noData={sprintNoData}
-          >
-            {sprintPace.data ? (
-              <ScrollReveal>
-                <PaceSpreadChart pace={sprintPace.data} />
-              </ScrollReveal>
-            ) : (
-              <SkeletonCard label="Pace spread" className="min-h-[600px]" />
-            )}
-          </SessionGate>
+          <CollapsibleSection title="Sprint" delay={0.24}>
+            <SessionGate
+              sessionsLoaded={sessionsLoaded}
+              delay={0.24}
+              loading={<SkeletonCard label="Pace spread" className="min-h-[600px]" />}
+              target={nextSessionTarget(['SPRINT'])}
+              label="Sprint"
+              happened={sprintHappened}
+              noData={sprintNoData}
+            >
+              {sprintPace.data ? (
+                <ScrollReveal>
+                  <PaceSpreadChart pace={sprintPace.data} />
+                </ScrollReveal>
+              ) : (
+                <SkeletonCard label="Pace spread" className="min-h-[600px]" />
+              )}
+            </SessionGate>
+          </CollapsibleSection>
         </section>
       )}
 
       <section id="qualifying" className="mt-20 scroll-mt-24">
-        <SectionTitle delay={0.32}>Qualifying</SectionTitle>
-        <SessionGate
-          sessionsLoaded={sessionsLoaded}
-          delay={0.32}
-          loading={
+        <CollapsibleSection title="Qualifying" delay={0.32}>
+          <SessionGate
+            sessionsLoaded={sessionsLoaded}
+            delay={0.32}
+            loading={
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+                <SkeletonCard label="Car character" className="min-h-[520px]" />
+                <SkeletonCard label="The fight to pole" className="hidden min-h-[757px] lg:min-h-[957px] md:block" />
+                <FightToPoleDesktopNote />
+              </div>
+            }
+            target={nextSessionTarget(['Q'])}
+            label="Qualifying"
+            happened={qualiHappened}
+            noData={qualiNoData}
+          >
             <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-              <SkeletonCard label="Car character" className="min-h-[520px]" />
-              <SkeletonCard label="The fight to pole" className="hidden min-h-[757px] lg:min-h-[957px] md:block" />
-              <FightToPoleDesktopNote />
-            </div>
-          }
-          target={nextSessionTarget(['Q'])}
-          label="Qualifying"
-          happened={qualiHappened}
-          noData={qualiNoData}
-        >
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-            {qualiCharacter.data ? (
-              <ScrollReveal>
-                <QualiCharacterTable data={qualiCharacter.data} insights={qualiInsights.data ?? []} />
-              </ScrollReveal>
-            ) : (
-              <SkeletonCard label="Car character" className="min-h-[520px]" />
-            )}
-            <div id="fight-to-pole" className="hidden scroll-mt-24 md:block">
-              {qualiTrace.data ? (
-                <ScrollReveal delay={0.06}>
-                  <FightToPoleChart key={`${year}-${round}`} data={qualiTrace.data} />
+              {qualiCharacter.data ? (
+                <ScrollReveal>
+                  <QualiCharacterTable data={qualiCharacter.data} insights={qualiInsights.data ?? []} />
                 </ScrollReveal>
               ) : (
-                <SkeletonCard label="The fight to pole" className="min-h-[757px] lg:min-h-[957px]" />
+                <SkeletonCard label="Car character" className="min-h-[520px]" />
               )}
+              <div id="fight-to-pole" className="hidden scroll-mt-24 md:block">
+                {qualiTrace.data ? (
+                  <ScrollReveal delay={0.06}>
+                    <FightToPoleChart key={`${year}-${round}`} data={qualiTrace.data} />
+                  </ScrollReveal>
+                ) : (
+                  <SkeletonCard label="The fight to pole" className="min-h-[757px] lg:min-h-[957px]" />
+                )}
+              </div>
+              <FightToPoleDesktopNote />
             </div>
-            <FightToPoleDesktopNote />
-          </div>
-        </SessionGate>
+          </SessionGate>
+        </CollapsibleSection>
       </section>
 
       <section id="race" className="mt-20 scroll-mt-24">
-        <SectionTitle delay={0.4}>Race</SectionTitle>
-        <SessionGate
-          sessionsLoaded={sessionsLoaded}
-          delay={0.4}
-          loading={
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-              <SkeletonCard label="Pace spread" className="min-h-[600px]" />
-              <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
-              <SkeletonCard label="Finishing order" className="min-h-[400px]" />
-            </div>
-          }
-          target={nextSessionTarget(['R'])}
-          label="Race"
-          happened={raceHappened}
-          noData={raceNoData}
-        >
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-            {pace.data ? (
-              <ScrollReveal>
-                <PaceSpreadChart pace={pace.data} />
-              </ScrollReveal>
-            ) : (
-              <SkeletonCard label="Pace spread" className="min-h-[600px]" />
-            )}
-            {/* No skeleton on purpose: many rounds legitimately have no race start (circuits whose
-                first braking zone comes before 200 km/h, rounds ingested before this existed, an
-                API that predates the endpoint), and a reserved ~1.4k px placeholder would collapse
-                and shift everything below it. The card simply appears when it has rows. */}
-            {(raceStart.data?.rows.length ?? 0) > 0 && raceStart.data && (
-              <div id="race-start" className="min-w-0 scroll-mt-24">
-                <ScrollReveal>
-                  <RaceStartChart data={raceStart.data} />
-                </ScrollReveal>
-              </div>
-            )}
-            <div id="tyre-degradation" className="min-w-0 scroll-mt-24">
-              {degradation.data ? (
-                <ScrollReveal delay={0.06}>
-                  <DegradationChart data={degradation.data} />
-                </ScrollReveal>
-              ) : (
+        <CollapsibleSection title="Race" delay={0.4}>
+          <SessionGate
+            sessionsLoaded={sessionsLoaded}
+            delay={0.4}
+            loading={
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+                <SkeletonCard label="Pace spread" className="min-h-[600px]" />
                 <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
-              )}
-            </div>
-            <div id="finishing-order" className="min-w-0 scroll-mt-24">
-              {results.data ? (
-                <ScrollReveal delay={0.1}>
-                  <div className="glass mx-auto w-full max-w-4xl rounded-panel p-6 sm:p-8">
-                    <h3 className="mb-6 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
-                      Finishing order
-                    </h3>
-                    <Results rows={results.data} />
-                  </div>
+                <SkeletonCard label="Finishing order" className="min-h-[400px]" />
+              </div>
+            }
+            target={nextSessionTarget(['R'])}
+            label="Race"
+            happened={raceHappened}
+            noData={raceNoData}
+          >
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+              {pace.data ? (
+                <ScrollReveal>
+                  <PaceSpreadChart pace={pace.data} />
                 </ScrollReveal>
               ) : (
-                <SkeletonCard label="Finishing order" className="mx-auto min-h-[400px] w-full max-w-4xl" />
+                <SkeletonCard label="Pace spread" className="min-h-[600px]" />
               )}
+              {/* No skeleton on purpose: many rounds legitimately have no race start (circuits whose
+                  first braking zone comes before 200 km/h, rounds ingested before this existed, an
+                  API that predates the endpoint), and a reserved ~1.4k px placeholder would collapse
+                  and shift everything below it. The card simply appears when it has rows. */}
+              {(raceStart.data?.rows.length ?? 0) > 0 && raceStart.data && (
+                <div id="race-start" className="min-w-0 scroll-mt-24">
+                  <ScrollReveal>
+                    <RaceStartChart data={raceStart.data} />
+                  </ScrollReveal>
+                </div>
+              )}
+              <div id="tyre-degradation" className="min-w-0 scroll-mt-24">
+                {degradation.data ? (
+                  <ScrollReveal delay={0.06}>
+                    <DegradationChart data={degradation.data} />
+                  </ScrollReveal>
+                ) : (
+                  <SkeletonCard label="Tyre degradation" className="min-h-[540px]" />
+                )}
+              </div>
+              <div id="finishing-order" className="min-w-0 scroll-mt-24">
+                {results.data ? (
+                  <ScrollReveal delay={0.1}>
+                    <div className="glass mx-auto w-full max-w-4xl rounded-panel p-6 sm:p-8">
+                      <h3 className="mb-6 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
+                        Finishing order
+                      </h3>
+                      <Results rows={results.data} />
+                    </div>
+                  </ScrollReveal>
+                ) : (
+                  <SkeletonCard label="Finishing order" className="mx-auto min-h-[400px] w-full max-w-4xl" />
+                )}
+              </div>
             </div>
-          </div>
-        </SessionGate>
+          </SessionGate>
+        </CollapsibleSection>
       </section>
 
       <BackToTopButton />
