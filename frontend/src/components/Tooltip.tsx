@@ -5,16 +5,19 @@ import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 // aria-describedby. Paper-card styling flips with the theme. Anchored below the trigger so
 // it never gets clipped by the charts' cards. `align="start"` left-anchors the bubble instead
 // of centering it, for triggers sitting at the page's left edge where centering clips; `align="end"`
-// right-anchors it for the right edge. Long labels wrap at 18rem rather than overflowing the page.
+// right-anchors it for the right edge. `wrap` lets a long label break at 18rem; without it the label is one line.
 export function Tooltip({
   label,
   children,
   align = 'center',
+  wrap = false,
   className = 'relative inline-flex',
 }: {
   label: string
   children: ReactElement
   align?: 'center' | 'start' | 'end'
+  // Wrap a long label at 18rem instead of one unbroken line (for hints longer than a short phrase).
+  wrap?: boolean
   // The wrapper's own classes (must keep `relative`): lets a caller make it fill a positioned
   // parent, e.g. a bar segment, instead of shrink-wrapping its child.
   className?: string
@@ -67,7 +70,7 @@ export function Tooltip({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.14 }}
-            className={`pointer-events-none absolute top-full z-50 mt-2 w-max max-w-[18rem] border-[1.5px] border-ink bg-surface px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-ink shadow-[3px_3px_0_var(--color-shadow)] ${
+            className={`pointer-events-none absolute top-full z-50 mt-2 ${wrap ? 'w-max max-w-[18rem]' : 'whitespace-nowrap'} border-[1.5px] border-ink bg-surface px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-ink shadow-[3px_3px_0_var(--color-shadow)] ${
               align === 'start' ? 'left-0' : align === 'end' ? 'right-0' : 'left-1/2 -translate-x-1/2'
             }`}
           >

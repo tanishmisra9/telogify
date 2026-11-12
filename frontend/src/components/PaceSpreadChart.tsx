@@ -59,7 +59,8 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
     // Floored: contentRect.width is fractional, and the SVG (max-w-none) sized from it can come
     // out a sub-pixel wider than the container's integer layout box -- which reads as a phantom
     // 1px horizontal scrollbar even when the whole field fits.
-    const observer = new ResizeObserver(([entry]) => setContainerWidth(Math.floor(entry.contentRect.width)))
+    // width 0 = inside a collapsed section (display:none): keep the last real width so re-opening doesn't re-lay out
+    const observer = new ResizeObserver(([entry]) => entry.contentRect.width > 0 && setContainerWidth(Math.floor(entry.contentRect.width)))
     observer.observe(el)
     let scrollEndTimeout: ReturnType<typeof setTimeout>
     const onScroll = () => {

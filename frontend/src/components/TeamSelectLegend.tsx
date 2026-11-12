@@ -81,7 +81,7 @@ function Row({
   return (
     <li>
       {row.title ? (
-        <Tooltip label={row.title} align={align} className="relative block w-full">
+        <Tooltip label={row.title} align={align} wrap className="relative block w-full">
           {button}
         </Tooltip>
       ) : (

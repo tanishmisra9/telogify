@@ -122,7 +122,8 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width))
+    // width 0 = inside a collapsed section (display:none): keep the last real width so re-opening doesn't re-lay out
+    const observer = new ResizeObserver(([entry]) => entry.contentRect.width > 0 && setContainerWidth(entry.contentRect.width))
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
