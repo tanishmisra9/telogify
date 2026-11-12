@@ -497,7 +497,6 @@ export function WeekendPage() {
         <div className="mt-4 flex flex-wrap items-stretch gap-3">
           <InfoChip icon={<WaypointIcon />}>
             {weekend.data?.circuit_name}
-            {weekend.data?.country ? `, ${weekend.data.country}` : ''}
           </InfoChip>
           {weekend.data?.race_laps ? (
             <InfoChip icon={<LapsIcon />}>{weekend.data.race_laps} laps</InfoChip>
