@@ -24,7 +24,9 @@ export function SectionNav({ sections }: { sections: NavSection[] }) {
       let next = sections[0]?.id
       for (const s of sections) {
         const el = document.getElementById(s.id)
-        if (el && el.getBoundingClientRect().top <= line) next = s.id
+        // offsetParent is null for display:none (a chart in a collapsed section), whose rect is all
+        // zeros and would otherwise read as "already scrolled past".
+        if (el && el.offsetParent !== null && el.getBoundingClientRect().top <= line) next = s.id
       }
       setActive(atBottom ? sections[sections.length - 1]?.id : next)
     }
