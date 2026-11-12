@@ -95,8 +95,8 @@ export function Nav() {
     }
   }, [menuOpen])
 
-  // Route changes (link click) close the menu on their own via `pathname` below; this also
-  // catches back/forward navigation while the overlay happens to be open.
+  // Route changes close the menu via `pathname` here (incl. back/forward while the overlay is open).
+  // Same-route taps don't change `pathname`, so the links also close it in their own onClick: keep both.
   useEffect(() => {
     setMenuOpen(false)
   }, [pathname])
@@ -109,6 +109,7 @@ export function Nav() {
           to="/"
           aria-current={homeActive ? 'page' : undefined}
           aria-label="Telogify home"
+          onClick={() => setMenuOpen(false)}
           className={`group flex items-center gap-2.5 border-b-2 pb-0.5 text-ink transition-colors ${
             homeActive ? 'border-accent' : 'border-transparent'
           }`}
@@ -213,6 +214,8 @@ export function Nav() {
                     <Link
                       to={l.to}
                       aria-current={active ? 'page' : undefined}
+                      // A same-route tap doesn't change `pathname`, so the effect above never fires.
+                      onClick={() => setMenuOpen(false)}
                       className={`block rounded-sm py-1 text-center font-display text-4xl font-extrabold uppercase tracking-tighter outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-4 focus-visible:ring-offset-bg ${
                         active ? 'text-ink underline decoration-accent decoration-2 underline-offset-[0.25em]' : 'text-muted hover:text-ink'
                       }`}
