@@ -8,7 +8,7 @@ import { LoadingSwap } from '@/components/LoadingSwap'
 import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
-import { SectionTitle } from '@/components/SectionTitle'
+import { CollapsibleSection } from '@/components/SectionTitle'
 import { SeasonStartChart } from '@/components/SeasonStartChart'
 import { SkeletonCard } from '@/components/Skeleton'
 import { TeamRule } from '@/components/TeamMark'
@@ -226,34 +226,35 @@ function SeasonView({ year }: { year: number }) {
       </BlurFade>
 
       <section id="ranking" className="mt-16 scroll-mt-24">
-        <SectionTitle delay={0.08}>Ranking</SectionTitle>
-        {/* LoadingSwap reserves the table's real footprint while loading and crossfades the
-            skeleton into the resolved content in place, instead of the page suddenly growing
-            underneath a one-line "Loading…" string. Heights measured from the real rendered
-            panel (673px desktop / 744px mobile at an 11-constructor field), not estimated.
-            Breakpoint is sm: (640px), matching RankingTable's own column-width swap (RANK_W /
-            TEAM_W / FIGURE_W) -- md: (768px) would leave a 640-768px dead zone where the real
-            content has already widened to its desktop columns but the skeleton hasn't. */}
-        <LoadingSwap
-          loading={season.loading}
-          delay={0.08}
-          placeholder={<SkeletonCard className="min-h-[744px] sm:min-h-[673px]" />}
-        >
-          {season.error ? (
-            <p className="text-sm text-muted">No season data for {year}.</p>
-          ) : rows.length > 0 ? (
-            <div className="glass rounded-panel p-6">
-              <RankingTable rows={rows} />
-              <p className="mt-4 text-sm text-muted">
-                Ranked on the season's blend of race and qualifying pace (60/40), weighted so
-                recent rounds count somewhat more than early ones. Each bar is that same blend:
-                the season's best team shows "leader", every other team its gap to it, scaled in
-                seconds. A "partial data" or "low data" tag marks a team seen in too few rounds
-                to read at full confidence.
-              </p>
-            </div>
-          ) : null}
-        </LoadingSwap>
+        <CollapsibleSection title="Ranking" delay={0.08}>
+          {/* LoadingSwap reserves the table's real footprint while loading and crossfades the
+              skeleton into the resolved content in place, instead of the page suddenly growing
+              underneath a one-line "Loading…" string. Heights measured from the real rendered
+              panel (673px desktop / 744px mobile at an 11-constructor field), not estimated.
+              Breakpoint is sm: (640px), matching RankingTable's own column-width swap (RANK_W /
+              TEAM_W / FIGURE_W) -- md: (768px) would leave a 640-768px dead zone where the real
+              content has already widened to its desktop columns but the skeleton hasn't. */}
+          <LoadingSwap
+            loading={season.loading}
+            delay={0.08}
+            placeholder={<SkeletonCard className="min-h-[744px] sm:min-h-[673px]" />}
+          >
+            {season.error ? (
+              <p className="text-sm text-muted">No season data for {year}.</p>
+            ) : rows.length > 0 ? (
+              <div className="glass rounded-panel p-6">
+                <RankingTable rows={rows} />
+                <p className="mt-4 text-sm text-muted">
+                  Ranked on the season's blend of race and qualifying pace (60/40), weighted so
+                  recent rounds count somewhat more than early ones. Each bar is that same blend:
+                  the season's best team shows "leader", every other team its gap to it, scaled in
+                  seconds. A "partial data" or "low data" tag marks a team seen in too few rounds
+                  to read at full confidence.
+                </p>
+              </div>
+            ) : null}
+          </LoadingSwap>
+        </CollapsibleSection>
       </section>
 
       {/* Always rendered (not gated on rows.length): keeps the same skeleton-then-content
@@ -262,108 +263,111 @@ function SeasonView({ year }: { year: number }) {
       {(season.loading || rows.length > 0) && (
         <>
           <section id="gap-by-round" className="mt-20 scroll-mt-24">
-            <SectionTitle delay={0.16}>Gap by round</SectionTitle>
-            {/* Measured 927px desktop / 947px mobile -- close enough to use one value. */}
-            <LoadingSwap
-              loading={season.loading}
-              delay={0.16}
-              placeholder={<SkeletonCard className="min-h-[950px]" />}
-            >
-              <SeasonTrendChart rows={rows} rounds={season.data?.rounds ?? []} />
-            </LoadingSwap>
+            <CollapsibleSection title="Gap by round" delay={0.16}>
+              {/* Measured 927px desktop / 947px mobile -- close enough to use one value. */}
+              <LoadingSwap
+                loading={season.loading}
+                delay={0.16}
+                placeholder={<SkeletonCard className="min-h-[950px]" />}
+              >
+                <SeasonTrendChart rows={rows} rounds={season.data?.rounds ?? []} />
+              </LoadingSwap>
+            </CollapsibleSection>
           </section>
 
           {(raceStart.loading || hasRaceStart) && (
             <section id="race-starts" className="mt-20 scroll-mt-24">
-              <SectionTitle delay={0.24}>Race starts</SectionTitle>
-              <LoadingSwap
-                loading={raceStart.loading}
-                delay={0.24}
-                // Measured on the real card: 947px desktop (Teams), 1199px phone (legend stacks).
-                placeholder={<SkeletonCard className="min-h-[1200px] md:min-h-[950px]" />}
-              >
-                {raceStart.data && <SeasonStartChart data={raceStart.data} />}
-              </LoadingSwap>
+              <CollapsibleSection title="Race starts" delay={0.24}>
+                <LoadingSwap
+                  loading={raceStart.loading}
+                  delay={0.24}
+                  // Measured on the real card: 947px desktop (Teams), 1199px phone (legend stacks).
+                  placeholder={<SkeletonCard className="min-h-[1200px] md:min-h-[950px]" />}
+                >
+                  {raceStart.data && <SeasonStartChart data={raceStart.data} />}
+                </LoadingSwap>
+              </CollapsibleSection>
             </section>
           )}
 
           {(deployment.loading || hasDeployment) && (
             <section id="deployment" className="mt-20 scroll-mt-24">
-              <SectionTitle delay={0.32}>Deployment</SectionTitle>
-              <LoadingSwap
-                loading={deployment.loading}
-                delay={0.32}
-                placeholder={
-                  <>
-                    {/* 5 placeholders, one per PU_GROUPS entry (backend/telogify/analysis/
-                        season_deployment.py) -- Mercedes, Ferrari, Red Bull, Honda, Audi -- not 3,
-                        so the reserved height matches what actually renders below. Measured
-                        225-266px per panel across mobile (collapsed) and desktop (open) alike --
-                        closer together than assumed, so one value covers both. */}
-                    <div className="mb-8 grid gap-4">
-                      {[0, 1, 2, 3, 4].map((i) => (
-                        <SkeletonCard key={i} className="min-h-[270px]" />
-                      ))}
+              <CollapsibleSection title="Deployment" delay={0.32}>
+                <LoadingSwap
+                  loading={deployment.loading}
+                  delay={0.32}
+                  placeholder={
+                    <>
+                      {/* 5 placeholders, one per PU_GROUPS entry (backend/telogify/analysis/
+                          season_deployment.py) -- Mercedes, Ferrari, Red Bull, Honda, Audi -- not 3,
+                          so the reserved height matches what actually renders below. Measured
+                          225-266px per panel across mobile (collapsed) and desktop (open) alike --
+                          closer together than assumed, so one value covers both. */}
+                      <div className="mb-8 grid gap-4">
+                        {[0, 1, 2, 3, 4].map((i) => (
+                          <SkeletonCard key={i} className="min-h-[270px]" />
+                        ))}
+                      </div>
+                      {/* Matches SeasonDeploymentChart's own root: desktop-only (`hidden … md:block`),
+                          so mobile doesn't reserve height for a chart that never renders there.
+                          Measured 1009px desktop. */}
+                      <SkeletonCard className="hidden min-h-[1010px] md:block" />
+                    </>
+                  }
+                >
+                  {deploymentPanelItems.length > 0 && (
+                    // Full section width (matching the Ranking table above), not the narrower
+                    // max-w-5xl WeekendPage uses for its 3-insight hero column: on this denser,
+                    // multi-section page a narrower block just left-aligns with dead space beside
+                    // it. showSlot stays on: the rank digit is the panels' own ordering (1 = best
+                    // package this season), which the kicker's manufacturer name doesn't convey.
+                    <div className="mb-8">
+                      <div className="grid gap-4">
+                        {deploymentPanelItems.map((item, i) => {
+                          // ponytail: Mercedes' cyan (#27F4D2) reads as too bright/light for text
+                          // at full strength here; every other team's color was confirmed fine as
+                          // is, so this is a one-off calibration knob, not a general formula.
+                          const teamColor =
+                            item.works_team === 'Mercedes'
+                              ? `color-mix(in oklch, ${resolveTeamColor(item.works_team)} 92%, var(--color-ink) 8%)`
+                              : resolveTeamColor(item.works_team)
+                          return (
+                          <BlurFade key={item.pu} delay={0.06 * i}>
+                            <Insight
+                              item={item}
+                              collapsible
+                              defaultOpen={!isMobile}
+                              // Two-tone: the manufacturer name carries the full team color, same
+                              // as the rank number (can't be a uniform accent-red once panels are
+                              // team-tinted); the customer-team list stays neutral rather than
+                              // picking one of several team colors. block sm:inline on the customer
+                              // span: forces its own line on mobile (crammed onto one line with a
+                              // longer manufacturer name otherwise), stays inline at sm+ as before.
+                              // Comma-separated, no bullets -- the color/weight contrast between
+                              // the bold manufacturer name and this muted list is separator enough.
+                              kicker={
+                                <span className="font-semibold" style={{ color: teamColor }}>{item.pu} power</span>
+                              }
+                              contextLabel={`${year} season deployment`}
+                              // Stronger than the 0.09 row-wash precedent (Ranking table, legends):
+                              // those are dense stacks of many small rows where a strong tint would
+                              // overwhelm; these are five spacious hero panels where the team color
+                              // is the whole point, so it can carry more of the surface. The big
+                              // rank number in full-strength team color is the second, bolder signal.
+                              tintColor={teamColorWithAlpha(item.works_team, 0.09)}
+                              accentColor={teamColor}
+                            />
+                          </BlurFade>
+                          )
+                        })}
+                      </div>
                     </div>
-                    {/* Matches SeasonDeploymentChart's own root: desktop-only (`hidden … md:block`),
-                        so mobile doesn't reserve height for a chart that never renders there.
-                        Measured 1009px desktop. */}
-                    <SkeletonCard className="hidden min-h-[1010px] md:block" />
-                  </>
-                }
-              >
-                {deploymentPanelItems.length > 0 && (
-                  // Full section width (matching the Ranking table above), not the narrower
-                  // max-w-5xl WeekendPage uses for its 3-insight hero column: on this denser,
-                  // multi-section page a narrower block just left-aligns with dead space beside
-                  // it. showSlot stays on: the rank digit is the panels' own ordering (1 = best
-                  // package this season), which the kicker's manufacturer name doesn't convey.
-                  <div className="mb-8">
-                    <div className="grid gap-4">
-                      {deploymentPanelItems.map((item, i) => {
-                        // ponytail: Mercedes' cyan (#27F4D2) reads as too bright/light for text
-                        // at full strength here; every other team's color was confirmed fine as
-                        // is, so this is a one-off calibration knob, not a general formula.
-                        const teamColor =
-                          item.works_team === 'Mercedes'
-                            ? `color-mix(in oklch, ${resolveTeamColor(item.works_team)} 92%, var(--color-ink) 8%)`
-                            : resolveTeamColor(item.works_team)
-                        return (
-                        <BlurFade key={item.pu} delay={0.06 * i}>
-                          <Insight
-                            item={item}
-                            collapsible
-                            defaultOpen={!isMobile}
-                            // Two-tone: the manufacturer name carries the full team color, same
-                            // as the rank number (can't be a uniform accent-red once panels are
-                            // team-tinted); the customer-team list stays neutral rather than
-                            // picking one of several team colors. block sm:inline on the customer
-                            // span: forces its own line on mobile (crammed onto one line with a
-                            // longer manufacturer name otherwise), stays inline at sm+ as before.
-                            // Comma-separated, no bullets -- the color/weight contrast between
-                            // the bold manufacturer name and this muted list is separator enough.
-                            kicker={
-                              <span className="font-semibold" style={{ color: teamColor }}>{item.pu} power</span>
-                            }
-                            contextLabel={`${year} season deployment`}
-                            // Stronger than the 0.09 row-wash precedent (Ranking table, legends):
-                            // those are dense stacks of many small rows where a strong tint would
-                            // overwhelm; these are five spacious hero panels where the team color
-                            // is the whole point, so it can carry more of the surface. The big
-                            // rank number in full-strength team color is the second, bolder signal.
-                            tintColor={teamColorWithAlpha(item.works_team, 0.09)}
-                            accentColor={teamColor}
-                          />
-                        </BlurFade>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-                <BlurFade delay={0.06 * deploymentPanelItems.length}>
-                  <SeasonDeploymentChart scatter={deployment.data?.scatter ?? {}} puGroups={deployment.data?.pu_groups ?? []} />
-                </BlurFade>
-              </LoadingSwap>
+                  )}
+                  <BlurFade delay={0.06 * deploymentPanelItems.length}>
+                    <SeasonDeploymentChart scatter={deployment.data?.scatter ?? {}} puGroups={deployment.data?.pu_groups ?? []} />
+                  </BlurFade>
+                </LoadingSwap>
+              </CollapsibleSection>
             </section>
           )}
         </>
