@@ -4,7 +4,8 @@ import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 // Accessible control hint: shows on hover AND keyboard focus, links to the trigger via
 // aria-describedby. Paper-card styling flips with the theme. Anchored below the trigger so
 // it never gets clipped by the charts' cards. `align="start"` left-anchors the bubble instead
-// of centering it, for triggers sitting at the page's left edge where centering clips.
+// of centering it, for triggers sitting at the page's left edge where centering clips; `align="end"`
+// right-anchors it for the right edge. Long labels wrap at 18rem rather than overflowing the page.
 export function Tooltip({
   label,
   children,
@@ -13,7 +14,7 @@ export function Tooltip({
 }: {
   label: string
   children: ReactElement
-  align?: 'center' | 'start'
+  align?: 'center' | 'start' | 'end'
   // The wrapper's own classes (must keep `relative`): lets a caller make it fill a positioned
   // parent, e.g. a bar segment, instead of shrink-wrapping its child.
   className?: string
@@ -66,8 +67,8 @@ export function Tooltip({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.14 }}
-            className={`pointer-events-none absolute top-full z-50 mt-2 whitespace-nowrap border-[1.5px] border-ink bg-surface px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-ink shadow-[3px_3px_0_var(--color-shadow)] ${
-              align === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2'
+            className={`pointer-events-none absolute top-full z-50 mt-2 w-max max-w-[18rem] border-[1.5px] border-ink bg-surface px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-ink shadow-[3px_3px_0_var(--color-shadow)] ${
+              align === 'start' ? 'left-0' : align === 'end' ? 'right-0' : 'left-1/2 -translate-x-1/2'
             }`}
           >
             {label}

@@ -3,8 +3,10 @@ import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
-import { resolveTeamColor } from '@/lib/teamColors'
+import { resolveTeamColor, teamShortName } from '@/lib/teamColors'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
+import { formArrow, formSentence } from '@/lib/seasonStart'
 import { smoothPath } from '@/lib/svgPath'
 import { useScrollFade } from '@/lib/useScrollFade'
 import type { SeasonConstructorRow, SeasonRound } from '@/lib/api'
@@ -65,6 +67,9 @@ function resampleToRounds(points: { round: number; value: number }[], roundNums:
 function rankValue(row: SeasonConstructorRow, metric: Metric): number {
   if (metric === 'pace') return row.pace_gap.mean ?? Infinity
   if (metric === 'quali') return row.quali_gap_pct.mean ?? Infinity
+  // The legend shows this same weighted figure, so order by it (an API without it: latest round).
+  const weighted = row.form?.cumulative?.weighted
+  if (weighted != null) return weighted
   const sorted = [...row.trend.cumulative].sort((a, b) => a.round - b.round)
   return sorted.length > 0 ? sorted[sorted.length - 1].value : Infinity
 }
@@ -85,11 +90,28 @@ export function legendTeamOrder(rows: SeasonConstructorRow[], metric: Metric): s
     .map((r) => r.constructor)
 }
 
+// Legend rows for the selected tab: the recency-weighted season figure on the chart's own axis
+// (100% = the round's fastest team), the rank-movement arrow, and the arrow in words as the hint.
+// Teams with no `form` (an older API) get a bare row.
+export function legendRowsFor(rows: SeasonConstructorRow[], metric: Metric) {
+  const rowByTeam = new Map(rows.map((r) => [r.constructor, r]))
+  return legendTeamOrder(rows, metric).map((team) => {
+    const f = rowByTeam.get(team)?.form?.[metric]
+    if (!f || f.weighted == null) return { team }
+    return {
+      team,
+      value: [`${(100 + f.weighted).toFixed(1)}%`, formArrow(f.form_places)].filter(Boolean).join('  '),
+      title: formSentence(f) ?? undefined,
+    }
+  })
+}
+
 // One line per constructor: gap to the round's fastest team, round by round. Lower is
 // better and the y-axis is inverted (0 at top), so a line hugging the top is a season-long
 // front-runner and a line dropping away is a team losing ground. Copies DegradationChart's scaffold.
 export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[]; rounds: SeasonRound[] }) {
   const reduce = useReducedMotion()
+  const isMobile = useIsMobile()
   const [metric, setMetric] = useState<Metric>('cumulative')
   // Empty = show every team (default). Not reset on metric switch, so a comparison survives
   // moving between Race pace/Qualifying/Cumulative.
@@ -144,7 +166,12 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   // the caption below) so the legend order actually reflects the current tab instead of staying
   // frozen at the overall-rank order regardless of which metric is selected. Kept separate from
   // `series` above: the legend can reorder freely, the animated paths cannot.
-  const legendRows = legendTeamOrder(rows, metric).map((team) => ({ team }))
+  // On phones the figure stacks under the name (see the legend's stackValue) and a long name is
+  // shortened so it isn't cut off, same as the Race starts legend.
+  const legendRows = legendRowsFor(rows, metric).map((r) => ({
+    ...r,
+    label: isMobile && r.team.length > 13 ? teamShortName(r.team) : undefined,
+  }))
 
   if (series.length === 0 || values.length === 0) {
     return <p className="text-sm text-muted">No trend data yet.</p>
@@ -251,6 +278,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
           selected={selected}
           onToggle={toggleTeam}
           isFiltering={isFiltering}
+          stackValue={isMobile}
         />
       </div>
       <p className="mt-4 text-sm text-muted">
@@ -258,7 +286,10 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         this metric; higher is further behind, so a line near the top ran at the front all season
         and a line dropping away lost ground. For race pace and cumulative, the percentage is an
         index for a consistent axis across tabs, not a literal percentage of seconds or score.
-        Click a team to isolate its line, click again to bring it back.
+        The legend shows each team's season figure on that same scale, with recent rounds weighted
+        more (a round's weight halves every 6 rounds), and the arrow is places gained or lost on that
+        recent form against the whole season, so it is relative to the rest of the field. Click a
+        team to isolate its line, click again to bring it back.
       </p>
     </m.div>
   )

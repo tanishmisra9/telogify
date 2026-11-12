@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { legendTeamOrder, seriesTeamOrder } from './SeasonTrendChart'
+import { legendRowsFor, legendTeamOrder, seriesTeamOrder } from './SeasonTrendChart'
 import type { SeasonConstructorRow } from '@/lib/api'
 
 // Two teams whose pace/quali ranking flips, plus one with no cumulative data -- mirrors the real
@@ -49,5 +49,42 @@ describe('legendTeamOrder', () => {
 
   it('drops a team with no data for the metric', () => {
     expect(legendTeamOrder(rows, 'cumulative')).toEqual(['Alpine', 'Racing Bulls'])
+  })
+})
+
+describe('legendRowsFor', () => {
+  const withForm = (r: SeasonConstructorRow, pace: number, places: number | null): SeasonConstructorRow => ({
+    ...r,
+    form: { pace: { weighted: pace, rank_weighted: 2, rank_flat: 4, form_places: places } },
+  })
+
+  it('shows the weighted figure on the chart axis, the arrow and the hint sentence', () => {
+    const [alpine] = legendRowsFor([withForm(rows[0], 1.6, 2)], 'pace')
+    expect(alpine).toEqual({
+      team: 'Alpine',
+      value: '101.6%  ▲2',
+      title: 'Gains 2 places on recent form: #2 recently, #4 over the season',
+    })
+  })
+
+  it('shows a down arrow for lost places and no arrow or hint while there are too few rounds', () => {
+    expect(legendRowsFor([withForm(rows[0], 1.6, -3)], 'pace')[0].value).toBe('101.6%  ▼3')
+    const early = legendRowsFor([withForm(rows[0], 1.6, null)], 'pace')[0]
+    expect(early.value).toBe('101.6%')
+    expect(early.title).toBeUndefined()
+  })
+
+  it('leaves a team bare when the API sent no form (older API) or none for that tab', () => {
+    expect(legendRowsFor(rows, 'pace')[0]).toEqual({ team: 'Alpine' })
+    expect(legendRowsFor([withForm(rows[0], 1.6, 1)], 'quali')[0]).toEqual({ team: 'Alpine' })
+  })
+
+  it('orders cumulative by the weighted figure the legend shows, not the latest round', () => {
+    const cum = (r: SeasonConstructorRow, weighted: number): SeasonConstructorRow => ({
+      ...r,
+      form: { cumulative: { weighted, rank_weighted: 1, rank_flat: 1, form_places: 0 } },
+    })
+    // Latest-round values say Alpine (0.4) leads Racing Bulls (0.7); the weighted figures say the reverse.
+    expect(legendTeamOrder([cum(rows[0], 0.9), cum(rows[1], 0.2)], 'cumulative')).toEqual(['Racing Bulls', 'Alpine'])
   })
 })

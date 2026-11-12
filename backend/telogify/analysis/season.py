@@ -67,6 +67,41 @@ def weighted_aggregate(values_by_round: list[tuple[int, float]], current_round: 
     return {"mean": wmean, "spread": pstdev(vals) if len(vals) > 1 else 0.0, "n": len(vals)}
 
 
+# Rank movement needs enough rounds to mean anything.
+MIN_ROUNDS_FOR_FORM = 4
+
+
+def form_movement(values_by_key: dict[str, list[tuple[int, float]]], current_round: int) -> dict[str, dict]:
+    """Per key: the recency-weighted and the flat mean of its per-round values (lower = better),
+    each one's rank across keys, and form_places = rank_flat - rank_weighted. Positive means the key
+    ranks higher on recent form than over the whole season, so it is relative to the rest of the
+    field (every team's gap shrinks over a season; weighted minus flat would call everyone improving).
+    form_places is None below MIN_ROUNDS_FOR_FORM rounds. Keys with no values are omitted."""
+    stats = {}
+    for key, vals in values_by_key.items():
+        if vals:
+            stats[key] = {
+                "weighted": weighted_aggregate(vals, current_round)["mean"],
+                "flat": sum(v for _, v in vals) / len(vals),
+                "n": len(vals),
+            }
+
+    def rank_by(field: str) -> dict[str, int]:
+        ordered = sorted(stats, key=lambda k: stats[k][field])
+        return {k: i + 1 for i, k in enumerate(ordered)}
+
+    rw, rf = rank_by("weighted"), rank_by("flat")
+    return {
+        k: {
+            "weighted": st["weighted"],
+            "rank_weighted": rw[k],
+            "rank_flat": rf[k],
+            "form_places": rf[k] - rw[k] if st["n"] >= MIN_ROUNDS_FOR_FORM else None,
+        }
+        for k, st in stats.items()
+    }
+
+
 def _normalize(means: dict[str, float | None]) -> dict[str, float]:
     """Min-max each team's mean deficit onto 0..1 (0 = best/smallest, 1 = worst). Teams with
     no value are dropped; a single team maps to 0.0."""
@@ -290,6 +325,14 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
     ranking = overall_ranking(pace_means, quali_means)
     blended_gap = _blended_gap_s(pace_means, ranking)
     unranked = len(constructors) + 1
+    # Rank movement per Gap-by-round tab, from the SAME per-round values the chart draws.
+    form = {
+        "pace": form_movement(pace_vals, current_round),
+        "quali": form_movement(quali_vals, current_round),
+        "cumulative": form_movement(
+            {c: [(t["round"], t["value"]) for t in ts] for c, ts in cumulative_trend.items()}, current_round
+        ),
+    }
 
     rows = []
     for c in sorted(constructors, key=lambda c: ranking.get(c, {}).get("rank", unranked)):
@@ -306,6 +349,7 @@ def build_season_snapshot(year: int, db: DBSession) -> dict | None:
                 "sector_dominance_count": sector_totals.get(c, 0),
                 "tyre_deg_s_per_lap": _tyre_deg_on_ref(deg_vals[c], ref_compound),
                 "trend": {"pace": pace_trend.get(c, []), "quali": quali_trend.get(c, []), "cumulative": cumulative_trend.get(c, [])},
+                "form": {m: form[m].get(c) for m in form},
                 "confidence": confidence(len(rounds_with_data.get(c, set())), total_rounds),
             }
         )

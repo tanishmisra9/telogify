@@ -264,6 +264,15 @@ export interface TrendPoint {
   value: number
 }
 
+// Rank movement for one Gap-by-round tab: the recency-weighted season figure (in the chart's own units)
+// and places gained (+) or lost (-) on recent form vs the whole season (null below 4 rounds).
+export interface FormMove {
+  weighted: number | null
+  rank_weighted: number
+  rank_flat: number
+  form_places: number | null
+}
+
 export interface SeasonConstructorRow {
   constructor: string
   overall_rank: number | null
@@ -275,6 +284,8 @@ export interface SeasonConstructorRow {
   sector_dominance_count: number
   tyre_deg_s_per_lap: number | null
   trend: { pace: TrendPoint[]; quali: TrendPoint[]; cumulative: TrendPoint[] }
+  // Absent on an API that predates it; null for a tab the team has no data on.
+  form?: Partial<Record<'pace' | 'quali' | 'cumulative', FormMove | null>>
   confidence: 'low' | 'med' | 'high'
 }
 

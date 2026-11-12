@@ -22,12 +22,9 @@ from statistics import median
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
-from telogify.analysis.season import weighted_aggregate
+from telogify.analysis.season import MIN_ROUNDS_FOR_FORM, weighted_aggregate
 from telogify.analysis.season_deployment import PU_GROUPS, pu_map_applies
 from telogify.models import RaceStart, RaceWeekend, Session
-
-# Rank movement needs enough rounds to mean anything.
-MIN_ROUNDS_FOR_FORM = 4
 
 Car = dict  # {"constructor": str, "t_0_100_s": float, "t_0_200_s": float | None}
 

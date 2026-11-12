@@ -1,4 +1,5 @@
 import { TeamMark } from '@/components/TeamMark'
+import { Tooltip } from '@/components/Tooltip'
 import { teamColorWithAlpha } from '@/lib/teamColors'
 
 export interface TeamSelectRow {
@@ -12,7 +13,7 @@ export interface TeamSelectRow {
   // (e.g. SeasonDeploymentChart's power-unit toggle: color from the works team, label from
   // the manufacturer name).
   label?: string
-  // Native tooltip on the row's button (e.g. what a rank-movement arrow means).
+  // Site Tooltip on the row (e.g. what a rank-movement arrow means).
   title?: string
 }
 
@@ -25,6 +26,7 @@ function Row({
   isFiltering,
   onToggle,
   stackValue,
+  align,
 }: {
   row: TeamSelectRow
   // Absolute 1-based rank across the whole (pre-split) list, not the position within whichever
@@ -34,6 +36,8 @@ function Row({
   isFiltering: boolean
   onToggle: (team: string) => void
   stackValue: boolean
+  // Where the hint bubble anchors: the right column hugs its right edge so it can't run off the card.
+  align: 'center' | 'start' | 'end'
 }) {
   if (row.disabled) {
     return (
@@ -48,13 +52,11 @@ function Row({
   }
   const isSelected = selected.has(row.team)
   const isDimmed = isFiltering && !isSelected
-  return (
-    <li>
+  const button = (
       <button
         type="button"
         onClick={() => onToggle(row.team)}
         aria-pressed={isSelected}
-        title={row.title}
         aria-label={isSelected ? 'Show every team again' : `Isolate ${row.label ?? row.team}'s line`}
         className={`grid min-h-11 w-full cursor-pointer ${stackValue ? 'grid-cols-[1.25rem_minmax(0,1fr)]' : 'grid-cols-[1.25rem_minmax(0,1fr)_auto]'} items-center gap-x-3 border-[0.75px] border-ink/20 px-2 py-1 text-left text-sm shadow-[inset_0_0_0_1.5px_transparent] transition-[opacity,box-shadow] duration-150 hover:shadow-[inset_0_0_0_1.5px_var(--color-ink)] ${
           isDimmed ? 'opacity-40' : ''
@@ -75,6 +77,16 @@ function Row({
           </>
         )}
       </button>
+  )
+  return (
+    <li>
+      {row.title ? (
+        <Tooltip label={row.title} align={align} className="relative block w-full">
+          {button}
+        </Tooltip>
+      ) : (
+        button
+      )}
     </li>
   )
 }
@@ -113,12 +125,12 @@ export function TeamSelectLegend({
       <div className="grid grid-cols-2">
         <ol>
           {col1.map((r, i) => (
-            <Row key={r.team} row={r} rank={i + 1} selected={selected} isFiltering={isFiltering} onToggle={onToggle} stackValue={stackValue} />
+            <Row key={r.team} row={r} rank={i + 1} selected={selected} isFiltering={isFiltering} onToggle={onToggle} stackValue={stackValue} align="start" />
           ))}
         </ol>
         <ol>
           {col2.map((r, i) => (
-            <Row key={r.team} row={r} rank={i + 1 + COL_SIZE} selected={selected} isFiltering={isFiltering} onToggle={onToggle} stackValue={stackValue} />
+            <Row key={r.team} row={r} rank={i + 1 + COL_SIZE} selected={selected} isFiltering={isFiltering} onToggle={onToggle} stackValue={stackValue} align="end" />
           ))}
         </ol>
       </div>
@@ -133,6 +145,7 @@ export function TeamSelectLegend({
               isFiltering={isFiltering}
               onToggle={onToggle}
               stackValue={stackValue}
+              align="center"
             />
           ))}
         </ol>

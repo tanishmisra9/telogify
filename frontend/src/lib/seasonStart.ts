@@ -41,7 +41,11 @@ export function pointCopy(
 }
 
 // Explains the arrow in words, for the legend row's tooltip / aria text.
-export function formSentence(row: SeasonStartRow): string | null {
+export function formSentence(row: {
+  form_places: number | null
+  rank_weighted: number | null
+  rank_flat: number | null
+}): string | null {
   if (row.form_places == null || row.rank_weighted == null || row.rank_flat == null) return null
   const move =
     row.form_places === 0

@@ -5,6 +5,7 @@ import pytest
 
 from telogify.analysis.season import (
     RECENCY_HALF_LIFE_ROUNDS,
+    MIN_ROUNDS_FOR_FORM,
     _blended_gap_s,
     _recency_weight,
     _reference_compound,
@@ -14,6 +15,7 @@ from telogify.analysis.season import (
     build_season_accel_scatter,
     build_season_snapshot,
     confidence,
+    form_movement,
     overall_ranking,
     weighted_aggregate,
 )
@@ -139,6 +141,50 @@ def test_overall_ranking_team_missing_quali_scored_on_race_alone():
 
 def test_overall_ranking_empty():
     assert overall_ranking({}, {}) == {}
+
+
+# --- form_movement ---------------------------------------------------------
+
+
+def _rounds(vals):
+    return [(i + 1, v) for i, v in enumerate(vals)]
+
+
+def test_form_movement_signs_follow_recent_form_against_the_season():
+    # Flat means: A 1.375 < B 1.5 < C 1.6, so the whole-season order is A, B, C. The recency weighting
+    # (recent rounds count more) puts C ahead of B because B's good rounds are early and C is steady:
+    # A 1.24, C 1.60, B 1.64. C gains a place, B loses one, A holds.
+    f = form_movement(
+        {
+            "A": _rounds([3.0, 1.5, 1.0, 0.0]),
+            "B": _rounds([0.0, 1.0, 2.0, 3.0]),
+            "C": _rounds([1.6, 1.6, 1.6, 1.6]),
+        },
+        MIN_ROUNDS_FOR_FORM,
+    )
+    assert (f["A"]["rank_flat"], f["B"]["rank_flat"], f["C"]["rank_flat"]) == (1, 2, 3)
+    assert (f["A"]["rank_weighted"], f["B"]["rank_weighted"], f["C"]["rank_weighted"]) == (1, 3, 2)
+    assert (f["A"]["form_places"], f["B"]["form_places"], f["C"]["form_places"]) == (0, -1, 1)
+
+
+def test_form_movement_is_none_below_the_minimum_rounds():
+    short = MIN_ROUNDS_FOR_FORM - 1
+    f = form_movement({"A": _rounds([1.0] * short), "B": _rounds([2.0] * short)}, short)
+    assert f["A"]["form_places"] is None and f["B"]["form_places"] is None
+    assert f["A"]["rank_weighted"] == 1  # the ranks themselves are still reported
+
+
+def test_form_movement_zero_when_order_is_unchanged_and_omits_empty_keys():
+    n = MIN_ROUNDS_FOR_FORM
+    f = form_movement({"A": _rounds([1.0] * n), "B": _rounds([2.0] * n), "Ghost": []}, n)
+    assert f["A"]["form_places"] == 0 and f["B"]["form_places"] == 0
+    assert "Ghost" not in f
+
+
+def test_form_movement_weighted_is_the_recency_weighted_mean():
+    vals = _rounds([4.0, 2.0, 0.0, 0.0])
+    f = form_movement({"A": vals}, 4)
+    assert f["A"]["weighted"] == pytest.approx(weighted_aggregate(vals, 4)["mean"])
 
 
 # --- _blended_gap_s --------------------------------------------------------
@@ -303,6 +349,10 @@ def test_build_season_snapshot_rolls_up_race_and_quali_across_rounds(db_session)
     assert red_bull["top_speed_deficit_kmh"] == 0.0
     assert len(red_bull["trend"]["pace"]) == 2
     assert len(red_bull["trend"]["cumulative"]) == 2
+    # Every tab carries rank movement; two rounds is below MIN_ROUNDS_FOR_FORM so no arrow yet.
+    assert set(red_bull["form"]) == {"pace", "quali", "cumulative"}
+    assert red_bull["form"]["pace"]["rank_weighted"] == 1
+    assert red_bull["form"]["cumulative"]["form_places"] is None
 
     ferrari = by_constructor["Ferrari"]
     assert ferrari["tyre_deg_s_per_lap"] is not None and ferrari["tyre_deg_s_per_lap"] > 0
