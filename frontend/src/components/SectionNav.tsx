@@ -22,13 +22,16 @@ export function SectionNav({ sections }: { sections: NavSection[] }) {
       const line = window.innerHeight * 0.2
       const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2
       let next = sections[0]?.id
+      let lastVisible = next
       for (const s of sections) {
         const el = document.getElementById(s.id)
         // offsetParent is null for display:none (a chart in a collapsed section), whose rect is all
         // zeros and would otherwise read as "already scrolled past".
-        if (el && el.offsetParent !== null && el.getBoundingClientRect().top <= line) next = s.id
+        if (!el || el.offsetParent === null) continue
+        lastVisible = s.id
+        if (el.getBoundingClientRect().top <= line) next = s.id
       }
-      setActive(atBottom ? sections[sections.length - 1]?.id : next)
+      setActive(atBottom ? lastVisible : next)
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -48,9 +51,13 @@ export function SectionNav({ sections }: { sections: NavSection[] }) {
     const el = document.getElementById(id)
     // A chart inside a collapsed CollapsibleSection is display:none, so scrollIntoView would no-op:
     // open its section (click the toggle that controls it), then scroll once React has un-hidden it.
+    // A jump to a collapsed section's own <section> opens it too, so a click never lands on a bare heading.
     const body = el?.closest<HTMLElement>('[hidden]')
-    if (body) {
-      document.querySelector<HTMLElement>(`[aria-controls="${body.id}"]`)?.click()
+    const toggle = body
+      ? document.querySelector<HTMLElement>(`[aria-controls="${body.id}"]`)
+      : el?.querySelector<HTMLElement>('h2 button[aria-expanded="false"]')
+    if (toggle) {
+      toggle.click()
       requestAnimationFrame(() => el?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
       return
     }
