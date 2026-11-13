@@ -9,6 +9,7 @@ from telogify.models import (
     QualiCharacter,
     QualiInsight,
     RaceStart,
+    RaceStartSkip,
     RaceWeekend,
     SeasonDeploymentInsight,
     SectorBest,
@@ -588,7 +589,7 @@ def test_empty_weekend_endpoints_return_placeholder_shapes(test_engine):
         degradation = client.get("/weekends/2024/1/degradation").json()
         assert degradation == {"fits": [], "points": [], "reference_age_laps": None}
         assert client.get("/weekends/2024/1/results").json() == []
-        assert client.get("/weekends/2024/1/race-start").json() == {"rows": []}
+        assert client.get("/weekends/2024/1/race-start").json() == {"status": "absent", "summary": None, "not_listed": [], "rows": []}
         summary = client.get("/weekends/2024/1/session-summary?session=Q").json()
         assert summary["session_type"] is None and summary["order"] == []
     finally:
@@ -1037,3 +1038,59 @@ def test_race_start_sort_survives_a_row_without_a_0_200_time_on_a_200_round(clie
     resp = client.get("/weekends/2025/11/race-start")
     assert resp.status_code == 200  # used to be a TypeError comparing None with a float
     assert {r["driver"] for r in resp.json()["rows"]} == {"AAA", "BBB"}
+
+
+def _race_with_roster(test_engine, year, rnd, roster):
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=year, round=rnd, circuit_name="X", country="Y", event_name="Test GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+        db.add(race)
+        db.commit()
+        db.refresh(race)
+        for i, (driver, team, status) in enumerate(roster, start=1):
+            db.add(SessionResult(session_id=race.id, position=i, driver=driver, constructor=team, gap_to_leader=None, laps=50.0, status=status))
+        db.commit()
+        return race.id
+
+
+def test_race_start_names_who_is_not_listed_and_why(client, test_engine):
+    rid = _race_with_roster(test_engine, 2026, 8, [
+        ("HAM", "Ferrari", "Finished"), ("NOR", "McLaren", "Finished"), ("HAD", "Red Bull Racing", "Finished"),
+        ("PIA", "McLaren", "Did not start"), ("OLD", "Haas F1 Team", "Finished"),
+    ])
+    with Session(test_engine) as db:
+        db.add(RaceStart(session_id=rid, driver="HAM", constructor="Ferrari", t_0_100_s=2.4, t_0_200_s=4.5))
+        db.add(RaceStart(session_id=rid, driver="NOR", constructor="McLaren", t_0_100_s=2.5, t_0_200_s=4.6))
+        db.add(RaceStartSkip(session_id=rid, driver="HAD", constructor="Red Bull Racing", reason="late_launch"))
+        db.add(RaceStartSkip(session_id=rid, driver="PIA", constructor="McLaren", reason="did_not_start"))
+        db.commit()
+    data = client.get("/weekends/2026/8/race-start").json()
+    assert data["status"] == "ok" and data["summary"] is None
+    nl = [(n["driver"], n["reason"]) for n in data["not_listed"]]
+    # Fixed reason order (did not start first), and OLD, with no reason recorded, is never hidden.
+    assert nl == [("PIA", "did_not_start"), ("HAD", "late_launch"), ("OLD", "no_reading")]
+    assert data["not_listed"][1]["label"].startswith("Left the grid more than 3 s after the field")
+    assert data["not_listed"][2]["label"] == "No start reading recorded"
+
+
+def test_race_start_with_no_shared_start_is_a_none_card_with_a_plain_summary(client, test_engine):
+    rid = _race_with_roster(test_engine, 2026, 9, [("HAM", "Ferrari", "Finished"), ("NOR", "McLaren", "Finished")])
+    with Session(test_engine) as db:
+        for d, team in (("HAM", "Ferrari"), ("NOR", "McLaren")):
+            db.add(RaceStartSkip(session_id=rid, driver=d, constructor=team, reason="no_common_start"))
+        db.commit()
+    data = client.get("/weekends/2026/9/race-start").json()
+    assert data["status"] == "none" and data["rows"] == []
+    assert data["summary"].startswith("Too few cars showed a clean launch from a standstill")
+    assert {n["reason"] for n in data["not_listed"]} == {"no_common_start"}
+
+
+def test_race_start_with_nothing_recorded_never_claims_a_cause(client, test_engine):
+    _race_with_roster(test_engine, 2026, 10, [("HAM", "Ferrari", "Finished")])
+    data = client.get("/weekends/2026/10/race-start").json()
+    assert data["status"] == "none"
+    assert data["summary"] == "Start data could not be read for this race."
+    assert data["not_listed"] == [{"driver": "HAM", "constructor": "Ferrari", "reason": "no_reading", "label": "No start reading recorded"}]

@@ -571,10 +571,14 @@ def refresh_race_start_cmd(
     and rewrites only its RaceStart rows (no LLM, no other tables)."""
     from telogify.pipeline import run_refresh_race_start
 
-    found = run_refresh_race_start(year, round, dry_run=dry_run)
-    if found is None:
-        console.print(f"[yellow]No usable race-start data for {year} round {round} (no telemetry, or too few cars reached 200 km/h); nothing written.[/yellow]")
+    from telogify.analysis.race_start import SKIP_LABEL
+
+    result = run_refresh_race_start(year, round, dry_run=dry_run)
+    if result is None:
+        console.print(f"[yellow]No usable race-start data for {year} round {round} (no telemetry, or a failed read); nothing written.[/yellow]")
         return
+    found, skipped = result
+
     def fmt(v: float | None, spec: str) -> str:
         return "   -  " if v is None else format(v, spec)
 
@@ -583,8 +587,13 @@ def refresh_race_start_cmd(
             f"{driver:>4}  0-100 {d['t_0_100_s']:.2f}s   0-200 {fmt(d['t_0_200_s'], '.2f')}s   "
             f"{fmt(d['v_75m_kmh'], '.0f')} km/h @ 75 m"
         )
+    by_reason: dict[str, list[str]] = {}
+    for driver, (_, why) in sorted(skipped.items()):
+        by_reason.setdefault(SKIP_LABEL[why], []).append(driver)
+    for label, drivers in by_reason.items():
+        console.print(f"  not listed, {label}: {', '.join(drivers)}")
     verb = "would be written" if dry_run else "written"
-    console.print(f"[green]{len(found)} drivers {verb}.[/green]")
+    console.print(f"[green]{len(found)} drivers {verb}, {len(skipped)} not listed.[/green]")
 
 
 @app.command("refresh-results")

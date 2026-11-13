@@ -25,6 +25,7 @@ before lights out (pit-lane start, rolling or safety-car start), too slow (`MAX_
 its speed fell before the distance was covered (lifting or braking behind traffic).
 """
 
+from enum import Enum
 from statistics import median
 
 import numpy as np
@@ -64,6 +65,66 @@ SPEED_DROP_KMH = 3.0
 
 # (t_0_100, t_0_200 or None) in seconds after lights out.
 Launch = tuple[float, float | None]
+
+
+class Skip(str, Enum):
+    """Why a driver is NOT on a race's start list. The one definition: the DB CHECK on
+    `race_start_skip.reason` lists these same values, and the wording lives in `SKIP_LABEL`.
+    Declared in the order the card lists them."""
+
+    DID_NOT_START = "did_not_start"  # no lap 1 at all
+    LATE_LAUNCH = "late_launch"  # left more than LATE_LAUNCH_S after the field (usually, not always, a pit-lane start)
+    MOVING_AT_START = "moving_at_start"  # already rolling before lights out
+    TOO_SLOW = "too_slow"  # 100 km/h not reached within MAX_WINDOW_S
+    NO_200 = "no_200"  # timed, but no 0-200 time on a round where the field has them
+    NO_DATA = "no_data"  # no usable speed trace around the start
+    NO_COMMON_START = "no_common_start"  # round-level: the field did not launch together
+    TOO_FEW_TIMED = "too_few_timed"  # round-level: too few cars timed to compare fairly
+
+
+# Plain wording for each reason, served by the API so the frontend holds no copy. It states what
+# the data shows and never a cause it cannot prove (no "safety car", no "crash").
+SKIP_LABEL: dict[Skip, str] = {
+    Skip.DID_NOT_START: "Did not start",
+    # Measured facts only. "(pit-lane start)" was dropped: Bahrain 2026's late launchers were Russell
+    # and Piastri, not pit-lane starters. "(stall or held up)" and "held up" were dropped as guesses.
+    # Thresholds come from the constants, so a documented retune can't leave stale wording behind.
+    Skip.LATE_LAUNCH: f"Left the grid more than {LATE_LAUNCH_S:g} s after the field",
+    Skip.MOVING_AT_START: "Already moving before the start",
+    Skip.TOO_SLOW: f"Took more than {MAX_WINDOW_S:g} s to reach 100 km/h",
+    Skip.NO_200: f"Did not reach 200 km/h within {MAX_WINDOW_S:g} s of the start",
+    Skip.NO_DATA: "No speed data for the start",
+    # What was measured (too few clean standstill launches), not a claim about how the race started:
+    # a noisy or misaligned trace gives the same reading.
+    Skip.NO_COMMON_START: "No clean launch from a standstill could be read",
+    Skip.TOO_FEW_TIMED: "Left out because too few cars could be timed fairly",
+}
+
+# Reasons that say something specific about a car's start (as opposed to "no speed data" or "did not
+# start"). A read with no timed rows is only worth storing when at least MIN_FIELD cars carry one.
+TIMING_EVIDENCE: frozenset[Skip] = frozenset(set(Skip) - {Skip.NO_DATA, Skip.DID_NOT_START})
+ROUND_LEVEL: frozenset[Skip] = frozenset({Skip.NO_COMMON_START, Skip.TOO_FEW_TIMED})
+
+# Read-time fallback for a driver in the results with no recorded reason (a round extracted before
+# reasons were stored), so a round is never claimed complete when it is not.
+NO_READING = "no_reading"
+NO_READING_LABEL = "No start reading recorded"
+
+# The no-start card's one-line explanation: what was measured, never a cause.
+NO_START_SUMMARY = {
+    Skip.NO_COMMON_START: "Too few cars showed a clean launch from a standstill, so there is no shared start to time from.",
+    Skip.TOO_FEW_TIMED: "Too few cars could be timed to compare starts fairly.",
+}
+NO_START_FALLBACK = "Start data could not be read for this race."
+
+
+def no_start_summary(reasons: set[str]) -> str:
+    """The no-start card's sentence for a race whose recorded reasons are `reasons` (Skip values)."""
+    if Skip.NO_COMMON_START.value in reasons:
+        return NO_START_SUMMARY[Skip.NO_COMMON_START]
+    if reasons & {r.value for r in TIMING_EVIDENCE}:
+        return NO_START_SUMMARY[Skip.TOO_FEW_TIMED]
+    return NO_START_FALLBACK
 
 
 def _first_move(speed_kmh: list[float]) -> int | None:
@@ -125,28 +186,36 @@ def _cross(time_s: list[float], speed: list[float], start: int, level: float) ->
     return None
 
 
-def launch_times(time_s: list[float], speed_kmh: list[float], lights_out_s: float) -> Launch | None:
-    """(t_0_100, t_0_200) in seconds after `lights_out_s`; t_0_200 is None when the car never got
-    there in time (it still has a 0-100 time). `time_s` is ascending on the same axis as
-    `lights_out_s` and must start before the car should already be sitting still."""
+def launch_outcome(
+    time_s: list[float], speed_kmh: list[float], lights_out_s: float
+) -> tuple[Launch | None, Skip | None]:
+    """`(launch, None)` when the car can be timed from `lights_out_s`, else `(None, why)`.
+    `time_s` is ascending on the same axis as `lights_out_s` and must start before the car should
+    already be sitting still; t_0_200 is None when the car never got there in time."""
     n = len(speed_kmh)
     if n < 3 or n != len(time_s):
-        return None
+        return None, Skip.NO_DATA
     settled = lights_out_s - PRE_STATIONARY_S
     if time_s[0] > settled:
-        return None  # window doesn't show the car sitting still before lights out
+        return None, Skip.NO_DATA  # the window doesn't show the car sitting still before lights out
     if any(v > STATIONARY_KMH for t, v in zip(time_s, speed_kmh) if t <= settled):
-        return None  # moving before lights out: rolling / safety-car start, or a pit-lane car
+        return None, Skip.MOVING_AT_START  # rolling before lights out (pit exit, creep, rolling start)
     after = next((i for i, t in enumerate(time_s) if t > lights_out_s), None)
     if after is None:
-        return None
+        return None, Skip.NO_DATA
     t100 = _cross(time_s, speed_kmh, after, 100.0)
     if t100 is None or t100 - lights_out_s > MAX_WINDOW_S:
-        return None
+        return None, Skip.TOO_SLOW
     t200 = _cross(time_s, speed_kmh, after, 200.0)
     if t200 is not None and t200 - lights_out_s > MAX_WINDOW_S:
         t200 = None
-    return t100 - lights_out_s, (None if t200 is None else t200 - lights_out_s)
+    return (t100 - lights_out_s, (None if t200 is None else t200 - lights_out_s)), None
+
+
+def launch_times(time_s: list[float], speed_kmh: list[float], lights_out_s: float) -> Launch | None:
+    """(t_0_100, t_0_200) in seconds after `lights_out_s`, or None when the start can't be timed
+    (`launch_outcome` says why)."""
+    return launch_outcome(time_s, speed_kmh, lights_out_s)[0]
 
 
 def speed_at_distance(

@@ -5,6 +5,8 @@ from datetime import datetime
 from sqlalchemy import JSON, CheckConstraint, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
+from telogify.analysis.race_start import Skip
+
 
 class RaceWeekend(SQLModel, table=True):
     __tablename__ = "race_weekend"
@@ -235,6 +237,26 @@ class RaceStart(SQLModel, table=True):
     # Speed (km/h) after 75 m from the car's own launch; None when it lifted first or the round
     # lacks enough cars with a reading. Carries no reaction time (see analysis/race_start.py).
     v_75m_kmh: float | None = None
+
+
+class RaceStartSkip(SQLModel, table=True):
+    """A driver in a race's classification who is NOT on its start list, and why (main race only).
+    Written with `race_start` in one transaction, by the same extraction. `reason` values are the
+    `analysis.race_start.Skip` enum; the CHECK lists the same set (tests pin that they match)."""
+
+    __tablename__ = "race_start_skip"
+    __table_args__ = (
+        CheckConstraint(
+            "reason IN (" + ",".join(f"'{s.value}'" for s in Skip) + ")",
+            name="ck_race_start_skip_reason",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    driver: str = Field(index=True)
+    constructor: str | None = None
+    reason: str
 
 
 class Attribution(SQLModel, table=True):

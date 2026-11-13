@@ -35,7 +35,14 @@ from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sec
 from telogify.analysis.season import build_season_accel_scatter, build_season_snapshot
 from telogify.analysis.season_deployment import PU_GROUPS, pu_map_applies
 from telogify.analysis.season_start import build_season_start
-from telogify.analysis.race_start import SPEED_DISTANCE_M
+from telogify.analysis.race_start import (
+    NO_READING,
+    NO_READING_LABEL,
+    SKIP_LABEL,
+    SPEED_DISTANCE_M,
+    Skip,
+    no_start_summary,
+)
 from telogify.analysis.season_stats import build_season_stats
 from telogify.ingest.results import (
     compound_letter,
@@ -63,6 +70,7 @@ from telogify.models import (
     QualiInsight,
     QualiTrace,
     RaceStart,
+    RaceStartSkip,
     RaceWeekend,
     SeasonDeploymentInsight,
     SectorBest,
@@ -692,7 +700,8 @@ def weekend_race_start(year: int, round: int, db: Session = Depends(get_session)
     w = _weekend(db, year, round)
     race = _race_session(db, w.id)
     if race is None:
-        return {"rows": []}
+        # No race session yet: same shape, a distinct status the frontend never renders a card for.
+        return {"status": "absent", "summary": None, "not_listed": [], "rows": []}
     rows = db.exec(select(RaceStart).where(RaceStart.session_id == race.id)).all()
     # Only a driver's FIRST stint: if its compound is unknown the start tyre is unknown, never
     # the next stint's compound.
@@ -718,7 +727,35 @@ def weekend_race_start(year: int, round: int, db: Session = Depends(get_session)
         else []
     )
 
+    # Who is NOT on the list, and why: the race's classification (DNS included) minus the listed
+    # drivers. The reason comes from the extraction; a driver with none recorded (a round extracted
+    # before reasons were stored) reads "No start reading recorded", so a round is never claimed
+    # complete when it is not.
+    listed = {r.driver for r in rows}
+    skips = {s.driver: s for s in db.exec(select(RaceStartSkip).where(RaceStartSkip.session_id == race.id)).all()}
+    roster = {r.driver: r.constructor for r in db.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all()}
+    order = {why.value: i for i, why in enumerate(Skip)}
+    not_listed = []
+    for driver in (set(roster) | set(skips)) - listed:
+        skip = skips.get(driver)
+        reason = skip.reason if skip else NO_READING
+        not_listed.append(
+            {
+                "driver": driver,
+                "constructor": (skip.constructor if skip and skip.constructor else roster.get(driver)),
+                "reason": reason,
+                "label": SKIP_LABEL[Skip(reason)] if skip else NO_READING_LABEL,
+            }
+        )
+    not_listed.sort(key=lambda n: (order.get(n["reason"], len(order)), n["driver"]))
+
+    # No timing rows: the race had no comparable start (or none was read). Say which, plainly.
+    summary = no_start_summary({s.reason for s in skips.values()}) if not rows else None
+
     return {
+        "status": "ok" if rows else "none",
+        "summary": summary,
+        "not_listed": not_listed,
         "to_kmh": to_kmh,
         "speed_distance_m": SPEED_DISTANCE_M,
         "pu_groups": pu_groups,
