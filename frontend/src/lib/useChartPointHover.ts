@@ -1,22 +1,22 @@
 import { useEffect, useRef, useState, type MouseEvent, type RefObject, type TouchEvent } from 'react'
+import type { Box } from '@/lib/placeBubble'
 
 export interface HoveredPoint {
   key: string
   round: number
-  // Position of the point inside `wrapRef`, so the readout can sit beside it.
-  left: number
-  top: number
+  // The dot's box in DOCUMENT coordinates (viewport rect + page scroll), so a readout rendered in a
+  // portal on <body> stays put as the page scrolls.
+  box: Box
 }
 
 // Hover/tap state for a "by round" line chart with a dot per real round (Race starts, Gap by round).
-// `containerRef` is the horizontally scrolling box, `wrapRef` the non-scrolling positioned box the
-// readout lives in. Spread `pointHandlers(key, round)` on each dot's <g>. Hard-won details, kept here
-// so every chart gets them:
+// `containerRef` is the horizontally scrolling box. Spread `pointHandlers(key, round)` on each dot's <g>.
+// Hard-won details, kept here so every chart gets them:
 // - `isScrolling` is true while the chart scrolls (200ms debounce): put `pointer-events-none` on the
 //   dots then, or a wheel/trackpad scroll under a still cursor fires a real mouseenter and swaps the point.
 // - Touch uses touchstart/touchend only, with a >10px threshold (a scroll-drag lifts wherever the finger
 //   ends) and preventDefault on touchend to suppress the synthetic mouse events; tapping the open point closes it.
-export function useChartPointHover(containerRef: RefObject<HTMLElement | null>, wrapRef: RefObject<HTMLElement | null>) {
+export function useChartPointHover(containerRef: RefObject<HTMLElement | null>) {
   const [hovered, setHovered] = useState<HoveredPoint | null>(null)
   const [isScrolling, setIsScrolling] = useState(false)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -38,10 +38,10 @@ export function useChartPointHover(containerRef: RefObject<HTMLElement | null>, 
   }, [containerRef])
 
   const showTip = (key: string, round: number, el: Element) => {
-    const wrap = wrapRef.current?.getBoundingClientRect()
     const c = el.getBoundingClientRect()
-    if (!wrap) return
-    setHovered({ key, round, left: c.left - wrap.left + c.width / 2, top: c.top - wrap.top })
+    const sx = window.scrollX
+    const sy = window.scrollY
+    setHovered({ key, round, box: { left: c.left + sx, top: c.top + sy, right: c.right + sx, bottom: c.bottom + sy } })
   }
 
   const pointHandlers = (key: string, round: number) => ({

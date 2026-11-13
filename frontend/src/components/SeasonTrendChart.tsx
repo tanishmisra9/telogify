@@ -140,9 +140,8 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   // moving between Race pace/Qualifying/Cumulative.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
-  const wrapRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
-  const { hovered, setHovered, isScrolling, pointHandlers } = useChartPointHover(containerRef, wrapRef)
+  const { hovered, setHovered, isScrolling, pointHandlers } = useChartPointHover(containerRef)
 
   useEffect(() => {
     const el = containerRef.current
@@ -270,7 +269,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
             ))}
           </g>
         </svg>
-        <div ref={wrapRef} className="relative min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
         <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
         <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
           <g transform={`translate(0,${MARGIN.top})`}>
@@ -344,7 +343,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         >
           Round
         </p>
-        <PointPopup hovered={hovered} tip={tip} wrapRef={wrapRef} />
+        <PointPopup hovered={hovered} tip={tip} />
         </div>
       </div>
 
