@@ -16,7 +16,8 @@ export interface HoveredPoint {
 //   dots then, or a wheel/trackpad scroll under a still cursor fires a real mouseenter and swaps the point.
 // - Touch uses touchstart/touchend only, with a >10px threshold (a scroll-drag lifts wherever the finger
 //   ends) and preventDefault on touchend to suppress the synthetic mouse events; tapping the open point closes it.
-export function useChartPointHover(containerRef: RefObject<HTMLElement | null>) {
+// - `isBlocked` (true during and just after a pinch-zoom) stops lifting two fingers over a dot from counting as a tap.
+export function useChartPointHover(containerRef: RefObject<HTMLElement | null>, isBlocked?: () => boolean) {
   const [hovered, setHovered] = useState<HoveredPoint | null>(null)
   const [isScrolling, setIsScrolling] = useState(false)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -26,6 +27,8 @@ export function useChartPointHover(containerRef: RefObject<HTMLElement | null>) 
     if (!el) return
     let t: ReturnType<typeof setTimeout>
     const onScroll = () => {
+      // The dot moves under a readout that is anchored to where it WAS, so scrolling the chart closes it.
+      setHovered(null)
       setIsScrolling(true)
       clearTimeout(t)
       t = setTimeout(() => setIsScrolling(false), 200)
@@ -53,6 +56,7 @@ export function useChartPointHover(containerRef: RefObject<HTMLElement | null>) 
     },
     onTouchEnd: (e: TouchEvent<Element>) => {
       e.preventDefault()
+      if (isBlocked?.()) return
       const start = touchStartRef.current
       const t = e.changedTouches[0]
       if (start && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) return

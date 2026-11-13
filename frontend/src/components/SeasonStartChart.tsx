@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { PointPopup } from '@/components/PointPopup'
-import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
-import { HEIGHT, INNER_H, MARGIN, MIN_ROUND_SLOT } from '@/components/SeasonTrendChart'
+import { INNER_H, MARGIN, MIN_ROUND_SLOT, ZoomChartFrame } from '@/components/ZoomChartFrame'
+import { ZoomControls } from '@/components/ZoomControls'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { drawTransition, spring } from '@/lib/motion'
 import { formSentence, formatGap, legendValue, niceAxis, pointCopy } from '@/lib/seasonStart'
@@ -11,7 +11,8 @@ import { monotonePath } from '@/lib/svgPath'
 import { resolveTeamColor, teamShortName } from '@/lib/teamColors'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useChartPointHover } from '@/lib/useChartPointHover'
-import { useScrollFade } from '@/lib/useScrollFade'
+import { useChartZoom } from '@/lib/useChartZoom'
+import { MIN_ZOOM } from '@/lib/zoom'
 import type { SeasonStartData, SeasonStartRow } from '@/lib/api'
 
 type View = 'teams' | 'pu'
@@ -25,19 +26,11 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>('teams')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
-  const { hovered, setHovered, isScrolling, pointHandlers } = useChartPointHover(containerRef)
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    // width 0 = inside a collapsed section (display:none): keep the last real width so re-opening doesn't re-lay out
-    const observer = new ResizeObserver(([entry]) => entry.contentRect.width > 0 && setContainerWidth(entry.contentRect.width))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-  const canScrollRight = useScrollFade(containerRef)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const { zoom, width, zoomIn, zoomOut, reset, pinchingRef } = useChartZoom(viewportRef)
+  const { hovered, setHovered, isScrolling, pointHandlers } = useChartPointHover(viewportRef, () => pinchingRef.current)
+  // A readout is anchored to where its dot was; zooming moves the dot, so close it.
+  useEffect(() => setHovered(null), [zoom, setHovered])
 
   const hasPu = !!data.views.pu
   const activeView: View = view === 'pu' && hasPu ? 'pu' : 'teams'
@@ -69,11 +62,12 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
 
   const xMin = Math.min(...roundNums)
   const xMax = Math.max(...roundNums)
-  const innerW = Math.max(containerWidth - MARGIN.right, Math.max(1, roundNums.length - 1) * MIN_ROUND_SLOT)
-  const width = innerW + MARGIN.right
+  // `width` is the viewport's width; zoom scales the plot beyond it (dots and text keep their pixel size).
+  const innerW = Math.max(width - MARGIN.right, Math.max(1, roundNums.length - 1) * MIN_ROUND_SLOT) * zoom
+  const innerH = INNER_H * zoom
   const { max: yMax, ticks: yTicks } = niceAxis(Math.max(...allGaps))
   const x = (v: number) => (xMax === xMin ? innerW / 2 : ((v - xMin) / (xMax - xMin)) * innerW)
-  const y = (v: number) => INNER_H * (v / yMax) // 0 at the top: the round's best start
+  const y = (v: number) => innerH * (v / yMax) // 0 at the top: the round's best start
 
   const isFiltering = selected.size > 0 && rows.some((r) => selected.has(colorKey(r)))
   const visible = isFiltering ? rows.filter((r) => selected.has(colorKey(r))) : rows
@@ -100,8 +94,9 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
       animate={{ opacity: 1, y: 0 }}
       transition={spring}
     >
-      {hasPu && (
-        <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <ZoomControls zoom={zoom} onIn={zoomIn} onOut={zoomOut} onReset={reset} />
+        {hasPu && (
           <ChartTabs
             ariaLabel="Group race starts by team or power unit"
             active={activeView}
@@ -111,96 +106,64 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
               { value: 'pu', label: 'Power units', hint: 'Median of every car a power unit supplies' },
             ]}
           />
-        </div>
-      )}
-
-      <div className="flex">
-        {/* Frozen y-axis, as in Gap by round: only the round axis and the lines scroll. */}
-        <svg width={MARGIN.left} height={HEIGHT} className="shrink-0" aria-hidden>
-          <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-            {yTicks.map((t) => (
-              <text key={t} x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={13}>
-                {t === 0 ? '0' : formatGap(t).replace('.0', '')}
-              </text>
-            ))}
-          </g>
-        </svg>
-        <div className="relative min-w-0 flex-1">
-          <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
-            <svg
-              width={width}
-              height={HEIGHT}
-              viewBox={`0 0 ${width} ${HEIGHT}`}
-              className="max-w-none"
-              role="img"
-              aria-label="Race start gap to the round's best, by round"
-            >
-              <g transform={`translate(0,${MARGIN.top})`}>
-                {yTicks.map((t) => (
-                  <line key={t} x1={0} x2={innerW} y1={y(t)} y2={y(t)} stroke="var(--color-muted)" strokeOpacity={0.35} strokeWidth={1.25} strokeDasharray="4 4" />
-                ))}
-                {roundNums.map((r) => (
-                  <text key={r} x={x(r)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
-                    {r}
-                  </text>
-                ))}
-
-                <AnimatePresence>
-                  {drawOrder.map((row) => (
-                    <m.path
-                      key={`${activeView}-${row.key}`}
-                      fill="none"
-                      stroke={resolveTeamColor(row.color_team)}
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d={monotonePath(row.points.map((p) => ({ x: x(p.round), y: y(p.gap_pct) })))}
-                      initial={reduce ? false : { pathLength: 0, opacity: 0 }}
-                      animate={{ pathLength: 1, opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={reduce ? { duration: 0 } : drawTransition}
-                    />
-                  ))}
-                </AnimatePresence>
-
-                {/* Points: filled = the full 0-200 run, hollow = only 0-100 was readable that
-                    round. A wide transparent circle is the hit target; pointer events are off while
-                    the chart is scrolling so a still cursor can't swap the readout. */}
-                <g className={isScrolling ? 'pointer-events-none' : undefined}>
-                  {drawOrder.map((row) =>
-                    row.points.map((p) => {
-                      const cx = x(p.round)
-                      const cy = y(p.gap_pct)
-                      const color = resolveTeamColor(row.color_team)
-                      return (
-                        <g key={`${activeView}-${row.key}-${p.round}`} {...pointHandlers(row.key, p.round)}>
-                          <circle cx={cx} cy={cy} r={12} fill="transparent" />
-                          <circle
-                            cx={cx}
-                            cy={cy}
-                            r={p.metric === 200 ? 3.5 : 4}
-                            fill={p.metric === 200 ? color : 'var(--color-surface)'}
-                            stroke={color}
-                            strokeWidth={p.metric === 200 ? 0 : 1.75}
-                          />
-                        </g>
-                      )
-                    }),
-                  )}
-                </g>
-              </g>
-            </svg>
-          </div>
-          <ScrollFadeEdge visible={canScrollRight} />
-          <p
-            className="pointer-events-none absolute inset-x-0 text-center text-xs text-muted"
-            style={{ top: MARGIN.top + INNER_H + 36 }}
-          >
-            Round
-          </p>
-          <PointPopup hovered={hovered} tip={tip} />
-        </div>
+        )}
       </div>
+
+      <ZoomChartFrame
+        viewportRef={viewportRef}
+        innerW={innerW}
+        innerH={innerH}
+        yTicks={yTicks.map((t) => ({ pos: y(t), label: t === 0 ? '0' : formatGap(t).replace('.0', '') }))}
+        xTicks={roundNums.map((r) => ({ pos: x(r), label: String(r) }))}
+        zoomed={zoom > MIN_ZOOM}
+        svgLabel="Race start gap to the round's best, by round"
+        regionLabel="Race start chart, scrollable when zoomed"
+      >
+        <AnimatePresence>
+          {drawOrder.map((row) => (
+            <m.path
+              key={`${activeView}-${row.key}`}
+              fill="none"
+              stroke={resolveTeamColor(row.color_team)}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d={monotonePath(row.points.map((p) => ({ x: x(p.round), y: y(p.gap_pct) })))}
+              initial={reduce ? false : { pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={reduce ? { duration: 0 } : drawTransition}
+            />
+          ))}
+        </AnimatePresence>
+
+        {/* Points: filled = the full 0-200 run, hollow = only 0-100 was readable that
+            round. A wide transparent circle is the hit target; pointer events are off while
+            the chart is scrolling so a still cursor can't swap the readout. */}
+        <g className={isScrolling ? 'pointer-events-none' : undefined}>
+          {drawOrder.map((row) =>
+            row.points.map((p) => {
+              const cx = x(p.round)
+              const cy = y(p.gap_pct)
+              const color = resolveTeamColor(row.color_team)
+              return (
+                <g key={`${activeView}-${row.key}-${p.round}`} {...pointHandlers(row.key, p.round)}>
+                  <circle cx={cx} cy={cy} r={12} fill="transparent" />
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={p.metric === 200 ? 3.5 : 4}
+                    fill={p.metric === 200 ? color : 'var(--color-surface)'}
+                    stroke={color}
+                    strokeWidth={p.metric === 200 ? 0 : 1.75}
+                  />
+                </g>
+              )
+            }),
+          )}
+        </g>
+      </ZoomChartFrame>
+      <PointPopup hovered={hovered} tip={tip} />
 
       <div className="mt-6 border-t border-border pt-5">
         <TeamSelectLegend rows={legendRows} selected={selected} onToggle={toggle} isFiltering={isFiltering} stackValue={isMobile} />

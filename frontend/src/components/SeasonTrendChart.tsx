@@ -2,28 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { PointPopup } from '@/components/PointPopup'
-import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
+import { INNER_H, MARGIN, MIN_ROUND_SLOT, ZoomChartFrame } from '@/components/ZoomChartFrame'
+import { ZoomControls } from '@/components/ZoomControls'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamShortName } from '@/lib/teamColors'
 import { useChartPointHover } from '@/lib/useChartPointHover'
+import { useChartZoom } from '@/lib/useChartZoom'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
 import { formArrow, formSentence } from '@/lib/seasonStart'
 import { smoothPath } from '@/lib/svgPath'
-import { useScrollFade } from '@/lib/useScrollFade'
+import { MIN_ZOOM } from '@/lib/zoom'
 import type { SeasonConstructorRow, SeasonRound } from '@/lib/api'
-
-// Exported so the Race starts chart shares one round width and one axis gutter, and the two
-// "by round" charts line up when scrolled.
-export const HEIGHT = 440
-export const MARGIN = { top: 16, right: 16, bottom: 52, left: 56 }
-export const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
-// Structural, not fluid: each round gets this many real pixels of x-axis space no matter the
-// container size, same reasoning as BarChart/PaceSpreadChart. Generous on purpose, not just
-// enough to avoid tick overlap: this chart draws up to ~10 overlapping team lines per round, and
-// a fluid-scaled axis squeezed thin later in a season reads as a tangle -- a heart monitor, not
-// a comparison. Scrolling a wider chart beats cramming a full season into one screenful.
-export const MIN_ROUND_SLOT = 64
 
 type Metric = 'pace' | 'quali' | 'cumulative'
 const METRIC_LABEL: Record<Metric, string> = { pace: 'Race pace', quali: 'Qualifying', cumulative: 'Cumulative' }
@@ -139,20 +129,11 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   // Empty = show every team (default). Not reset on metric switch, so a comparison survives
   // moving between Race pace/Qualifying/Cumulative.
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
-  const { hovered, setHovered, isScrolling, pointHandlers } = useChartPointHover(containerRef)
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    // width 0 = inside a collapsed section (display:none): keep the last real width so re-opening doesn't re-lay out
-    const observer = new ResizeObserver(([entry]) => entry.contentRect.width > 0 && setContainerWidth(entry.contentRect.width))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  const canScrollRight = useScrollFade(containerRef)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const { zoom, width, zooming, zoomIn, zoomOut, reset, pinchingRef } = useChartZoom(viewportRef)
+  const { hovered, setHovered, isScrolling, pointHandlers } = useChartPointHover(viewportRef, () => pinchingRef.current)
+  // A readout is anchored to where its dot was; zooming moves the dot, so close it.
+  useEffect(() => setHovered(null), [zoom, setHovered])
 
   const toggleTeam = (team: string) => {
     // Touch has no mouseleave: an open readout would stay set while its team is hidden and pop back
@@ -170,13 +151,10 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   const xMin = Math.min(...roundNums)
   const xMax = Math.max(...roundNums)
   const innerWNeeded = Math.max(1, roundNums.length - 1) * MIN_ROUND_SLOT
-  // containerWidth is the scrolling area alone now (the y-axis panel is a separate flex sibling
-  // with its own width), so only MARGIN.right -- the scrolling SVG's own breathing room -- comes
-  // off it.
-  const innerW = Math.max(containerWidth - MARGIN.right, innerWNeeded)
-  // No MARGIN.left here: the y-axis moved into its own frozen panel outside this scrolling SVG,
-  // so this one's own content starts right at x=0 instead of leaving room for axis labels.
-  const width = innerW + MARGIN.right
+  // `width` is the viewport's width (the y-axis is a separate panel), so only MARGIN.right -- the plot's own
+  // breathing room -- comes off it. Zoom then scales the plot beyond the viewport: dots and text keep their pixel size.
+  const innerW = Math.max(width - MARGIN.right, innerWNeeded) * zoom
+  const innerH = INNER_H * zoom
 
   // Filtered on the team's original (pre-resample) point count, so a team with zero real data
   // for this metric still doesn't render a fabricated flat line — resampling only fills gaps
@@ -217,7 +195,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   const fixedMax = FIXED_AXIS_MAX[metric]
   const yMax = fixedMax != null ? Math.max(fixedMax, Math.ceil(dataMax)) : dataMax * 1.05 || 1
   const x = (v: number) => (xMax === xMin ? innerW / 2 : ((v - xMin) / (xMax - xMin)) * innerW)
-  const y = (v: number) => INNER_H * (v / yMax) // 0 at the top (fastest team on top)
+  const y = (v: number) => innerH * (v / yMax) // 0 at the top (fastest team on top)
 
   const yTicks =
     fixedMax != null
@@ -244,7 +222,8 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
       animate={{ opacity: 1, y: 0 }}
       transition={spring}
     >
-      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <ZoomControls zoom={zoom} onIn={zoomIn} onOut={zoomOut} onReset={reset} />
         <ChartTabs
           ariaLabel="Metric"
           active={metric}
@@ -256,96 +235,67 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         />
       </div>
 
-      <div className="flex">
-        {/* Frozen y-axis: its own small SVG outside the scrolling container, not part of it, so
-            the percent scale stays put and readable no matter how far into the season you've
-            scrolled. Only the round axis and the lines themselves scroll. */}
-        <svg width={MARGIN.left} height={HEIGHT} className="shrink-0" aria-hidden>
-          <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-            {yTicks.map((t) => (
-              <text key={t} x={-9} y={y(t)} textAnchor="end" dominantBaseline="middle" fill="var(--color-muted)" fontSize={13}>
-                {formatTick(t)}
-              </text>
-            ))}
-          </g>
-        </svg>
-        <div className="relative min-w-0 flex-1">
-        <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
-        <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
-          <g transform={`translate(0,${MARGIN.top})`}>
-            {yTicks.map((t) => (
-              <line key={t} x1={0} x2={innerW} y1={y(t)} y2={y(t)} stroke="var(--color-muted)" strokeOpacity={0.35} strokeWidth={1.25} strokeDasharray="4 4" />
-            ))}
-            {roundNums.map((r) => (
-              <text key={r} x={x(r)} y={INNER_H + 22} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
-                {r}
-              </text>
-            ))}
+      <ZoomChartFrame
+        viewportRef={viewportRef}
+        innerW={innerW}
+        innerH={innerH}
+        yTicks={yTicks.map((t) => ({ pos: y(t), label: formatTick(t) }))}
+        xTicks={roundNums.map((r) => ({ pos: x(r), label: String(r) }))}
+        zoomed={zoom > MIN_ZOOM}
+        svgLabel={`${METRIC_LABEL[metric]} gap by round`}
+        regionLabel="Gap by round chart, scrollable when zoomed"
+      >
+        <AnimatePresence>
+          {visibleSeries.map((s) => {
+            const color = resolveTeamColor(s.team)
+            const pathD = smoothPath(roundNums.map((r, i) => ({ x: x(r), y: y(s.values[i]) })))
+            return (
+              <m.path
+                key={s.team}
+                fill="none"
+                stroke={color}
+                strokeWidth={2}
+                strokeLinecap="round"
+                initial={reduce ? false : { pathLength: 0, opacity: 0, d: pathD }}
+                animate={{ pathLength: 1, opacity: 1, d: pathD }}
+                exit={{ opacity: 0 }}
+                transition={reduce || zooming ? { duration: 0 } : { ...drawTransition, d: morphTransition }}
+              />
+            )
+          })}
+        </AnimatePresence>
 
-            <AnimatePresence>
-              {visibleSeries.map((s) => {
-                const color = resolveTeamColor(s.team)
-                const pathD = smoothPath(roundNums.map((r, i) => ({ x: x(r), y: y(s.values[i]) })))
-                return (
-                  <m.path
-                    key={s.team}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    initial={reduce ? false : { pathLength: 0, opacity: 0, d: pathD }}
-                    animate={{ pathLength: 1, opacity: 1, d: pathD }}
-                    exit={{ opacity: 0 }}
-                    transition={reduce ? { duration: 0 } : { ...drawTransition, d: morphTransition }}
+        {/* Dots: one per REAL round (trend[metric]), never per resampled value, so a stretch of line
+            with no dot under it is filled in between its neighbours. They glide with the line on a tab
+            switch and fade in as the draw-in finishes. A wide transparent circle is the hit target;
+            pointer events are off while scrolling so a still cursor can't swap the readout. */}
+        <g className={isScrolling ? 'pointer-events-none' : undefined}>
+          {visibleSeries.map((s) => {
+            const color = resolveTeamColor(s.team)
+            return rowByTeam.get(s.team)!.trend[metric].map((p) => {
+              const cx = x(p.round)
+              const cy = y(p.value)
+              return (
+                <g key={`${s.team}-${p.round}`} {...pointHandlers(s.team, p.round)}>
+                  <circle cx={cx} cy={cy} r={12} fill="transparent" />
+                  <m.circle
+                    r={3.5}
+                    fill={color}
+                    initial={reduce ? false : { cx, cy, opacity: 0 }}
+                    animate={{ cx, cy, opacity: 1 }}
+                    transition={
+                      reduce || zooming
+                        ? { duration: 0 }
+                        : { cx: morphTransition, cy: morphTransition, opacity: { duration: 0.2, delay: 0.4 } }
+                    }
                   />
-                )
-              })}
-            </AnimatePresence>
-
-            {/* Dots: one per REAL round (trend[metric]), never per resampled value, so a stretch of line
-                with no dot under it is filled in between its neighbours. They glide with the line on a tab
-                switch and fade in as the draw-in finishes. A wide transparent circle is the hit target;
-                pointer events are off while scrolling so a still cursor can't swap the readout. */}
-            <g className={isScrolling ? 'pointer-events-none' : undefined}>
-              {visibleSeries.map((s) => {
-                const color = resolveTeamColor(s.team)
-                return rowByTeam.get(s.team)!.trend[metric].map((p) => {
-                  const cx = x(p.round)
-                  const cy = y(p.value)
-                  return (
-                    <g key={`${s.team}-${p.round}`} {...pointHandlers(s.team, p.round)}>
-                      <circle cx={cx} cy={cy} r={12} fill="transparent" />
-                      <m.circle
-                        r={3.5}
-                        fill={color}
-                        initial={reduce ? false : { cx, cy, opacity: 0 }}
-                        animate={{ cx, cy, opacity: 1 }}
-                        transition={
-                          reduce
-                            ? { duration: 0 }
-                            : { cx: morphTransition, cy: morphTransition, opacity: { duration: 0.2, delay: 0.4 } }
-                        }
-                      />
-                    </g>
-                  )
-                })
-              })}
-            </g>
-          </g>
-        </svg>
-        </div>
-        <ScrollFadeEdge visible={canScrollRight} />
-        {/* "Round" axis title, static outside the scrolling container: only the round-number
-            ticks above should scroll with the x-axis, the title itself should stay put. */}
-        <p
-          className="pointer-events-none absolute inset-x-0 text-center text-xs text-muted"
-          style={{ top: MARGIN.top + INNER_H + 36 }}
-        >
-          Round
-        </p>
-        <PointPopup hovered={hovered} tip={tip} />
-        </div>
-      </div>
+                </g>
+              )
+            })
+          })}
+        </g>
+      </ZoomChartFrame>
+      <PointPopup hovered={hovered} tip={tip} />
 
       <div className="mt-6 border-t border-border pt-5">
         <TeamSelectLegend
