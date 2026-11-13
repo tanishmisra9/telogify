@@ -120,6 +120,15 @@ def _default_agent_runner(metrics: list[dict], feedback: str | None = None) -> s
     return _content_text(response.content)
 
 
+def _is_complete_row(v) -> bool:
+    """A verdict row is a JSON object with every required key, and real text to publish."""
+    return (
+        isinstance(v, dict)
+        and all(k in v for k in _REQUIRED_KEYS)
+        and all(isinstance(v[k], str) and v[k].strip() for k in ("header", "explanation_web"))
+    )
+
+
 def generate_season_deployment_verdicts(
     scatter: dict[str, list[list[float]]], *, agent_runner=None
 ) -> tuple[list[dict], list[dict]]:
@@ -153,11 +162,20 @@ def generate_season_deployment_verdicts(
                 f"order, got {len(verdicts) if isinstance(verdicts, list) else '?'}."
             )
             continue
-        missing_keys = [
-            m["pu"] for m, v in zip(metrics, verdicts) if any(k not in v for k in _REQUIRED_KEYS)
-        ]
-        if missing_keys:
-            feedback = f"These rows are missing required keys {_REQUIRED_KEYS}: {missing_keys}."
+        malformed = [m["pu"] for m, v in zip(metrics, verdicts) if not _is_complete_row(v)]
+        if malformed:
+            feedback = (
+                f"These rows are missing required keys {_REQUIRED_KEYS} or have a header or "
+                f"explanation_web that is not non-empty text: {malformed}."
+            )
+            continue
+        # Persist pairs verdicts to metrics by position, so a swapped or renamed row would be
+        # stored under the wrong manufacturer's name, rank and numbers.
+        if [v["pu"] for v in verdicts] != [m["pu"] for m in metrics]:
+            feedback = (
+                "Rows must be in the same order as the input, each with the exact 'pu' name. "
+                f"Expected {[m['pu'] for m in metrics]}, got {[v['pu'] for v in verdicts]}."
+            )
             continue
 
         issues = _validate_verdicts(verdicts, metrics)
