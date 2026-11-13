@@ -33,9 +33,12 @@ export function useChartPointHover(containerRef: RefObject<HTMLElement | null>, 
       clearTimeout(t)
       t = setTimeout(() => setIsScrolling(false), 200)
     }
+    const onResize = () => setHovered(null)
     el.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onResize)
     return () => {
       el.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onResize)
       clearTimeout(t)
     }
   }, [containerRef])

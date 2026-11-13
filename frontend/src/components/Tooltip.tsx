@@ -58,10 +58,8 @@ export function Tooltip({
 
   // Measure the bubble and the trigger before paint, so it never flashes in the wrong place.
   useLayoutEffect(() => {
-    if (!open) {
-      setPos(null)
-      return
-    }
+    // On close the last position is kept, so the exit fade plays where the bubble was.
+    if (!open) return
     const wrapper = wrapperRef.current
     const bubble = bubbleRef.current
     if (!wrapper || !bubble) return

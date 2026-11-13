@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { PointPopup } from '@/components/PointPopup'
-import { INNER_H, MARGIN, MIN_ROUND_SLOT, ZoomChartFrame } from '@/components/ZoomChartFrame'
+import { INNER_H, MARGIN, MIN_ROUND_SLOT, PLOT_PAD_X, ZoomChartFrame } from '@/components/ZoomChartFrame'
 import { ZoomControls } from '@/components/ZoomControls'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamShortName } from '@/lib/teamColors'
@@ -153,7 +153,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   const innerWNeeded = Math.max(1, roundNums.length - 1) * MIN_ROUND_SLOT
   // `width` is the viewport's width (the y-axis is a separate panel), so only MARGIN.right -- the plot's own
   // breathing room -- comes off it. Zoom then scales the plot beyond the viewport: dots and text keep their pixel size.
-  const innerW = Math.max(width - MARGIN.right, innerWNeeded) * zoom
+  const innerW = Math.max(width - MARGIN.right - PLOT_PAD_X, innerWNeeded) * zoom
   const innerH = INNER_H * zoom
 
   // Filtered on the team's original (pre-resample) point count, so a team with zero real data

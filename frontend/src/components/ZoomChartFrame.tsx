@@ -13,6 +13,9 @@ export const INNER_H = HEIGHT - MARGIN.top - MARGIN.bottom
 // a comparison. Scrolling a wider chart beats cramming a full season into one screenful.
 export const MIN_ROUND_SLOT = 64
 const PLOT_PAD = 8 // below the last gridline, so a dot sitting on it isn't clipped
+// Left of the first round: x(first round) is 0, and the svg clips at its own edge, so without this the first dot
+// (r 3.5) is half cut and its tap target (r 12) loses half its width. Equal to the hit circle's radius.
+export const PLOT_PAD_X = 12
 const VIEWPORT_H = MARGIN.top + INNER_H + PLOT_PAD
 const STRIP_H = MARGIN.bottom - PLOT_PAD
 
@@ -87,7 +90,7 @@ export function ZoomChartFrame({
     // sync/measure only read refs and call setState; they are stable in effect
   }, [viewportRef])
 
-  const plotW = innerW + MARGIN.right
+  const plotW = PLOT_PAD_X + innerW + MARGIN.right
   const plotH = MARGIN.top + innerH + PLOT_PAD
 
   return (
@@ -111,9 +114,9 @@ export function ZoomChartFrame({
           style={zoomed ? { height: VIEWPORT_H } : undefined}
         >
           <svg width={plotW} height={plotH} viewBox={`0 0 ${plotW} ${plotH}`} className="block max-w-none" role="img" aria-label={svgLabel}>
-            <g transform={`translate(0,${MARGIN.top})`}>
+            <g transform={`translate(${PLOT_PAD_X},${MARGIN.top})`}>
               {yTicks.map((t) => (
-                <line key={t.label} x1={0} x2={innerW} y1={t.pos} y2={t.pos} stroke="var(--color-muted)" strokeOpacity={0.35} strokeWidth={1.25} strokeDasharray="4 4" />
+                <line key={t.label} x1={-PLOT_PAD_X} x2={innerW} y1={t.pos} y2={t.pos} stroke="var(--color-muted)" strokeOpacity={0.35} strokeWidth={1.25} strokeDasharray="4 4" />
               ))}
               {children}
             </g>
@@ -123,7 +126,7 @@ export function ZoomChartFrame({
         <svg width={view.w} height={STRIP_H} aria-hidden className="block">
           <g ref={xGroup}>
             {xTicks.map((t) => (
-              <text key={t.label} x={t.pos} y={14} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
+              <text key={t.label} x={t.pos + PLOT_PAD_X} y={14} textAnchor="middle" fill="var(--color-muted)" fontSize={12}>
                 {t.label}
               </text>
             ))}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { PointPopup } from '@/components/PointPopup'
-import { INNER_H, MARGIN, MIN_ROUND_SLOT, ZoomChartFrame } from '@/components/ZoomChartFrame'
+import { INNER_H, MARGIN, MIN_ROUND_SLOT, PLOT_PAD_X, ZoomChartFrame } from '@/components/ZoomChartFrame'
 import { ZoomControls } from '@/components/ZoomControls'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { drawTransition, spring } from '@/lib/motion'
@@ -63,7 +63,7 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
   const xMin = Math.min(...roundNums)
   const xMax = Math.max(...roundNums)
   // `width` is the viewport's width; zoom scales the plot beyond it (dots and text keep their pixel size).
-  const innerW = Math.max(width - MARGIN.right, Math.max(1, roundNums.length - 1) * MIN_ROUND_SLOT) * zoom
+  const innerW = Math.max(width - MARGIN.right - PLOT_PAD_X, Math.max(1, roundNums.length - 1) * MIN_ROUND_SLOT) * zoom
   const innerH = INNER_H * zoom
   const { max: yMax, ticks: yTicks } = niceAxis(Math.max(...allGaps))
   const x = (v: number) => (xMax === xMin ? innerW / 2 : ((v - xMin) / (xMax - xMin)) * innerW)

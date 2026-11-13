@@ -63,7 +63,9 @@ export function useChartZoom(viewportRef: RefObject<HTMLElement | null>) {
     const rect = () => el.getBoundingClientRect()
 
     const ro = new ResizeObserver(([entry]) => {
-      if (entry.contentRect.width > 0) setWidth(entry.contentRect.width)
+      // floor: a fractional width makes the plot 1px wider than the viewport's integer box (a phantom horizontal
+      // scrollbar at 1x, same fix as PaceSpreadChart)
+      if (entry.contentRect.width > 0) setWidth(Math.floor(entry.contentRect.width))
     })
     ro.observe(el)
 
