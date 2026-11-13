@@ -9,7 +9,10 @@ is substrate. Surfaces, deliberately minimal:
    numbers emphasised), then practice, qualifying (including "The fight to pole"), sprint and race
    sections with hand-rolled SVG charts (pace spread, tyre degradation) and the finishing order.
 3. **Season** (`/season[/:year]`): constructor ranking, gap-by-round trend, power-unit deployment.
-4. **Subscribe** (`/subscribe`): double opt-in email signup for the digest, with `/subscribe/verify`
+4. **How it works** (`/how-it-works`): one published sentence traced back through the six steps that
+   produced it (timing, clean laps, stored numbers, ranked findings, agent tools, the validation
+   gate), ending on anonymized outside replies. Linked from the nav only.
+5. **Subscribe** (`/subscribe`): double opt-in email signup for the digest, with `/subscribe/verify`
    and `/unsubscribe` confirmation pages.
 
 register: product (the design serves the data; insights are the product)
