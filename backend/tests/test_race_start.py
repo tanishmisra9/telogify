@@ -1,3 +1,4 @@
+import re
 import pytest
 
 from telogify.analysis.race_start import (
@@ -377,15 +378,15 @@ def test_refresh_extracts_once_and_never_replaces_good_rows_with_an_empty_read(t
     with Session(test_engine) as db:
         wk, race, _ = _weekend_with_race(db, year=2033)
     calls = {"n": 0}
-    real = pipeline.extract_race_start
+    real = pipeline.extract_race_start_detail
 
     def counting(session):
         calls["n"] += 1
         return real(session)
 
-    monkeypatch.setattr(pipeline, "extract_race_start", counting)
+    monkeypatch.setattr(pipeline, "extract_race_start_detail", counting)
     monkeypatch.setattr(pipeline, "load_race_for_backfill", lambda y, r: _FakeSession(_FIELD))
-    found = pipeline.run_refresh_race_start(2033, 1)
+    found, skipped = pipeline.run_refresh_race_start(2033, 1)
     assert len(found) == 10 and calls["n"] == 1  # one extraction, not two
     with Session(test_engine) as db:
         assert len(db.exec(select(RaceStart)).all()) == 10  # replaced the old row
@@ -414,3 +415,135 @@ def test_extractor_keeps_a_car_with_no_readable_launch_moment_of_its_own():
     sess._cars["1"] = ragged  # no 10-60 km/h climb at all: launch_moment is None
     out = extract_race_start(sess)
     assert "D00" in out
+
+
+# ---- why a driver is not on the list ---------------------------------------------------------
+
+from telogify.analysis.race_start import (  # noqa: E402
+    NO_START_SUMMARY,
+    ROUND_LEVEL,
+    SKIP_LABEL,
+    Skip,
+    launch_outcome,
+)
+from telogify.ingest.race_start import extract_race_start_detail, should_write  # noqa: E402
+from telogify.models import RaceStartSkip  # noqa: E402
+
+
+def test_every_reason_has_plain_wording_and_the_db_check_lists_exactly_the_same_set():
+    assert set(SKIP_LABEL) == set(Skip)
+    assert all("—" not in label for label in SKIP_LABEL.values())  # no em dashes anywhere
+    check = next(c for c in RaceStartSkip.__table_args__ if c.name == "ck_race_start_skip_reason")
+    assert set(re.findall(r"'([a-z_0-9]+)'", str(check.sqltext))) == {s.value for s in Skip}
+
+
+def test_launch_outcome_says_why_a_launch_cannot_be_timed():
+    t, v = _ramp(40.0, launch=0.5)
+    assert launch_outcome(t, v, 0.5)[1] is None
+    t, v = _ramp(40.0, launch=-1.5)
+    assert launch_outcome(t, v, 0.5) == (None, Skip.MOVING_AT_START)
+    t, v = _ramp(40.0, launch=9.0, end=30.0)
+    assert launch_outcome(t, v, 0.5) == (None, Skip.TOO_SLOW)
+    t, v = _ramp(40.0, launch=0.5)
+    start = next(i for i, x in enumerate(t) if x > 0.3)
+    assert launch_outcome(t[start:], v[start:], 0.5) == (None, Skip.NO_DATA)
+    assert launch_outcome([], [], 0.5) == (None, Skip.NO_DATA)
+
+
+class _RosterSession(_FakeSession):
+    """A fake session that also has a race classification (`results`)."""
+
+    def __init__(self, drivers, roster_extra=(), **kw):
+        super().__init__(drivers, **kw)
+        rows = [{"Abbreviation": d, "TeamName": f"Team{i}"} for i, d in enumerate(drivers)]
+        rows += [{"Abbreviation": d, "TeamName": "TeamX"} for d in roster_extra]
+        self._results = pd.DataFrame(rows)
+
+    @property
+    def results(self):
+        return self._results
+
+
+def test_detail_names_each_missing_driver_with_a_reason():
+    field = {**_FIELD, "PIT": 9.0, "STALL": 0.4}
+    sess = _RosterSession(field, roster_extra=("DNS",))
+    t = [round(-8.0 + 0.1 * i, 3) for i in range(300)]
+    stall_num = str(list(field).index("STALL") + 1)
+    sess._cars[stall_num] = pd.DataFrame(  # sits still, then crawls: never 100 km/h in 8 s
+        {"Date": [_T0 + pd.Timedelta(seconds=x) for x in t], "Speed": [0.0 if x < 0.4 else min(60.0, (x - 0.4) * 5) for x in t]}
+    )
+    rows, skipped = extract_race_start_detail(sess)
+    assert "PIT" not in rows and "STALL" not in rows and "DNS" not in rows
+    assert skipped["PIT"][1] is Skip.LATE_LAUNCH
+    assert skipped["STALL"][1] is Skip.TOO_SLOW
+    assert skipped["DNS"] == ("TeamX", Skip.DID_NOT_START)
+    assert set(rows) | set(skipped) == set(field) | {"DNS"}  # every driver accounted for exactly once
+    assert not set(rows) & set(skipped)
+
+
+def test_a_200_round_names_the_cars_held_up_before_200():
+    sess = _RosterSession(_FIELD)
+    sess._cars["1"] = _car(0.4, rate=22.0, end_speed=190.0)  # D00 never reaches 200
+    rows, skipped = extract_race_start_detail(sess)
+    assert "D00" not in rows and skipped["D00"][1] is Skip.NO_200
+
+
+def test_a_field_that_did_not_launch_together_is_a_finding_not_a_failed_read():
+    # Bahrain-style (measured: 3 of 22 readable launches): every car has a speed trace, but most only
+    # creep off below 10 km/h inside the window, so too few clean standing launches give a shared start.
+    drivers = {f"D{i:02d}": 0.4 for i in range(10)}
+    sess = _RosterSession(drivers)
+    t = [round(-8.0 + 0.1 * i, 3) for i in range(300)]
+    for k in [str(i) for i in range(4, 11)]:  # 7 of 10 creep, never clearing 9 km/h
+        sess._cars[k] = pd.DataFrame(
+            {"Date": [_T0 + pd.Timedelta(seconds=x) for x in t], "Speed": [0.0 if x < 2 else 8.0 for x in t]}
+        )
+    rows, skipped = extract_race_start_detail(sess)
+    assert rows == {}
+    assert {why for _, why in skipped.values()} == {Skip.NO_COMMON_START}
+    assert len(skipped) == 10
+    assert should_write(rows, skipped)  # stored, so the card can say so
+
+
+def test_a_failed_read_is_never_written_over_good_rows():
+    sess = _RosterSession(_FIELD, raises=True)  # car data never loaded
+    rows, skipped = extract_race_start_detail(sess)
+    assert (rows, skipped) == ({}, {})
+    assert not should_write(rows, skipped)
+    # All "no speed data" with no round-level finding is also a failed read.
+    assert not should_write({}, {"A": ("T", Skip.NO_DATA), "B": ("T", Skip.DID_NOT_START)})
+    assert should_write({}, {"A": ("T", Skip.TOO_FEW_TIMED)})
+    assert ROUND_LEVEL == {Skip.NO_COMMON_START, Skip.TOO_FEW_TIMED}
+
+
+def test_too_few_timed_marks_the_timed_cars():
+    # 10 cars launch together, but 8 lift/stall so badly only 2 of 10 can be timed.
+    sess = _RosterSession(_FIELD)
+    t = [round(-8.0 + 0.1 * i, 3) for i in range(300)]
+    for k in [str(i) for i in range(3, 11)]:
+        sess._cars[k] = pd.DataFrame(
+            {"Date": [_T0 + pd.Timedelta(seconds=x) for x in t], "Speed": [max(0.0, min(70.0, (x - 0.45) * 40)) for x in t]}
+        )
+    rows, skipped = extract_race_start_detail(sess)
+    assert rows == {}
+    assert {skipped[d][1] for d in ("D00", "D01")} == {Skip.TOO_FEW_TIMED}
+    assert should_write(rows, skipped)
+
+
+def test_store_writes_skips_with_rows_and_a_failed_read_keeps_both(test_engine):
+    with Session(test_engine) as db:
+        wk, race, WeekendData = _weekend_with_race(db, year=2034)
+        store_race_start(WeekendData(weekend=wk, sessions={"R": _RosterSession({**_FIELD, "PIT": 9.0})}), db)
+        assert len(db.exec(select(RaceStart)).all()) == 10
+        assert [(s.driver, s.reason) for s in db.exec(select(RaceStartSkip)).all()] == [("PIT", "late_launch")]
+        store_race_start(WeekendData(weekend=wk, sessions={"R": _RosterSession(_FIELD, raises=True)}), db)
+        assert len(db.exec(select(RaceStart)).all()) == 10  # the failed read changed nothing
+        assert len(db.exec(select(RaceStartSkip)).all()) == 1
+
+
+def test_no_wording_names_a_cause_the_data_cannot_prove():
+    # Bahrain 2026's "late" launchers were Russell and Piastri, so even "pit-lane start" is a guess.
+    for text in [*NO_START_SUMMARY.values(), *SKIP_LABEL.values()]:
+        assert not any(w in text.lower() for w in ("pit-lane", "pit lane", "stall", "held up", "safety car", "crash", "red flag", "rain"))
+    for text in NO_START_SUMMARY.values():
+        assert not any(w in text.lower() for w in ("safety car", "crash", "red flag", "rain"))
