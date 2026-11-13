@@ -155,13 +155,17 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
 
   const canScrollRight = useScrollFade(containerRef)
 
-  const toggleTeam = (team: string) =>
+  const toggleTeam = (team: string) => {
+    // Touch has no mouseleave: an open readout would stay set while its team is hidden and pop back
+    // when the team returns, so changing the isolation closes it.
+    setHovered(null)
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(team)) next.delete(team)
       else next.add(team)
       return next
     })
+  }
 
   const roundNums = rounds.map((r) => r.round)
   const xMin = Math.min(...roundNums)

@@ -51,13 +51,17 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
     setSelected(new Set()) // the two row sets are disjoint
     setHovered(null)
   }
-  const toggle = (team: string) =>
+  const toggle = (team: string) => {
+    // Touch has no mouseleave: an open readout would stay set while its team is hidden and pop back
+    // when the team returns, so changing the isolation closes it.
+    setHovered(null)
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(team)) next.delete(team)
       else next.add(team)
       return next
     })
+  }
 
   const roundNums = data.rounds.map((r) => r.round)
   const eventOf = new Map(data.rounds.map((r) => [r.round, r.event_name]))
