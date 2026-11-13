@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
+import { PointPopup } from '@/components/PointPopup'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { HEIGHT, INNER_H, MARGIN, MIN_ROUND_SLOT } from '@/components/SeasonTrendChart'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
@@ -9,11 +10,11 @@ import { formSentence, formatGap, legendValue, niceAxis, pointCopy } from '@/lib
 import { monotonePath } from '@/lib/svgPath'
 import { resolveTeamColor, teamShortName } from '@/lib/teamColors'
 import { useIsMobile } from '@/lib/useIsMobile'
+import { useChartPointHover } from '@/lib/useChartPointHover'
 import { useScrollFade } from '@/lib/useScrollFade'
 import type { SeasonStartData, SeasonStartRow } from '@/lib/api'
 
 type View = 'teams' | 'pu'
-const TIP_W = 220
 
 // Who has had the best race starts all season: one line per team or power unit, its gap to each
 // round's best start (0 at the top, so a line hugging the top has launched best round after
@@ -24,13 +25,10 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>('teams')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [hovered, setHovered] = useState<{ key: string; round: number; left: number; top: number } | null>(null)
-  const [isScrolling, setIsScrolling] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
-  // A finger dragging across points to scroll must not toggle whichever one it passed over.
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const { hovered, setHovered, isScrolling, pointHandlers } = useChartPointHover(containerRef, wrapRef)
 
   useEffect(() => {
     const el = containerRef.current
@@ -38,18 +36,7 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
     // width 0 = inside a collapsed section (display:none): keep the last real width so re-opening doesn't re-lay out
     const observer = new ResizeObserver(([entry]) => entry.contentRect.width > 0 && setContainerWidth(entry.contentRect.width))
     observer.observe(el)
-    let t: ReturnType<typeof setTimeout>
-    const onScroll = () => {
-      setIsScrolling(true)
-      clearTimeout(t)
-      t = setTimeout(() => setIsScrolling(false), 200)
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      observer.disconnect()
-      el.removeEventListener('scroll', onScroll)
-      clearTimeout(t)
-    }
+    return () => observer.disconnect()
   }, [])
   const canScrollRight = useScrollFade(containerRef)
 
@@ -99,17 +86,9 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
     title: formSentence(r) ?? undefined,
   }))
 
-  const showTip = (row: SeasonStartRow, round: number, el: Element) => {
-    const wrap = wrapRef.current?.getBoundingClientRect()
-    const c = el.getBoundingClientRect()
-    if (!wrap) return
-    setHovered({ key: row.key, round, left: c.left - wrap.left + c.width / 2, top: c.top - wrap.top })
-  }
   const hoveredRow = hovered ? rows.find((r) => r.key === hovered.key) : undefined
   const hoveredPoint = hoveredRow?.points.find((p) => p.round === hovered?.round)
   const tip = hoveredRow && hoveredPoint ? pointCopy(hoveredRow.label, eventOf.get(hoveredPoint.round), hoveredPoint) : null
-  const wrapW = wrapRef.current?.clientWidth ?? 0
-  const tipLeft = hovered ? Math.min(Math.max(hovered.left - TIP_W / 2, 0), Math.max(0, wrapW - TIP_W)) : 0
 
   return (
     <m.div
@@ -191,23 +170,7 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
                       const cy = y(p.gap_pct)
                       const color = resolveTeamColor(row.color_team)
                       return (
-                        <g
-                          key={`${activeView}-${row.key}-${p.round}`}
-                          onMouseEnter={(e) => showTip(row, p.round, e.currentTarget)}
-                          onMouseLeave={() => setHovered(null)}
-                          onTouchStart={(e) => {
-                            const t = e.touches[0]
-                            touchStartRef.current = { x: t.clientX, y: t.clientY }
-                          }}
-                          onTouchEnd={(e) => {
-                            e.preventDefault()
-                            const start = touchStartRef.current
-                            const t = e.changedTouches[0]
-                            if (start && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) return
-                            if (hovered?.key === row.key && hovered.round === p.round) setHovered(null)
-                            else showTip(row, p.round, e.currentTarget)
-                          }}
-                        >
+                        <g key={`${activeView}-${row.key}-${p.round}`} {...pointHandlers(row.key, p.round)}>
                           <circle cx={cx} cy={cy} r={12} fill="transparent" />
                           <circle
                             cx={cx}
@@ -232,29 +195,7 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
           >
             Round
           </p>
-          {/* A plain HTML readout outside the scrolling container (never an SVG foreignObject,
-              which corrupts position on iOS Safari), with a stable key so moving between points
-              slides it in place instead of closing and reopening it. */}
-          <AnimatePresence>
-            {tip && hovered && (
-              <m.div
-                key="start-tip"
-                className="glass pointer-events-none absolute z-10 rounded-xl px-3 py-2 text-xs text-ink"
-                style={{ width: TIP_W }}
-                initial={{ opacity: 0, left: tipLeft, top: hovered.top + 16 }}
-                animate={{ opacity: 1, left: tipLeft, top: hovered.top + 16 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.14 }}
-              >
-                <div className="font-medium">{tip.title}</div>
-                {tip.lines.map((l) => (
-                  <div key={l} className="mt-0.5 text-muted">
-                    {l}
-                  </div>
-                ))}
-              </m.div>
-            )}
-          </AnimatePresence>
+          <PointPopup hovered={hovered} tip={tip} wrapRef={wrapRef} />
         </div>
       </div>
 

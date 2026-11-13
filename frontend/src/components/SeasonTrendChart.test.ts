@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { legendRowsFor, legendTeamOrder, seriesTeamOrder } from './SeasonTrendChart'
+import { legendRowsFor, legendTeamOrder, seriesTeamOrder, trendPointCopy } from './SeasonTrendChart'
 import type { SeasonConstructorRow } from '@/lib/api'
 
 // Two teams whose pace/quali ranking flips, plus one with no cumulative data -- mirrors the real
@@ -86,5 +86,28 @@ describe('legendRowsFor', () => {
     })
     // Latest-round values say Alpine (0.4) leads Racing Bulls (0.7); the weighted figures say the reverse.
     expect(legendTeamOrder([cum(rows[0], 0.9), cum(rows[1], 0.2)], 'cumulative')).toEqual(['Racing Bulls', 'Alpine'])
+  })
+})
+
+describe('trendPointCopy', () => {
+  it('names the team and the round, falling back to the round number without an event name', () => {
+    expect(trendPointCopy('quali', 'Ferrari', 'Monaco Grand Prix', 7, 0.4).title).toBe('Ferrari, Monaco Grand Prix')
+    expect(trendPointCopy('quali', 'Ferrari', undefined, 7, 0.4).title).toBe('Ferrari, round 7')
+  })
+
+  it('reads each tab in the unit the backend stores, not the axis index', () => {
+    expect(trendPointCopy('quali', 'Ferrari', 'X', 1, 0.426).lines).toEqual(['0.43% behind the fastest qualifier'])
+    expect(trendPointCopy('pace', 'Ferrari', 'X', 1, 0.314).lines).toEqual(['0.31 s a lap behind the fastest race pace'])
+    expect(trendPointCopy('cumulative', 'Ferrari', 'X', 1, 0.125).lines).toEqual([
+      "Overall score 0.13 (0 is the round's best, 1 its worst)",
+    ])
+  })
+
+  it('says "fastest" only for an exact 0, on every tab', () => {
+    expect(trendPointCopy('quali', 'A', 'X', 1, 0).lines).toEqual(['Fastest qualifier of the round'])
+    expect(trendPointCopy('pace', 'A', 'X', 1, 0).lines).toEqual(['Fastest race pace of the round'])
+    expect(trendPointCopy('cumulative', 'A', 'X', 1, 0).lines).toEqual(['Best overall of the round'])
+    // 0.004 rounds to 0.00 but is not the best, so it must not claim to be
+    expect(trendPointCopy('pace', 'A', 'X', 1, 0.004).lines[0]).toBe('0.00 s a lap behind the fastest race pace')
   })
 })

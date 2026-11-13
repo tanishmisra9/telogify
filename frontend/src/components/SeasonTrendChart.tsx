@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
+import { PointPopup } from '@/components/PointPopup'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamShortName } from '@/lib/teamColors'
+import { useChartPointHover } from '@/lib/useChartPointHover'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
 import { formArrow, formSentence } from '@/lib/seasonStart'
@@ -106,6 +108,27 @@ export function legendRowsFor(rows: SeasonConstructorRow[], metric: Metric) {
   })
 }
 
+// What a hovered dot says, in the units the backend actually stores (the axis is an index; see
+// FIXED_AXIS_MAX above): qualifying is a true percentage of the fastest lap, race pace is seconds a lap
+// behind the fastest team's median, cumulative is the 0..1 blended score (0 = the round's best team).
+// A value of exactly 0 is that round's best team on the metric.
+export function trendPointCopy(
+  metric: Metric,
+  team: string,
+  eventName: string | undefined,
+  round: number,
+  value: number,
+): { title: string; lines: string[] } {
+  const best = value === 0
+  const line =
+    metric === 'quali'
+      ? best ? 'Fastest qualifier of the round' : `${value.toFixed(2)}% behind the fastest qualifier`
+      : metric === 'pace'
+        ? best ? 'Fastest race pace of the round' : `${value.toFixed(2)} s a lap behind the fastest race pace`
+        : best ? 'Best overall of the round' : `Overall score ${value.toFixed(2)} (0 is the round's best, 1 its worst)`
+  return { title: `${team}, ${eventName ?? `round ${round}`}`, lines: [line] }
+}
+
 // One line per constructor: gap to the round's fastest team, round by round. Lower is
 // better and the y-axis is inverted (0 at top), so a line hugging the top is a season-long
 // front-runner and a line dropping away is a team losing ground. Copies DegradationChart's scaffold.
@@ -117,7 +140,9 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
   // moving between Race pace/Qualifying/Cumulative.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const { hovered, setHovered, isScrolling, pointHandlers } = useChartPointHover(containerRef, wrapRef)
 
   useEffect(() => {
     const el = containerRef.current
@@ -197,6 +222,18 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
       : Array.from({ length: 5 }, (_, i) => (yMax * i) / 4)
   const formatTick = (v: number) => (fixedMax != null ? `${100 + v}%` : `${(100 + v).toFixed(1)}%`)
 
+  // The readout follows the dot under the cursor, but only while that team is still drawn (isolating
+  // another team removes the dot without a mouseleave).
+  const eventOf = new Map(rounds.map((r) => [r.round, r.event_name]))
+  const hoveredValue =
+    hovered && visibleSeries.some((s) => s.team === hovered.key)
+      ? rowByTeam.get(hovered.key)?.trend[metric].find((p) => p.round === hovered.round)?.value
+      : undefined
+  const tip =
+    hovered && hoveredValue != null
+      ? trendPointCopy(metric, hovered.key, eventOf.get(hovered.round), hovered.round, hoveredValue)
+      : null
+
   return (
     <m.div
       className="glass w-full rounded-panel p-5"
@@ -208,7 +245,10 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         <ChartTabs
           ariaLabel="Metric"
           active={metric}
-          onChange={setMetric}
+          onChange={(mk) => {
+            setMetric(mk)
+            setHovered(null)
+          }}
           tabs={(['cumulative', 'pace', 'quali'] as Metric[]).map((mkey) => ({ value: mkey, label: METRIC_LABEL[mkey] }))}
         />
       </div>
@@ -226,7 +266,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
             ))}
           </g>
         </svg>
-        <div className="relative min-w-0 flex-1">
+        <div ref={wrapRef} className="relative min-w-0 flex-1">
         <div ref={containerRef} className="overflow-x-auto overscroll-x-contain">
         <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} className="max-w-none" role="img" aria-label={`${METRIC_LABEL[metric]} gap by round`}>
           <g transform={`translate(0,${MARGIN.top})`}>
@@ -258,6 +298,36 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
                 )
               })}
             </AnimatePresence>
+
+            {/* Dots: one per REAL round (trend[metric]), never per resampled value, so a stretch of line
+                with no dot under it is filled in between its neighbours. They glide with the line on a tab
+                switch and fade in as the draw-in finishes. A wide transparent circle is the hit target;
+                pointer events are off while scrolling so a still cursor can't swap the readout. */}
+            <g className={isScrolling ? 'pointer-events-none' : undefined}>
+              {visibleSeries.map((s) => {
+                const color = resolveTeamColor(s.team)
+                return rowByTeam.get(s.team)!.trend[metric].map((p) => {
+                  const cx = x(p.round)
+                  const cy = y(p.value)
+                  return (
+                    <g key={`${s.team}-${p.round}`} {...pointHandlers(s.team, p.round)}>
+                      <circle cx={cx} cy={cy} r={12} fill="transparent" />
+                      <m.circle
+                        r={3.5}
+                        fill={color}
+                        initial={reduce ? false : { cx, cy, opacity: 0 }}
+                        animate={{ cx, cy, opacity: 1 }}
+                        transition={
+                          reduce
+                            ? { duration: 0 }
+                            : { cx: morphTransition, cy: morphTransition, opacity: { duration: 0.2, delay: 0.4 } }
+                        }
+                      />
+                    </g>
+                  )
+                })
+              })}
+            </g>
           </g>
         </svg>
         </div>
@@ -270,6 +340,7 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         >
           Round
         </p>
+        <PointPopup hovered={hovered} tip={tip} wrapRef={wrapRef} />
         </div>
       </div>
 
@@ -283,7 +354,9 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         />
       </div>
       <p className="mt-4 text-sm text-muted">
-        Gap to each round's fastest team, round by round. 100% is that round's fastest team on
+        Gap to each round's fastest team, round by round. Each dot is a real round (hover or tap it for
+        the value); a line running between two dots with none in between is filled in for that stretch.
+        100% is that round's fastest team on
         this metric; higher is further behind, so a line near the top ran at the front all season
         and a line dropping away lost ground. For race pace and cumulative, the percentage is an
         index for a consistent axis across tabs, not a literal percentage of seconds or score.
