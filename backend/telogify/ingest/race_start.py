@@ -11,7 +11,7 @@ from sqlmodel import delete, select
 
 from telogify.analysis.race_start import (
     MIN_FIELD,
-    ROUND_LEVEL,
+    TIMING_EVIDENCE,
     Skip,
     covers_field,
     grid_field,
@@ -36,12 +36,15 @@ _TAIL_S = 20.0
 Skipped = dict[str, tuple[str | None, Skip]]  # driver -> (constructor, why not listed)
 
 
-def _roster(session) -> dict[str, str | None]:
-    """driver code -> team for everyone in the race classification (including non-starters)."""
+def _roster(session) -> dict[str, tuple[str | None, str | None]]:
+    """driver code -> (team, status) for everyone in the race classification (incl. non-starters)."""
     try:
         res = session.results
         return {
-            r["Abbreviation"]: (r["TeamName"] if isinstance(r.get("TeamName"), str) else None)
+            r["Abbreviation"]: (
+                r["TeamName"] if isinstance(r.get("TeamName"), str) else None,
+                r["Status"] if isinstance(r.get("Status"), str) else None,
+            )
             for _, r in res.iterrows()
             if isinstance(r.get("Abbreviation"), str) and r["Abbreviation"]
         }
@@ -71,14 +74,20 @@ def extract_race_start_detail(session) -> tuple[dict[str, dict], Skipped]:
     # on different clocks.
     origin = starts.min()
     roster = _roster(session)
+    lap1_drivers = set(lap1["Driver"])
+    # "Did not start" only when the official classification says so. A driver merely missing from
+    # the lap table (a truncated or gappy feed) did start, so that is "no speed data", never a
+    # fabricated start event.
     skipped: Skipped = {
-        d: (team, Skip.DID_NOT_START) for d, team in roster.items() if d not in set(lap1["Driver"])
+        d: (team, Skip.DID_NOT_START if status and "did not start" in status.lower() else Skip.NO_DATA)
+        for d, (team, status) in roster.items()
+        if d not in lap1_drivers
     }
     cars: dict[str, tuple[str, list[float], list[float]]] = {}
     for _, lap in lap1.iterrows():
         driver = lap["Driver"]
         team = lap.get("Team")
-        team = team if isinstance(team, str) and team else roster.get(driver)
+        team = team if isinstance(team, str) and team else roster.get(driver, (None, None))[0]
         # Pit-lane starters are NOT filtered on lap 1's PitOutTime: OpenF1 sets it for every car.
         # They are told apart by launching late (see `grid_field`).
         if pd.isna(lap["LapStartDate"]) or not team:
@@ -159,11 +168,22 @@ def extract_race_start(session) -> dict[str, dict]:
     return extract_race_start_detail(session)[0]
 
 
-def should_write(rows: dict[str, dict], skipped: Skipped) -> bool:
-    """Whether a read may replace a session's stored start data. Timed rows always may. A read with
-    no rows may only when it carries a round-level finding (`ROUND_LEVEL`); anything else (no car
-    data, a crashed or soft-failed read) is a FAILED read and must never wipe a good round."""
-    return bool(rows) or any(why in ROUND_LEVEL for _, why in skipped.values())
+def should_write(rows: dict[str, dict], skipped: Skipped, has_rows_already: bool) -> bool:
+    """Whether a read may replace a session's stored start data.
+    - Timed rows always may.
+    - A read with NO timed rows never replaces a session that already has timed rows: a degraded
+      re-read (a misaligned or partial feed on a `--force` ingest) must not delete a good card.
+    - Otherwise it may only when at least MIN_FIELD cars carry a specific timing reason
+      (`TIMING_EVIDENCE`): that is a finding about the race. All "no speed data" is a FAILED read."""
+    if rows:
+        return True
+    if has_rows_already:
+        return False
+    return sum(1 for _, why in skipped.values() if why in TIMING_EVIDENCE) >= MIN_FIELD
+
+
+def has_timed_rows(db: DBSession, session_id: int) -> bool:
+    return db.exec(select(RaceStart.id).where(RaceStart.session_id == session_id)).first() is not None
 
 
 def write_race_start(db: DBSession, session_id: int, found: dict[str, dict], skipped: Skipped | None = None) -> None:
@@ -194,6 +214,6 @@ def store_race_start(data: WeekendData, db: DBSession) -> None:
         except Exception:  # noqa: BLE001 - optional table, keep the rest of the ingest
             logger.warning("race start extraction failed for session %s; keeping existing rows", code, exc_info=True)
             continue
-        if should_write(found, skipped):
+        if should_write(found, skipped, has_timed_rows(db, row.id)):
             write_race_start(db, row.id, found, skipped)
     db.commit()

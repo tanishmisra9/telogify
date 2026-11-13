@@ -455,8 +455,8 @@ class _RosterSession(_FakeSession):
 
     def __init__(self, drivers, roster_extra=(), **kw):
         super().__init__(drivers, **kw)
-        rows = [{"Abbreviation": d, "TeamName": f"Team{i}"} for i, d in enumerate(drivers)]
-        rows += [{"Abbreviation": d, "TeamName": "TeamX"} for d in roster_extra]
+        rows = [{"Abbreviation": d, "TeamName": f"Team{i}", "Status": "Finished"} for i, d in enumerate(drivers)]
+        rows += [{"Abbreviation": d, "TeamName": "TeamX", "Status": status} for d, status in roster_extra]
         self._results = pd.DataFrame(rows)
 
     @property
@@ -466,7 +466,7 @@ class _RosterSession(_FakeSession):
 
 def test_detail_names_each_missing_driver_with_a_reason():
     field = {**_FIELD, "PIT": 9.0, "STALL": 0.4}
-    sess = _RosterSession(field, roster_extra=("DNS",))
+    sess = _RosterSession(field, roster_extra=(("DNS", "Did not start"),))
     t = [round(-8.0 + 0.1 * i, 3) for i in range(300)]
     stall_num = str(list(field).index("STALL") + 1)
     sess._cars[stall_num] = pd.DataFrame(  # sits still, then crawls: never 100 km/h in 8 s
@@ -502,18 +502,67 @@ def test_a_field_that_did_not_launch_together_is_a_finding_not_a_failed_read():
     assert rows == {}
     assert {why for _, why in skipped.values()} == {Skip.NO_COMMON_START}
     assert len(skipped) == 10
-    assert should_write(rows, skipped)  # stored, so the card can say so
+    assert should_write(rows, skipped, has_rows_already=False)  # stored, so the card can say so
 
 
 def test_a_failed_read_is_never_written_over_good_rows():
     sess = _RosterSession(_FIELD, raises=True)  # car data never loaded
     rows, skipped = extract_race_start_detail(sess)
     assert (rows, skipped) == ({}, {})
-    assert not should_write(rows, skipped)
-    # All "no speed data" with no round-level finding is also a failed read.
-    assert not should_write({}, {"A": ("T", Skip.NO_DATA), "B": ("T", Skip.DID_NOT_START)})
-    assert should_write({}, {"A": ("T", Skip.TOO_FEW_TIMED)})
+    assert not should_write(rows, skipped, has_rows_already=False)
+    # All "no speed data" (+ DNS) is a failed read, however many cars.
+    nodata = {f"D{i}": ("T", Skip.NO_DATA) for i in range(10)} | {"X": ("T", Skip.DID_NOT_START)}
+    assert not should_write({}, nodata, has_rows_already=False)
+    # Specific timing reasons from at least MIN_FIELD cars are a finding about the race...
+    finding = {f"D{i}": ("T", Skip.TOO_SLOW) for i in range(5)}
+    assert should_write({}, finding, has_rows_already=False)
+    assert not should_write({}, dict(list(finding.items())[:4]), has_rows_already=False)  # ...not from 4
+    # ...but a no-rows read NEVER replaces a session that already has timed rows (review fix: a
+    # degraded --force re-read must not delete a good card).
+    assert not should_write({}, finding | {"Y": ("T", Skip.NO_COMMON_START)}, has_rows_already=True)
     assert ROUND_LEVEL == {Skip.NO_COMMON_START, Skip.TOO_FEW_TIMED}
+
+
+def test_did_not_start_comes_only_from_the_official_status():
+    # A driver missing from the lap table but classified as running did start: "no speed data",
+    # never a fabricated "Did not start".
+    sess = _RosterSession(_FIELD, roster_extra=(("GAP", "Finished"), ("DNS", "Did not start")))
+    _, skipped = extract_race_start_detail(sess)
+    assert skipped["GAP"][1] is Skip.NO_DATA
+    assert skipped["DNS"][1] is Skip.DID_NOT_START
+
+
+def test_a_race_where_no_car_could_be_timed_is_still_stored():
+    # Review fix: a field forms, but every car is moving or too slow, so rows = {} with no
+    # round-level marker. The per-car reasons are still a finding and must be stored.
+    sess = _RosterSession(_FIELD)
+    t = [round(-8.0 + 0.1 * i, 3) for i in range(300)]
+    for k in sess._cars:
+        sess._cars[k] = pd.DataFrame(
+            {"Date": [_T0 + pd.Timedelta(seconds=x) for x in t], "Speed": [max(0.0, min(70.0, (x - 0.45) * 40)) for x in t]}
+        )
+    rows, skipped = extract_race_start_detail(sess)
+    assert rows == {} and {why for _, why in skipped.values()} == {Skip.TOO_SLOW}
+    assert should_write(rows, skipped, has_rows_already=False)
+
+
+def test_labels_follow_the_threshold_constants():
+    from telogify.analysis.race_start import LATE_LAUNCH_S, MAX_WINDOW_S
+
+    assert f"{LATE_LAUNCH_S:g} s" in SKIP_LABEL[Skip.LATE_LAUNCH]
+    assert f"{MAX_WINDOW_S:g} s" in SKIP_LABEL[Skip.TOO_SLOW]
+
+
+def test_a_degraded_reread_keeps_the_good_card(test_engine):
+    with Session(test_engine) as db:
+        wk, race, WeekendData = _weekend_with_race(db, year=2035)  # has one timed row ("OLD")
+        degraded = _RosterSession({f"D{i:02d}": 0.4 for i in range(10)})
+        t = [round(-8.0 + 0.1 * i, 3) for i in range(300)]
+        for k in [str(i) for i in range(4, 11)]:  # most cars "creep": would read as no common start
+            degraded._cars[k] = pd.DataFrame({"Date": [_T0 + pd.Timedelta(seconds=x) for x in t], "Speed": [0.0 if x < 2 else 8.0 for x in t]})
+        store_race_start(WeekendData(weekend=wk, sessions={"R": degraded}), db)
+        assert [r.driver for r in db.exec(select(RaceStart)).all()] == ["OLD"]
+        assert db.exec(select(RaceStartSkip)).all() == []
 
 
 def test_too_few_timed_marks_the_timed_cars():
@@ -527,7 +576,7 @@ def test_too_few_timed_marks_the_timed_cars():
     rows, skipped = extract_race_start_detail(sess)
     assert rows == {}
     assert {skipped[d][1] for d in ("D00", "D01")} == {Skip.TOO_FEW_TIMED}
-    assert should_write(rows, skipped)
+    assert should_write(rows, skipped, has_rows_already=False)
 
 
 def test_store_writes_skips_with_rows_and_a_failed_read_keeps_both(test_engine):
@@ -541,9 +590,18 @@ def test_store_writes_skips_with_rows_and_a_failed_read_keeps_both(test_engine):
         assert len(db.exec(select(RaceStartSkip)).all()) == 1
 
 
+def test_no_start_summary_picks_what_was_measured():
+    from telogify.analysis.race_start import NO_START_FALLBACK, no_start_summary
+
+    assert no_start_summary({"no_common_start", "no_data"}).startswith("Too few cars showed a clean launch")
+    assert no_start_summary({"too_slow", "late_launch"}) == NO_START_SUMMARY[Skip.TOO_FEW_TIMED]
+    assert no_start_summary({"no_data"}) == NO_START_FALLBACK
+    assert no_start_summary(set()) == NO_START_FALLBACK
+
+
 def test_no_wording_names_a_cause_the_data_cannot_prove():
     # Bahrain 2026's "late" launchers were Russell and Piastri, so even "pit-lane start" is a guess.
     for text in [*NO_START_SUMMARY.values(), *SKIP_LABEL.values()]:
-        assert not any(w in text.lower() for w in ("pit-lane", "pit lane", "stall", "held up", "safety car", "crash", "red flag", "rain"))
+        assert not any(w in text.lower() for w in ("pit-lane", "pit lane", "stall", "held up", "safety car", "crash", "red flag", "rain", "did not all leave"))
     for text in NO_START_SUMMARY.values():
         assert not any(w in text.lower() for w in ("safety car", "crash", "red flag", "rain"))

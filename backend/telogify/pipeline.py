@@ -53,7 +53,9 @@ from telogify.ingest.loader import (
 from telogify.ingest.quali_character import store_quali_character
 from telogify.ingest.quali_trace import store_quali_traces
 from telogify.ingest.race_start import (
+    Skipped,
     extract_race_start_detail,
+    has_timed_rows,
     should_write,
     store_race_start,
     write_race_start,
@@ -508,7 +510,7 @@ def run_refresh_results(year: int, round: int, dry_run: bool = False) -> list[Re
 
 def run_refresh_race_start(
     year: int, round: int, dry_run: bool = False
-) -> tuple[dict[str, dict], dict[str, tuple[str | None, object]]] | None:
+) -> tuple[dict[str, dict], Skipped] | None:
     """Race-start-only backfill for an already-ingested round: re-fetches just the race's
     laps/telemetry (FastF1, then OpenF1 as in a normal ingest) and rewrites only its RaceStart and
     RaceStartSkip rows, so published insights and every other table are untouched. Returns
@@ -523,12 +525,12 @@ def run_refresh_race_start(
         if ses is None:
             return None
         found, skipped = extract_race_start_detail(ses)
-        if not should_write(found, skipped):
-            return None  # a failed read must never replace rows from an earlier good ingest
+        race = db.exec(
+            select(SessionModel).where(SessionModel.weekend_id == weekend_id, SessionModel.session_type == "R")
+        ).first()
+        if not should_write(found, skipped, has_timed_rows(db, race.id)):
+            return None  # a failed or degraded read must never replace an earlier good one
         if not dry_run:
-            race = db.exec(
-                select(SessionModel).where(SessionModel.weekend_id == weekend_id, SessionModel.session_type == "R")
-            ).first()
             write_race_start(db, race.id, found, skipped)  # reuse the read above: no second extraction
             db.commit()
         return found, skipped

@@ -88,18 +88,21 @@ SKIP_LABEL: dict[Skip, str] = {
     Skip.DID_NOT_START: "Did not start",
     # Measured facts only. "(pit-lane start)" was dropped: Bahrain 2026's late launchers were Russell
     # and Piastri, not pit-lane starters. "(stall or held up)" and "held up" were dropped as guesses.
-    Skip.LATE_LAUNCH: "Left the grid more than 3 s after the field",
+    # Thresholds come from the constants, so a documented retune can't leave stale wording behind.
+    Skip.LATE_LAUNCH: f"Left the grid more than {LATE_LAUNCH_S:g} s after the field",
     Skip.MOVING_AT_START: "Already moving before the start",
-    Skip.TOO_SLOW: "Took more than 8 s to reach 100 km/h",
-    Skip.NO_200: "Did not reach 200 km/h within 8 s of the start",
+    Skip.TOO_SLOW: f"Took more than {MAX_WINDOW_S:g} s to reach 100 km/h",
+    Skip.NO_200: f"Did not reach 200 km/h within {MAX_WINDOW_S:g} s of the start",
     Skip.NO_DATA: "No speed data for the start",
-    Skip.NO_COMMON_START: "Did not leave the grid together with the others",
+    # What was measured (too few clean standstill launches), not a claim about how the race started:
+    # a noisy or misaligned trace gives the same reading.
+    Skip.NO_COMMON_START: "No clean launch from a standstill could be read",
     Skip.TOO_FEW_TIMED: "Left out because too few cars could be timed fairly",
 }
 
-# A round with no timing rows may be stored only when it carries one of these: they are findings
-# about the race. Anything else with no rows (no car data, a crashed read) is a FAILED read and must
-# never replace a good round's rows.
+# Reasons that say something specific about a car's start (as opposed to "no speed data" or "did not
+# start"). A read with no timed rows is only worth storing when at least MIN_FIELD cars carry one.
+TIMING_EVIDENCE: frozenset[Skip] = frozenset(set(Skip) - {Skip.NO_DATA, Skip.DID_NOT_START})
 ROUND_LEVEL: frozenset[Skip] = frozenset({Skip.NO_COMMON_START, Skip.TOO_FEW_TIMED})
 
 # Read-time fallback for a driver in the results with no recorded reason (a round extracted before
@@ -107,12 +110,21 @@ ROUND_LEVEL: frozenset[Skip] = frozenset({Skip.NO_COMMON_START, Skip.TOO_FEW_TIM
 NO_READING = "no_reading"
 NO_READING_LABEL = "No start reading recorded"
 
-# The no-start card's one-line explanation, picked from the round's recorded reasons.
+# The no-start card's one-line explanation: what was measured, never a cause.
 NO_START_SUMMARY = {
-    Skip.NO_COMMON_START: "The cars did not all leave the grid at the same moment, so there is no shared start to time from.",
+    Skip.NO_COMMON_START: "Too few cars showed a clean launch from a standstill, so there is no shared start to time from.",
     Skip.TOO_FEW_TIMED: "Too few cars could be timed to compare starts fairly.",
 }
 NO_START_FALLBACK = "Start data could not be read for this race."
+
+
+def no_start_summary(reasons: set[str]) -> str:
+    """The no-start card's sentence for a race whose recorded reasons are `reasons` (Skip values)."""
+    if Skip.NO_COMMON_START.value in reasons:
+        return NO_START_SUMMARY[Skip.NO_COMMON_START]
+    if reasons & {r.value for r in TIMING_EVIDENCE}:
+        return NO_START_SUMMARY[Skip.TOO_FEW_TIMED]
+    return NO_START_FALLBACK
 
 
 def _first_move(speed_kmh: list[float]) -> int | None:

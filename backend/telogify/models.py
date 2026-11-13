@@ -5,6 +5,8 @@ from datetime import datetime
 from sqlalchemy import JSON, CheckConstraint, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
+from telogify.analysis.race_start import Skip
+
 
 class RaceWeekend(SQLModel, table=True):
     __tablename__ = "race_weekend"
@@ -245,8 +247,7 @@ class RaceStartSkip(SQLModel, table=True):
     __tablename__ = "race_start_skip"
     __table_args__ = (
         CheckConstraint(
-            "reason IN ('did_not_start','late_launch','moving_at_start','too_slow','no_200',"
-            "'no_data','no_common_start','too_few_timed')",
+            "reason IN (" + ",".join(f"'{s.value}'" for s in Skip) + ")",
             name="ck_race_start_skip_reason",
         ),
     )

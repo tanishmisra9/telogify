@@ -38,11 +38,10 @@ from telogify.analysis.season_start import build_season_start
 from telogify.analysis.race_start import (
     NO_READING,
     NO_READING_LABEL,
-    NO_START_FALLBACK,
-    NO_START_SUMMARY,
     SKIP_LABEL,
     SPEED_DISTANCE_M,
     Skip,
+    no_start_summary,
 )
 from telogify.analysis.season_stats import build_season_stats
 from telogify.ingest.results import (
@@ -701,7 +700,8 @@ def weekend_race_start(year: int, round: int, db: Session = Depends(get_session)
     w = _weekend(db, year, round)
     race = _race_session(db, w.id)
     if race is None:
-        return {"rows": []}
+        # No race session yet: same shape, a distinct status the frontend never renders a card for.
+        return {"status": "absent", "summary": None, "not_listed": [], "rows": []}
     rows = db.exec(select(RaceStart).where(RaceStart.session_id == race.id)).all()
     # Only a driver's FIRST stint: if its compound is unknown the start tyre is unknown, never
     # the next stint's compound.
@@ -736,7 +736,7 @@ def weekend_race_start(year: int, round: int, db: Session = Depends(get_session)
     roster = {r.driver: r.constructor for r in db.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all()}
     order = {why.value: i for i, why in enumerate(Skip)}
     not_listed = []
-    for driver in sorted((set(roster) | set(skips)) - listed):
+    for driver in (set(roster) | set(skips)) - listed:
         skip = skips.get(driver)
         reason = skip.reason if skip else NO_READING
         not_listed.append(
@@ -750,12 +750,7 @@ def weekend_race_start(year: int, round: int, db: Session = Depends(get_session)
     not_listed.sort(key=lambda n: (order.get(n["reason"], len(order)), n["driver"]))
 
     # No timing rows: the race had no comparable start (or none was read). Say which, plainly.
-    summary = None
-    if not rows:
-        reasons = {s.reason for s in skips.values()}
-        summary = next(
-            (text for why, text in NO_START_SUMMARY.items() if why.value in reasons), NO_START_FALLBACK
-        )
+    summary = no_start_summary({s.reason for s in skips.values()}) if not rows else None
 
     return {
         "status": "ok" if rows else "none",

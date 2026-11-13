@@ -589,7 +589,7 @@ def test_empty_weekend_endpoints_return_placeholder_shapes(test_engine):
         degradation = client.get("/weekends/2024/1/degradation").json()
         assert degradation == {"fits": [], "points": [], "reference_age_laps": None}
         assert client.get("/weekends/2024/1/results").json() == []
-        assert client.get("/weekends/2024/1/race-start").json() == {"rows": []}
+        assert client.get("/weekends/2024/1/race-start").json() == {"status": "absent", "summary": None, "not_listed": [], "rows": []}
         summary = client.get("/weekends/2024/1/session-summary?session=Q").json()
         assert summary["session_type"] is None and summary["order"] == []
     finally:
@@ -1084,7 +1084,7 @@ def test_race_start_with_no_shared_start_is_a_none_card_with_a_plain_summary(cli
         db.commit()
     data = client.get("/weekends/2026/9/race-start").json()
     assert data["status"] == "none" and data["rows"] == []
-    assert data["summary"].startswith("The cars did not all leave the grid at the same moment")
+    assert data["summary"].startswith("Too few cars showed a clean launch from a standstill")
     assert {n["reason"] for n in data["not_listed"]} == {"no_common_start"}
 
 
