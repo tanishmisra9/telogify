@@ -411,7 +411,7 @@ def test_load_session_skips_drivers_without_telemetry_and_fails_without_laps(mon
 def test_fastf1_results_returned_only_when_complete(monkeypatch):
     from types import SimpleNamespace
 
-    from tests.test_loader import _complete_results, _degraded_results
+    from test_loader import _complete_results, _degraded_results
 
     for results, expect in ((_complete_results(), True), (_degraded_results(), False)):
         probe = SimpleNamespace(load=lambda **k: None, results=results)
