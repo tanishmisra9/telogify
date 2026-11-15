@@ -92,13 +92,16 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
 
   return (
     <div className="glass w-full rounded-panel p-5">
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
-          Race start
-        </h2>
-        <div className="flex flex-col items-start gap-1 sm:items-end">
+      <h2 className="mb-2 font-display text-[2.025rem] font-semibold tracking-tight sm:text-[2.7rem]">
+        Race start
+      </h2>
+      {/* One control bar: each switcher is a labelled group on a shared baseline, left-aligned under
+          the title, so the two never sit ragged on top of each other. */}
+      <div className="mb-5 flex flex-wrap items-baseline gap-x-14 gap-y-3">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:gap-7">
+          <span className="shrink-0 whitespace-nowrap font-display text-sm font-medium tracking-tight text-muted sm:w-[4.25rem] sm:text-base">Group by</span>
           <ChartTabs
-            ariaLabel="Group race starts by driver, team or power unit"
+            ariaLabel="Group by driver, team or power unit"
             active={view}
             onChange={setView}
             tabs={[
@@ -109,9 +112,12 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
                 : []),
             ]}
           />
-          {canSort && (
+        </div>
+        {canSort && (
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:gap-7">
+            <span className="shrink-0 whitespace-nowrap font-display text-sm font-medium tracking-tight text-muted sm:w-[4.25rem] sm:text-base">Rank by</span>
             <ChartTabs
-              ariaLabel="Sort race starts by"
+              ariaLabel="Rank by full run, first phase or second phase"
               active={sortBy}
               onChange={setSortBy}
               tabs={[
@@ -120,8 +126,8 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
                 { value: 'second', label: 'Second phase', hint: 'Fastest time from 100 to 200 km/h' },
               ]}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
       <p className="mb-4 text-sm text-muted">
         {toKmh === 200 ? 'Seconds from the start to 100 and 200 km/h' : 'Seconds from the start to 100 km/h'}
