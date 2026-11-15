@@ -2,6 +2,14 @@
   <img src=".github/readme-logo.svg" width="320" alt="Telogify: Every weekend, cut the noise." />
 </p>
 
+<p align="center">
+  <a href="https://github.com/tanishmisra9/telogify/actions/workflows/ci.yml"><img src="https://github.com/tanishmisra9/telogify/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license">
+  <img src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
+  <a href="https://www.telogify.com"><img src="https://img.shields.io/badge/live-telogify.com-2ea44f" alt="Live"></a>
+</p>
+
 F1 telemetry intelligence. Ingests a full FastF1 race weekend (all sessions) and produces
 **3 quantified, telemetry-grounded insights** per race, plus qualifying car-character
 insights and a season-long constructor/power-unit deployment view, delivered as a web page
