@@ -49,7 +49,6 @@ export function Weekends() {
       .map((w): SeasonWeekendRow => ({ ...w, date_utc: null, ingested: true })),
     ...currentYearRows,
   ].sort((a, b) => a.year - b.year || a.round - b.round)
-  const loggedCount = weekends.filter((w) => w.ingested).length
 
   // One collapsible group per year, newest first; rounds stay in calendar order inside a year.
   // Only the newest year opens by default (a user's own toggle, tracked by year, always wins), so
@@ -72,16 +71,6 @@ export function Weekends() {
           <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-7xl">
             Race weekends
           </h1>
-          {/* Always mounted; only the text changes. This header is flex-col below `sm`, so the
-              badge is its own row there -- gating the whole span on `!loading` meant it appeared
-              late and pushed the rest of the page down by 29px (measured; desktop was unaffected
-              since the badge sits inline beside the h1 there). One span with a non-breaking space
-              while loading reserves the identical line box by construction, so there's no height
-              to measure and nothing to drift out of sync. Still never renders "0 logged", which
-              would be a real but wrong figure a reader could act on. */}
-          <span className="kicker whitespace-nowrap text-muted">
-            {loading ? ' ' : `${loggedCount} logged`}
-          </span>
         </div>
         <p className="mt-4 max-w-4xl text-lg leading-relaxed text-muted">
           Every race weekend of the season, each analysed weekend traced to official timing data.
