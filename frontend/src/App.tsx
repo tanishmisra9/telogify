@@ -1,11 +1,15 @@
 import { Analytics } from '@vercel/analytics/react'
 import { LazyMotion, domAnimation } from 'framer-motion'
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { Footer } from '@/components/Footer'
 import { Nav } from '@/components/Nav'
 import { usePendingWhileMounted } from '@/lib/api'
 import { Landing } from '@/pages/Landing'
+
+function LegacySeasonRedirect() {
+  return <Navigate to={`/trends/${useParams().year}`} replace />
+}
 
 // Landing stays eager (the primary route needs instant first paint); every other page,
 // including their SVG chart components, only loads once actually navigated to.
@@ -55,8 +59,11 @@ export default function App() {
                 <Route path="/" element={<Landing />} />
                 <Route path="/weekends" element={<Weekends />} />
                 <Route path="/weekends/:year/:round" element={<WeekendPage />} />
-                <Route path="/season" element={<SeasonPage />} />
-                <Route path="/season/:year" element={<SeasonPage />} />
+                <Route path="/trends" element={<SeasonPage />} />
+                <Route path="/trends/:year" element={<SeasonPage />} />
+                {/* The page was /season before it was renamed: keep old links working. */}
+                <Route path="/season" element={<Navigate to="/trends" replace />} />
+                <Route path="/season/:year" element={<LegacySeasonRedirect />} />
                 <Route path="/how-it-works" element={<HowItWorksPage />} />
                 <Route path="/subscribe" element={<SubscribePage />} />
                 {/* Nav highlights by pathname.startsWith, so /subscribe/verify keeps the

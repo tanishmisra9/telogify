@@ -21,7 +21,7 @@ function CTAs() {
       </Tooltip>
       <Tooltip label="See season-wide rankings and trends">
         <Link
-          to="/season"
+          to="/trends"
           aria-label="View season rankings and trends"
           className="lift inline-flex w-full items-center justify-center border-[1.5px] border-ink bg-surface px-6 py-2.5 font-display text-2xl text-ink shadow-[4px_4px_0_var(--color-shadow)] sm:w-auto"
         >

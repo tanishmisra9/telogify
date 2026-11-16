@@ -383,12 +383,12 @@ function SeasonRedirect() {
   const years = (weekends.data ?? []).map((w) => w.year)
 
   if (weekends.data && years.length > 0) {
-    return <Navigate to={`/season/${Math.max(...years)}`} replace />
+    return <Navigate to={`/trends/${Math.max(...years)}`} replace />
   }
 
-  // Nothing at all while the year lookup is in flight. The nav's "Season" link points at bare
-  // /season, so this component is on the critical path of every visit, and it always redirects to
-  // /season/<latest year> the instant /weekends resolves -- so anything painted here mounts, plays
+  // Nothing at all while the year lookup is in flight. The nav's "Trends" link points at bare
+  // /trends, so this component is on the critical path of every visit, and it always redirects to
+  // /trends/<latest year> the instant /weekends resolves -- so anything painted here mounts, plays
   // its reveal, and is torn down again a few hundred ms later. That showed up as the header
   // blur-fading in, vanishing to a blank frame, then blur-fading in a second time from SeasonView
   // (visibly a different header: this one has no year badge and no Ranking section below it).

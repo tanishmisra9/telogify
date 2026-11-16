@@ -8,7 +8,7 @@ import { spring } from '@/lib/motion'
 
 const LINKS = [
   { to: '/weekends', label: 'Weekends', hint: 'Browse analysed race weekends' },
-  { to: '/season', label: 'Season', hint: 'Season-long constructor competitiveness' },
+  { to: '/trends', label: 'Trends', hint: 'Season-long constructor competitiveness' },
   { to: '/how-it-works', label: 'How it works', hint: 'How a weekend becomes five verdicts' },
   { to: '/subscribe', label: 'Subscribe', hint: 'Get the weekly email digest' },
 ]
