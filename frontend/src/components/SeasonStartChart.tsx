@@ -169,13 +169,13 @@ export function SeasonStartChart({ data }: { data: SeasonStartData }) {
         <TeamSelectLegend rows={legendRows} selected={selected} onToggle={toggle} isFiltering={isFiltering} stackValue={isMobile} />
       </div>
       <p className="mt-4 text-sm text-muted">
-        Each point is how far a {activeView === 'pu' ? 'power unit' : 'team'}&apos;s start was from that
-        round&apos;s best start: the median of its cars over the full 0 to 200 km/h run, as a percentage
-        slower than the best. Hollow points are rounds where only 0 to 100 km/h could be read (the first
-        braking zone comes before 200 km/h); they are drawn, but left out of the season figures because
-        the two scales differ. The legend shows the season gap with recent rounds weighted more (a
-        round&apos;s weight halves every 6 rounds), and the arrow is places gained or lost on that recent
-        form against the whole season, so it is relative to the rest of the field.
+        Each point is the median 0 to 200 km/h time of a {activeView === 'pu' ? 'power unit' : 'team'}&apos;s
+        cars, as a percentage slower than that round&apos;s best start. Hollow points are rounds where only
+        0 to 100 km/h could be read (the first braking zone comes before 200 km/h): they are drawn but
+        kept out of the season figures, because the two scales differ. The legend shows the season gap
+        with recent rounds weighted more (a round&apos;s weight halves every 6 rounds). The arrow is places
+        gained or lost on that recent form against the whole season, so it is relative to the rest of
+        the field.
         {activeView === 'pu' &&
           ' A power unit pools every team it supplies, so customer cars differ in chassis, grid slot and traffic: a gap is not purely the engine.'}{' '}
         Click a {activeView === 'pu' ? 'power unit' : 'team'} to isolate its line, click again to bring it back.

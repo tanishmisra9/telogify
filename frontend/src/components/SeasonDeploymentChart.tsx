@@ -197,21 +197,20 @@ export function SeasonDeploymentChart({
         </div>
 
         <p className="mt-4 text-sm text-muted">
-          Every point is a full-throttle, no-braking sample from up to five representative race laps per
-          driver per weekend, pooled across the season; cornering samples (lateral acceleration at or above
-          2 m/s²) are
-          excluded so only straight-line deployment and harvesting show. Each line is that {view === 'pu' ? "manufacturer's" : "team's"} median
-          acceleration at each speed. A line that drops toward or below zero at high speed shows
-          electrical deployment running out (clipping); a lower full-throttle acceleration at low-to-mid
-          speed shows energy being harvested rather than deployed there. Click a row to isolate its line,
-          click again to bring it back.
+          Every point is a full-throttle, no-braking sample from up to five of each driver&apos;s fastest
+          race laps per weekend, pooled across the season. Cornering samples (lateral acceleration of
+          2 m/s² or more) are excluded, so only straight-line deployment and harvesting show. Each line is
+          that {view === 'pu' ? "manufacturer's" : "team's"} median acceleration at each speed. A line
+          dropping toward or below zero at high speed is consistent with electrical deployment running out
+          (clipping); lower full-throttle acceleration at low-to-mid speed is consistent with energy being
+          harvested there rather than deployed. Click a row to isolate its line, click again to bring it
+          back.
         </p>
       </div>
     </div>
 
     <DesktopOnlyNote>
-      The chart and the verdicts above only make sense read together, so both wait for a
-      larger screen.
+      The acceleration-by-speed chart behind these verdicts needs a larger screen.
     </DesktopOnlyNote>
     </>
   )

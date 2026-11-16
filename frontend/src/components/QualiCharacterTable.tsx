@@ -163,10 +163,10 @@ export function QualiCharacterTable({
                 hint={`Best single-lap ${sprint ? 'sprint qualifying' : 'qualifying'} time`}
               />
               <HeadCell label="Top speed (km/h)" hint="Highest speed reached on the lap" />
-              <HeadCell label="Min speed (km/h)" hint="Slowest point on the lap, in the tightest corner: a read on mechanical grip" />
+              <HeadCell label="Min speed (km/h)" hint="Slowest point on the lap, usually the tightest corner: higher points to more mechanical grip" />
               <HeadCell
                 label={`Fastest corner (km/h)${data.fastest_corner_number != null ? ` (T${data.fastest_corner_number})` : ''}`}
-                hint="Speed carried through the lap's fastest corner: a read on downforce"
+                hint="Speed through the circuit's fastest corner, the same corner for every team: higher points to more downforce"
               />
               <HeadCell label="Full throttle (%)" hint="Share of the lap spent at full throttle" />
             </tr>
@@ -232,8 +232,8 @@ export function QualiCharacterTable({
         </div>
       )}
       <p className="mt-2 text-sm text-muted">
-        Every figure is from each team's fastest representative lap in this session; cells shade toward the accent as a
-        car ranks higher on that metric. A driver who never set a representative lap is not shown.
+        The five fastest teams, one car each: the team's faster driver, on their best representative lap in this
+        session. Cells shade toward the accent as a car ranks higher on that metric among these five.
       </p>
     </div>
   )

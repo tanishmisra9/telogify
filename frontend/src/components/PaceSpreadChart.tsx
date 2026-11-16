@@ -212,7 +212,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                         {row.label}
                       </text>
                       <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
-                        {s.mean.toFixed(2)}
+                        {s.median.toFixed(2)}
                       </text>
                       {row.gap_to_fastest_s > 0 && (
                         <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
@@ -229,7 +229,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                         {teamShortName(row.team)}
                       </text>
                       <text x={cx} y={INNER_H + 36} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
-                        {s.mean.toFixed(2)}
+                        {s.median.toFixed(2)}
                       </text>
                       {row.gap_to_fastest_s > 0 && (
                         <text x={cx} y={INNER_H + 52} textAnchor="middle" fill="var(--color-muted)" fontSize={12} className="num">
@@ -290,14 +290,16 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
       {rows.length > 0 && (
         <>
           <p className="mt-4 text-sm text-muted">
-            Sorted by mean pace; gaps are mean delta to the fastest. Lap 1 excluded, fuel-corrected.
-            Solid line median, dashed line mean, dotted line pace ceiling (fastest tenth of laps), box
-            is the middle 50 percent of laps, whiskers cover 99.3 percent, dots are outliers.
+            Sorted by median lap; the figure under each name is that median and the gap is the median
+            delta to the fastest. Green-flag laps only, lap 1 excluded, fuel-corrected. The box is the
+            middle 50 percent of laps, with a solid line at the median, a dashed line at the mean and a
+            dotted line at the pace ceiling (a time only the fastest tenth of laps beat). Whiskers reach
+            the furthest lap within 1.5 box heights; circles are laps beyond that.
           </p>
           {pace.stop_count_spread >= 2 && (
             <p className="mt-2 text-sm text-muted">
-              Pit-equated: stop counts vary by up to {pace.stop_count_spread} across the field, so treat
-              these gaps as an estimate.
+              Stop counts vary by up to {pace.stop_count_spread} across the field, so treat these gaps
+              as an estimate.
             </p>
           )}
         </>

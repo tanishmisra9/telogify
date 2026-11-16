@@ -84,7 +84,8 @@ function PracticeSectors({ data }: { data: SectorsData }) {
       </div>
       <p className="mt-2 text-sm text-muted">
         Indicative: practice fuel loads and engine modes vary between runs, so this is a read on
-        where time is, not a verdict. Bars are each driver's gap to the fastest sector time.
+        where time is, not a verdict. Bars are each driver's gap to the fastest sector time; the
+        leader's label is its time.
       </p>
     </div>
   )
@@ -203,11 +204,11 @@ function MethodologyDisclosure() {
             className="overflow-hidden"
           >
             <p className="mt-3 text-sm leading-relaxed text-muted">
-              Every figure above is read from official timing and car telemetry, then computed into a
-              database by deterministic analysis, with nothing estimated. An agent then picks the three
-              findings you could not get from the timing screen, favouring a weakness in one area
-              (qualifying, straight-line speed, tyre wear, corner grip) that explains an outcome in another.
-              Each number is traceable back to the exact data it came from.
+              Every figure is computed from official timing and car telemetry by deterministic analysis and
+              stored in a database. An agent then picks the three findings you could not get from the
+              timing screen, favouring a weakness in one area (qualifying, straight-line speed, tyre wear,
+              corner grip) that explains an outcome in another. It can only quote stored numbers, and each
+              one traces back to the data it came from.
             </p>
           </m.div>
         )}

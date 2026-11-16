@@ -300,7 +300,7 @@ export function FightToPoleChart({ data, sprint = false }: { data: QualiTraceDat
 
   // Per panel, one series per shown driver (same order as `shown`).
   const panels = [
-    { key: 'speed', label: `Top speed (${unitLabel})`, offset: 0, scale: speed, series: shown.map((d) => d.speed_kmh) },
+    { key: 'speed', label: `Speed (${unitLabel})`, offset: 0, scale: speed, series: shown.map((d) => d.speed_kmh) },
     { key: 'delta', label: 'Delta (s)', offset: PANEL_H + GAP_AFTER_SPEED, scale: delta, series: deltas },
     {
       key: 'throttle',
@@ -545,7 +545,7 @@ export function FightToPoleChart({ data, sprint = false }: { data: QualiTraceDat
         gap to {refLap}:
         below the line means ahead at that point, above means behind, and where it ends is the
         final gap. Throttle is how much of full power the driver is asking for: 100% is flat
-        out, and every dip is a braking zone or a corner taken partly lifted. Move over the
+        out, and a dip is usually a braking zone or a corner taken partly lifted. Move over the
         chart to scrub through the lap.
       </p>
     </div>

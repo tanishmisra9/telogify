@@ -307,16 +307,15 @@ export function SeasonTrendChart({ rows, rounds }: { rows: SeasonConstructorRow[
         />
       </div>
       <p className="mt-4 text-sm text-muted">
-        Gap to each round's fastest team, round by round. Each dot is a real round (hover or tap it for
-        the value); a line running between two dots with none in between is filled in for that stretch.
-        100% is that round's fastest team on
-        this metric; higher is further behind, so a line near the top ran at the front all season
-        and a line dropping away lost ground. For race pace and cumulative, the percentage is an
-        index for a consistent axis across tabs, not a literal percentage of seconds or score.
-        The legend shows each team's season figure on that same scale, with recent rounds weighted
-        more (a round's weight halves every 6 rounds), and the arrow is places gained or lost on that
-        recent form against the whole season, so it is relative to the rest of the field. Click a
-        team to isolate its line, click again to bring it back.
+        Each team's gap to the round's fastest team, round by round. Each dot is a real round (hover or
+        tap it for the value); a stretch of line with no dot under it is filled in between the nearest
+        rounds. 100% is that round's fastest team on this metric and higher is further behind, so a
+        line near the top ran at the front and a line dropping away lost ground. Only qualifying is a
+        true percentage: for race pace and cumulative it is an index that keeps the axis consistent
+        across tabs. The legend shows each team's season figure on that scale, with recent rounds
+        weighted more (a round's weight halves every 6 rounds). The arrow is places gained or lost on
+        that recent form against the whole season. Click a team to isolate its line, click again to
+        bring it back.
       </p>
     </m.div>
   )

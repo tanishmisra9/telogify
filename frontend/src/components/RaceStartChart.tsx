@@ -136,7 +136,7 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
           ? `Ranked by the ${sortBy === 'total' ? 'full run' : sortBy === 'first' ? 'first phase' : 'second phase'}, fastest first.`
           : 'Fastest first.'}
         {grouped ? (
-          ` Each row is the median of ${view === 'teams' ? 'its team’s' : 'its power unit’s'} cars.`
+          ` Each row is the median of ${view === 'teams' ? 'its team’s' : 'its power unit’s'} cars, so a few cars can move it.`
         ) : (
           /* The tyre letter only shows from sm up (no room beside the 3-letter code on a phone), so
              the caption only mentions it there too. */
@@ -286,11 +286,11 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
           reaction out and every car is compared over the same distance whatever its grid slot.`}{' '}
         Taken from lap one speed traces.{' '}
         {toKmh === 100 && 'Too few cars reach 200 km/h before the first braking zone here, so only 0 to 100 is shown. '}
-        Pit-lane starters, and cars that lifted before the distance was covered or never reached the
-        speed, are left out. Times past about 6 seconds can include lifting behind traffic.
+        Cars that left the grid late, were already moving at the start, lifted before the distance was
+        covered or never reached the speed are left out. Times past about 6 seconds can include lifting
+        behind traffic.
         {view === 'pu' &&
           ' A power unit pools every team it supplied, so customer cars differ in chassis, grid slot and traffic: a gap is not purely the engine.'}
-        {grouped && ' Teams and power units are ranked on the median of their cars, so a few cars can move a row.'}
       </p>
     </div>
   )

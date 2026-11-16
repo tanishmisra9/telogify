@@ -231,9 +231,10 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         </div>
       </div>
       <p className="mt-4 hidden text-sm text-muted md:block">
-        Fuel-corrected lap time against tyre age; a bold line marks wear well above the field.
-        Ranked worst wear first below — click a team to isolate its line, click again to bring it
-        back. Teams that never ran the selected compound are greyed out.
+        Fuel-corrected lap time against tyre age, one fitted line per team. A bold line wears at
+        least 1.5 times the field&apos;s median rate on this compound. Teams are ranked worst wear first
+        below: click one to isolate its line, click again to bring it back. Teams that never ran this
+        compound are greyed out.
       </p>
     </m.div>
   )
