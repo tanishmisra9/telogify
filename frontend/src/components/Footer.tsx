@@ -63,7 +63,7 @@ export function Footer() {
         <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="flex flex-col gap-1.5">
             <p className="text-sm text-muted">
-              Methodology inputs by{' '}
+              Methodology inputs inspired by{' '}
               <Tooltip label="Instagram account">
                 <a
                   href="https://www.instagram.com/fdataanalysis/"
