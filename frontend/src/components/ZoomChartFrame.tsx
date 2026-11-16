@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { ScrollFadeEdge } from '@/components/ScrollFadeEdge'
+import { useDragScroll } from '@/lib/useDragScroll'
 import { useScrollFade } from '@/lib/useScrollFade'
 
 // Layout shared by the two "by round" charts (Gap by round, Race starts) so their axes line up.
@@ -53,6 +54,7 @@ export function ZoomChartFrame({
   children: ReactNode
 }) {
   const canScrollRight = useScrollFade(viewportRef)
+  useDragScroll(viewportRef)
   const yGroup = useRef<SVGGElement>(null)
   const xGroup = useRef<SVGGElement>(null)
   const [view, setView] = useState({ w: 0, h: VIEWPORT_H })
@@ -94,7 +96,7 @@ export function ZoomChartFrame({
   const plotH = MARGIN.top + innerH + PLOT_PAD
 
   return (
-    <div className="flex">
+    <div className="flex select-none">
       <svg width={MARGIN.left} height={view.h} className="shrink-0" aria-hidden>
         <g ref={yGroup} transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {yTicks.map((t) => (
