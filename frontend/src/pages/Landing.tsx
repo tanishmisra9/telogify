@@ -28,6 +28,15 @@ function CTAs() {
           Trends
         </Link>
       </Tooltip>
+      <Tooltip label="See how every figure is traced">
+        <Link
+          to="/how-it-works"
+          aria-label="How it works: see how every figure is traced"
+          className="lift inline-flex w-full items-center justify-center border-[1.5px] border-ink bg-surface px-6 py-2.5 font-display text-2xl text-ink shadow-[4px_4px_0_var(--color-shadow)] sm:w-auto"
+        >
+          How it works
+        </Link>
+      </Tooltip>
       <Tooltip label="Get the weekly digest in your inbox">
         <Link
           to="/subscribe"
