@@ -32,8 +32,13 @@ from telogify.analysis.race_pace import (
     stop_count_spread,
 )
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
-from telogify.analysis.season import build_season_accel_scatter, build_season_snapshot
-from telogify.analysis.season_deployment import PU_GROUPS, pu_map_applies
+from telogify.traced_examples import example_for, parse_trace
+from telogify.analysis.season import (
+    build_season_accel_by_round,
+    build_season_accel_scatter,
+    build_season_snapshot,
+)
+from telogify.analysis.season_deployment import PU_GROUPS, build_ranking, pu_map_applies
 from telogify.analysis.season_start import build_season_start
 from telogify.analysis.race_start import (
     NO_READING,
@@ -45,7 +50,9 @@ from telogify.analysis.race_start import (
 )
 from telogify.analysis.season_stats import build_season_stats
 from telogify.ingest.results import (
+    classified_gap,
     compound_letter,
+    finishing_intervals,
     format_gap_label,
     format_total_time,
     points_for_session,
@@ -156,6 +163,34 @@ def list_weekends(db: Session = Depends(get_session)):
         }
         for w in rows
     ]
+
+
+@router.get("/insights/traced")
+def traced_insights(response: Response, limit: int = 24, db: Session = Depends(get_session)):
+    """Real worked examples for /how-it-works: per published race insight, one prose number and the exact tool-return
+    row it traces to (see traced_examples.py). Insights with no unambiguous source are left out. Newest first."""
+    limit = max(1, min(limit, 60))
+    rows = db.exec(
+        select(Insight, RaceWeekend)
+        .join(RaceWeekend, RaceWeekend.id == Insight.weekend_id)
+        .order_by(RaceWeekend.year.desc(), RaceWeekend.round.desc(), Insight.slot)
+    ).all()
+    out = []
+    for ins, w in rows:
+        # Each insight's OWN trace (a regenerated slot may not share its siblings'), decoded per insight.
+        ex = example_for(
+            {
+                "year": w.year, "round": w.round, "event_name": w.event_name,
+                "header": ins.header, "explanation_web": ins.explanation_web,
+            },
+            parse_trace(ins.source_tool_calls_json),
+        )
+        if ex:
+            out.append(ex)
+        if len(out) >= limit:
+            break
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return out
 
 
 @router.get("/insights/latest")
@@ -802,16 +837,23 @@ def weekend_results(
             return format_total_time(r.total_time_s) or "leader"
         return format_gap_label(r.position, r.gap_to_leader, r.laps, leader_laps, r.status)
 
+    # Numeric gaps for the Finishing order switcher (`gap_label` stays the default text and is what the agent
+    # tools share). Both are null for a car with no honest seconds figure (lapped, retired, missing time).
+    gaps = [classified_gap(r.position, r.gap_to_leader, r.laps, leader_laps, r.status) for r in rows]
+    intervals = finishing_intervals(gaps)
+
     return [
         {
             "position": r.position,
             "driver": r.driver,
             "constructor": r.constructor,
             "gap_label": gap_or_time(r),
+            "gap_to_leader_s": gaps[i],
+            "interval_s": intervals[i],
             "points": points_for_session(race.session_type, r.position),
             "strategy": strategy_string(compounds_by_driver.get(r.driver, [])),
         }
-        for r in rows
+        for i, r in enumerate(rows)
     ]
 
 
@@ -955,14 +997,19 @@ def season_deployment_scatter(year: int, db: Session = Depends(get_session)):
     manufacturer supply map ([{name, works_team, teams}]). `insights` is the LLM-written
     verdict per power-unit manufacturer, ranked best to worst (`telogify run-season-deployment`
     generates it; empty until then, in which case the frontend falls back to a deterministic
-    read of `scatter`)."""
+    read of `scatter`). `ranking` is the table behind them: every power unit best to worst on the
+    season-pooled package score, its m/s^2 gap to the best, and the form arrow (places gained or
+    lost on recent rounds vs the whole season; null below 4 rounds)."""
     rows = db.exec(
         select(SeasonDeploymentInsight)
         .where(SeasonDeploymentInsight.year == year)
         .order_by(SeasonDeploymentInsight.rank)
     ).all()
+    by_round = build_season_accel_by_round(year, db)
+    scatter = build_season_accel_scatter(year, db, by_round)
     return {
-        "scatter": build_season_accel_scatter(year, db),
+        "scatter": scatter,
+        "ranking": build_ranking(scatter, by_round) if pu_map_applies(year, set(scatter)) else [],
         "pu_groups": [
             {"name": g.name, "works_team": g.works_team, "teams": list(g.teams)} for g in PU_GROUPS
         ],

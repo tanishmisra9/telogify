@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formArrow, formSentence, formatGap, legendValue, niceAxis, pointCopy } from './seasonStart'
+import { formArrow, formMoveSentence, formSentence, formatGap, legendValue, niceAxis, pointCopy } from './seasonStart'
 import type { SeasonStartRow } from './api'
 
 const row = (over: Partial<SeasonStartRow> = {}): SeasonStartRow => ({
@@ -77,5 +77,15 @@ describe('formSentence', () => {
   })
   it('is null when there is no form to report', () => {
     expect(formSentence(row({ form_places: null }))).toBeNull()
+  })
+})
+
+describe('formMoveSentence', () => {
+  it('words the arrow without an absolute rank', () => {
+    expect(formMoveSentence(2)).toBe('Gains 2 places on recent form versus the whole season')
+    expect(formMoveSentence(-1)).toBe('Loses 1 place on recent form versus the whole season')
+    expect(formMoveSentence(0)).toMatch(/Holds the same place/)
+    expect(formMoveSentence(null)).toBeNull()
+    expect(formMoveSentence(3)).not.toMatch(/#/)
   })
 })

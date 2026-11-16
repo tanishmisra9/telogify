@@ -2,9 +2,11 @@ import pandas as pd
 from sqlmodel import select
 
 from telogify.ingest.results import (
+    classified_gap,
     compound_letter,
     compute_gap,
     extract_results,
+    finishing_intervals,
     format_gap_label,
     format_total_time,
     is_lapped,
@@ -293,3 +295,38 @@ def test_requires_complete_results_is_race_like_only():
     assert requires_complete_results("Race") and requires_complete_results("Sprint")
     for name in ("Practice 1", "Qualifying", "Sprint Qualifying", "Sprint Shootout"):
         assert not requires_complete_results(name)
+
+
+# --- numeric gaps for the Finishing order switcher ---------------------------------------
+
+def test_classified_gap_only_for_lead_lap_finishers():
+    assert classified_gap(1, 0.0, 57, 57, "Finished") == 0.0
+    assert classified_gap(2, 4.2, 57, 57, "Finished") == 4.2
+    assert classified_gap(5, None, 57, 57, "") is None  # a degraded round: no time
+    assert classified_gap(9, 12.0, 56, 57, "Finished") is None  # a lap down: a stored gap is not trusted
+    assert classified_gap(12, 30.0, 57, 57, "Lapped") is None
+    assert classified_gap(19, 55.0, 20, 57, "Retired") is None  # forbidden: a retired car never gets seconds
+    assert classified_gap(21, 0.0, 0, 57, "Did not start") is None
+    assert classified_gap(8, 40.0, 57, 57, "Disqualified") is None  # finished all laps, but not classified
+    assert classified_gap(8, 40.0, 57, 57, "Withdrew") is None  # any status outside the allow-list
+
+
+def test_finishing_intervals_gap_to_the_car_ahead():
+    assert finishing_intervals([0.0, 2.5, 4.0, 10.0]) == [None, 2.5, 1.5, 6.0]
+
+
+def test_finishing_intervals_never_bridge_a_lapped_or_missing_car():
+    # P3 is a lap down: P4 (also lap down), and P3 itself, have no interval; P2 still does.
+    assert finishing_intervals([0.0, 2.5, None, None]) == [None, 2.5, None, None]
+    # A gap behind a missing one is unknowable: it must NOT fall back to the gap to the leader.
+    assert finishing_intervals([0.0, None, 9.0]) == [None, None, None]
+
+
+def test_finishing_intervals_never_negative():
+    # P4 at +20 s, P5 at +19 s (a penalty-adjusted or stale time): no gap, not -1.
+    assert finishing_intervals([0.0, 10.0, 20.0, 19.0, 25.0]) == [None, 10.0, 10.0, None, 6.0]
+
+
+def test_finishing_intervals_empty_and_single():
+    assert finishing_intervals([]) == []
+    assert finishing_intervals([0.0]) == [None]

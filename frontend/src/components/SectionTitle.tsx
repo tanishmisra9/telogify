@@ -67,3 +67,13 @@ export function CollapsibleSection({
     </>
   )
 }
+
+// Expand or collapse every CollapsibleSection on the page by clicking each toggle whose state differs (the same
+// technique as SectionNav.jump, so the sections keep owning their own state and charts keep their selection:
+// bodies are `hidden`, never unmounted). Scoped to `main h2 button[aria-controls]`: only CollapsibleSection renders
+// that, so per-insight and per-chart disclosures are left alone.
+export function setAllSections(open: boolean) {
+  document.querySelectorAll<HTMLButtonElement>('main h2 button[aria-controls]').forEach((b) => {
+    if ((b.getAttribute('aria-expanded') === 'true') !== open) b.click()
+  })
+}

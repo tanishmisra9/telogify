@@ -163,6 +163,38 @@ def format_gap_label(
     return status
 
 
+def classified_gap(
+    position: int | None,
+    gap_to_leader: float | None,
+    laps: float | None,
+    leader_laps: float | None,
+    status: str | None,
+) -> float | None:
+    """Seconds behind the leader for a car that finished on the lead lap with a real time, else None.
+    An allow-list on purpose: only a classified finisher (status "Finished", or empty on a degraded round) can have
+    seconds; lapped, retired, did-not-start, disqualified or any other status cannot, and a stored gap on one is not trusted."""
+    if position == 1:
+        return 0.0
+    if (status or "").strip().lower() not in ("", "finished"):
+        return None
+    if is_lapped(status, laps, leader_laps):
+        return None
+    return gap_to_leader
+
+
+def finishing_intervals(gaps: list[float | None]) -> list[float | None]:
+    """Gap to the car directly ahead, from `classified_gap` per row in finishing order. Only known when this
+    car AND the one immediately ahead both have a lead-lap gap: across a lapped or retired car the interval is
+    unknowable, never bridged to the next one up. The leader has no car ahead. A negative difference (a stale or
+    penalty-adjusted time that disagrees with the classified order) is not a gap either: None, never a figure that
+    contradicts the order."""
+    out: list[float | None] = []
+    for i, g in enumerate(gaps):
+        d = None if i == 0 or g is None or gaps[i - 1] is None else g - gaps[i - 1]
+        out.append(d if d is not None and d >= 0 else None)
+    return out
+
+
 def compute_gap(
     position: int | None,
     time_s: float | None,

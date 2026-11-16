@@ -1,18 +1,24 @@
+import { useEffect, useRef, useState } from 'react'
 import { BackHomeButton } from '@/components/BackHomeButton'
 import { BackToTopButton } from '@/components/BackToTopButton'
 import { BlurFade } from '@/components/BlurFade'
+import { LoadingSwap } from '@/components/LoadingSwap'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionTitle } from '@/components/SectionTitle'
+import { SkeletonCard } from '@/components/Skeleton'
+import { useApi, type TracedExample } from '@/lib/api'
+import { loadBag, nextFromBag, saveBag, type Bag } from '@/lib/shuffleBag'
+import { exampleId, gateLines, quoteParts, storedLines, toolCallLines } from '@/lib/tracedExample'
 
 // Key phrases bolded in ink so each muted paragraph carries one scannable claim.
 function Key({ children }: { children: React.ReactNode }) {
   return <strong className="font-semibold text-ink">{children}</strong>
 }
 
-// Code panel for each step. The figures are REAL (taken from the Bahrain weekend's logged
-// get_constructor_ranking return); a block's label says when it is an excerpt or a summary, not a
-// verbatim log. In a line, {{x}} is the traced figure (accent) and "key": is dimmed. Lines wrap rather than scroll, so the page keeps one
-// scroll system.
+// Code panel for each step. The figures are REAL: each visit shows one published insight figure and the exact logged
+// tool-return row it traces to (GET /insights/traced, cycled so every example is shown once before any repeats). A
+// block's label says when it is an excerpt, a summary or static, not a verbatim log. In a line, {{x}} is the traced
+// figure (accent) and "key": is dimmed. Lines wrap rather than scroll, so the page keeps one scroll system.
 function CodeLine({ text }: { text: string }) {
   return (
     <>
@@ -62,118 +68,118 @@ function CodeBlock({ label, lines }: { label: string; lines: string[] }) {
   )
 }
 
-// Worked example: the live 2026 Bahrain Grand Prix insight and the real values behind its figure.
-// 0.16695... is the get_constructor_ranking return for Mercedes; the published prose rounds it to
-// 0.167 (serialize.round_prose_numbers). Replace by hand if the example insight is regenerated.
-const EXAMPLE_EVENT = '2026 Bahrain Grand Prix'
-const TRACED = '0.167'
-const RAW = '0.16695454545454425' // Mercedes race_pace_gap_s, unrounded
+// Shown only if the examples endpoint is empty or unreachable (an older API, no insights yet): the 2026 Bahrain
+// Grand Prix insight, with the real logged return behind its figure. 0.16695... is get_constructor_ranking's value for
+// Mercedes; the published prose rounds it to 0.167 (serialize.round_prose_numbers).
+const FALLBACK: TracedExample = {
+  year: 2026,
+  round: 0,
+  event_name: 'Bahrain Grand Prix',
+  header: 'Red Bull Racing set the pace',
+  explanation_web:
+    "Max Verstappen's Red Bull Racing car finished first, and the team set the fastest race pace, with Mercedes 0.167 seconds per lap behind.",
+  traced: '0.167',
+  traced_with_unit: '0.167 seconds',
+  raw: '0.16695454545454425',
+  key: 'gap_to_team_ahead_s',
+  tool: 'get_constructor_ranking',
+  args: {},
+  row: {
+    constructor: 'Mercedes',
+    overall_rank: 2,
+    race_pace_gap_s: 0.16695454545454425,
+    gap_to_team_ahead_s: 0.16695454545454425,
+    clean_air_median_s: 101.056,
+    clean_air_gap_to_fastest_s: 0.181,
+    clean_air_n_laps: 60,
+  },
+}
 
-const LAYERS = [
-  {
-    title: 'Official timing in.',
-    body: (
-      <>
-        Every session is pulled from <Key>FastF1&apos;s official timing</Key> once it has started.
-        A race is held back until the official results are complete, so a half-loaded finishing
-        order can never become a verdict.
-      </>
-    ),
-    code: {
-      label: 'source (summary)',
-      lines: ['source:  FastF1 official timing', 'session: Race', 'event:   2026 Bahrain Grand Prix'],
+// Steps 2 and 4 are the same for every example (the clean-air filter and the first tool call), so they stay as the
+// real Bahrain excerpts and say so; steps 1, 3, 5 and 6 follow the chosen example.
+function buildLayers(ex: TracedExample) {
+  return [
+    {
+      title: 'Official timing in.',
+      body: (
+        <>
+          Every session is pulled from <Key>FastF1&apos;s official timing</Key> once it has started.
+          A race is held back until the official results are complete, so a half-loaded finishing
+          order can never become a verdict.
+        </>
+      ),
+      code: {
+        label: 'source (summary)',
+        lines: ['source:  FastF1 official timing', 'session: Race', `event:   ${ex.year} ${ex.event_name}`],
+      },
     },
-  },
-  {
-    title: 'Only laps that count.',
-    body: (
-      <>
-        <Key>Green-flag laps only</Key>, the opening lap left out, and every race lap corrected to
-        an empty-tank reference so a heavy early stint is not read as slow. A separate clean-air
-        pass keeps only laps with no car within half a second ahead.
-      </>
-    ),
-    code: {
-      label: 'clean-air laps counted',
-      lines: [
-        '{"constructor": "Red Bull Racing", "clean_air_n_laps": 64}',
-        '{"constructor": "Mercedes", "clean_air_n_laps": 60}',
-      ],
+    {
+      title: 'Only laps that count.',
+      body: (
+        <>
+          <Key>Green-flag laps only</Key>, the opening lap left out, and every race lap corrected to
+          an empty-tank reference so a heavy early stint is not read as slow. A separate clean-air
+          pass keeps only laps with no car within half a second ahead.
+        </>
+      ),
+      code: {
+        label: 'clean-air laps counted (excerpt, 2026 Bahrain Grand Prix)',
+        lines: [
+          '{"constructor": "Red Bull Racing", "clean_air_n_laps": 64}',
+          '{"constructor": "Mercedes", "clean_air_n_laps": 60}',
+        ],
+      },
     },
-  },
-  {
-    title: 'Numbers first, words later.',
-    body: (
-      <>
-        Pace, sector and straight-line deltas, tyre degradation and energy deployment are computed
-        and stored in the database <Key>before any model runs</Key>. A language model never
-        produces a figure.
-      </>
-    ),
-    code: {
-      label: 'stored value, written before the agent runs',
-      lines: ['{', '  "constructor": "Mercedes",', `  "race_pace_gap_s": ${RAW}`, '}'],
+    {
+      title: 'Numbers first, words later.',
+      body: (
+        <>
+          Pace, sector and straight-line deltas, tyre degradation and energy deployment are computed
+          and stored in the database <Key>before any model runs</Key>. A language model never
+          produces a figure.
+        </>
+      ),
+      code: { label: 'stored value, written before the agent runs', lines: storedLines(ex) },
     },
-  },
-  {
-    title: 'Findings compete.',
-    body: (
-      <>
-        Signal miners score every gap they find. When one team shows up in several channels at once,
-        such as corners, straights and race pace, the findings are fused and{' '}
-        <Key>outrank any single-channel one</Key>. The agent only sees this ranked list.
-      </>
-    ),
-    code: {
-      label: 'first tool call',
-      lines: ['get_candidate_insights({"n": 10, "category": ""})'],
+    {
+      title: 'Findings compete.',
+      body: (
+        <>
+          Signal miners score every gap they find. When one team shows up in several channels at once,
+          such as corners, straights and race pace, the findings are fused and{' '}
+          <Key>outrank any single-channel one</Key>. The agent only sees this ranked list.
+        </>
+      ),
+      code: {
+        label: 'first tool call (every insight starts here)',
+        lines: ['get_candidate_insights({"n": 10, "category": ""})'],
+      },
     },
-  },
-  {
-    title: 'The agent looks things up.',
-    body: (
-      <>
-        It writes using <Key>13 database tools</Key> and has no other source. Every call and its
-        return is logged against the insight it helped write.
-      </>
-    ),
-    code: {
-      label: 'logged tool call, one row of the return',
-      lines: [
-        'get_constructor_ranking({})',
-        '[',
-        '  ...',
-        '  {',
-        '    "constructor": "Mercedes",',
-        '    "overall_rank": 2,',
-        `    "race_pace_gap_s": ${RAW},`,
-        `    "gap_to_team_ahead_s": {{${TRACED}}},`,
-        '    "clean_air_median_s": 101.056,',
-        '    "clean_air_gap_to_fastest_s": 0.181,',
-        '    "clean_air_n_laps": 60',
-        '  },',
-        '  ...',
-        ']',
-      ],
+    {
+      title: 'The agent looks things up.',
+      body: (
+        <>
+          It writes using <Key>13 database tools</Key> and has no other source. Every call and its
+          return is logged against the insight it helped write.
+        </>
+      ),
+      code: { label: 'logged tool call, one row of the return', lines: toolCallLines(ex) },
     },
-  },
-  {
-    title: 'The gate.',
-    body: (
-      <>
-        Every draft is checked twice: against a blocklist for claims one weekend cannot prove, like
-        first-lap drama or career milestones, and against the tool log, where{' '}
-        <Key>every number in the prose must match a logged return</Key>. A failing draft goes back
-        with specific feedback. Three attempts, then it stops, and{' '}
-        <Key>nothing is published until it passes</Key>.
-      </>
-    ),
-    code: {
-      label: 'check (illustrative)',
-      lines: [`prose:  {{${TRACED}}}`, `logged: {{${TRACED}}}  (gap_to_team_ahead_s)`, 'result: match'],
+    {
+      title: 'The gate.',
+      body: (
+        <>
+          Every draft is checked twice: against a blocklist for claims one weekend cannot prove, like
+          first-lap drama or career milestones, and against the tool log, where{' '}
+          <Key>every number in the prose must match a logged return</Key>. A failing draft goes back
+          with specific feedback. Three attempts, then it stops, and{' '}
+          <Key>nothing is published until it passes</Key>.
+        </>
+      ),
+      code: { label: 'check (illustrative)', lines: gateLines(ex) },
     },
-  },
-]
+  ]
+}
 
 const REPLIES = [
   {
@@ -194,6 +200,31 @@ const cell = 'min-w-0 lg:grid lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)] lg:gap-
 const numeral = 'font-display text-4xl leading-none text-accent sm:text-6xl'
 
 export function HowItWorksPage() {
+  const examples = useApi<TracedExample[]>('/insights/traced?limit=48')
+  const pool = examples.data ?? []
+  // The visitor's bag survives reloads (localStorage), so a returning visitor sees every example once before any
+  // repeat. Only picked once the pool has loaded.
+  const bagRef = useRef<Bag | null>(null)
+  const [pickedId, setPickedId] = useState<string | null>(null)
+  const ids = pool.map(exampleId)
+  const idsKey = ids.join('|')
+
+  const pick = () => {
+    bagRef.current ??= loadBag()
+    const next = nextFromBag(ids, bagRef.current)
+    if (!next) return
+    bagRef.current = next.bag
+    saveBag(next.bag)
+    setPickedId(next.id)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ids.length > 0) pick() }, [idsKey])
+
+  const example = pool.find((e) => exampleId(e) === pickedId) ?? (pool.length === 0 ? FALLBACK : null)
+  const waiting = examples.loading || (pool.length > 0 && !example)
+  const layers = example ? buildLayers(example) : []
+  const quote = example ? quoteParts(example) : null
+
   return (
     <main className="mx-auto max-w-[1312px] px-6 py-16 sm:py-24">
       <BlurFade>
@@ -202,48 +233,67 @@ export function HowItWorksPage() {
         </div>
         <div className="border-b-2 border-ink pb-3">
           <h1 className="font-display text-[3.375rem] leading-[0.95] tracking-tight sm:text-7xl">
-            Follow one number.
+            How it works.
           </h1>
         </div>
-        <p className="mt-4 max-w-3xl text-lg leading-relaxed text-muted">
+        <p className="mt-4 max-w-3xl font-display text-3xl leading-tight tracking-tight sm:text-4xl">Follow one number.</p>
+        <p className="mt-3 max-w-3xl text-lg leading-relaxed text-muted">
           One sentence from a published verdict, traced back through every step that produced it.
         </p>
       </BlurFade>
 
-      <div className="mt-12 lg:mt-16">
-        <BlurFade delay={0.08} className="max-w-5xl">
-          <p className="font-display text-[2.025rem] leading-[1.12] tracking-tight sm:text-[2.7rem] lg:text-[3.375rem]">
-            &ldquo;Max Verstappen&rsquo;s Red Bull Racing car finished first, and the team set the
-            fastest race pace, with Mercedes{' '}
-            <span className="text-accent">
-              <span className="num">{TRACED}</span> seconds
-            </span>{' '}
-            per lap behind.&rdquo;
-          </p>
-          <p className="mt-4 text-sm text-muted">Worked example: {EXAMPLE_EVENT}</p>
-        </BlurFade>
-
-        <ol className="mt-12 list-none border-t-2 border-ink lg:mt-16">
-          {LAYERS.map((layer, i) => (
-            <li key={layer.title} className="border-b border-ink py-8 sm:py-10">
-              <ScrollReveal>
-                <div className={rowGrid}>
-                  <span className={numeral} aria-hidden>
-                    {String(i + 1).padStart(2, '0')}
+      <LoadingSwap loading={waiting} placeholder={<SkeletonCard className="mt-12 min-h-[1400px] lg:mt-16" />}>
+        {example && quote && (
+          <div className="mt-12 lg:mt-16">
+            <BlurFade delay={0.08} className="max-w-5xl">
+              <p className="font-display text-[2.025rem] leading-[1.12] tracking-tight sm:text-[2.7rem] lg:text-[3.375rem]">
+                &ldquo;{quote.before}
+                {quote.figure && (
+                  <span className="text-accent">
+                    <span className="num">{quote.figure}</span>
                   </span>
-                  <div className={cell}>
-                    <h2 className="font-display text-3xl tracking-tight sm:text-4xl">{layer.title}</h2>
-                    <div className="min-w-0">
-                      <p className="mt-3 leading-relaxed text-muted lg:mt-1.5">{layer.body}</p>
-                      <CodeBlock label={layer.code.label} lines={layer.code.lines} />
+                )}
+                {quote.after}&rdquo;
+              </p>
+              <p className="mt-4 flex flex-wrap items-baseline gap-x-5 gap-y-2 text-sm text-muted">
+                <span>
+                  Worked example: {example.year} {example.event_name}
+                </span>
+                {pool.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={pick}
+                    className="min-h-8 cursor-pointer font-medium text-ink underline underline-offset-4 hover:text-accent"
+                  >
+                    Another example
+                  </button>
+                )}
+              </p>
+            </BlurFade>
+
+            <ol className="mt-12 list-none border-t-2 border-ink lg:mt-16">
+              {layers.map((layer, i) => (
+                <li key={layer.title} className="border-b border-ink py-8 sm:py-10">
+                  <ScrollReveal>
+                    <div className={rowGrid}>
+                      <span className={numeral} aria-hidden>
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <div className={cell}>
+                        <h2 className="font-display text-3xl tracking-tight sm:text-4xl">{layer.title}</h2>
+                        <div className="min-w-0">
+                          <p className="mt-3 leading-relaxed text-muted lg:mt-1.5">{layer.body}</p>
+                          <CodeBlock label={layer.code.label} lines={layer.code.lines} />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </ScrollReveal>
-            </li>
-          ))}
-        </ol>
-      </div>
+                  </ScrollReveal>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+      </LoadingSwap>
 
       <ScrollReveal className="mt-10 max-w-3xl">
         <p className="font-display text-3xl leading-tight tracking-tight sm:text-4xl">

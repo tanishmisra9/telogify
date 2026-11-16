@@ -17,7 +17,7 @@ import { RaceStartChart } from '@/components/RaceStartChart'
 import { Results } from '@/components/Results'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
-import { CollapsibleSection } from '@/components/SectionTitle'
+import { CollapsibleSection, setAllSections } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
 import { Tooltip } from '@/components/Tooltip'
 import { expandTransition } from '@/lib/motion'
@@ -505,7 +505,23 @@ export function WeekendPage() {
         </div>
       </LoadingSwap>
 
-      <section id="insights" className="mt-16 scroll-mt-24">
+      {/* Always mounted (invisible until the hero resolves, disabled until the sections exist) so it reserves its
+          height and the page below never shifts when it arrives. */}
+      <div className={`mt-6 flex justify-end gap-5 text-sm font-medium ${topReady ? '' : 'invisible'}`}>
+        {([['Expand all', true], ['Collapse all', false]] as const).map(([label, open]) => (
+          <button
+            key={label}
+            type="button"
+            disabled={!sessionsLoaded}
+            onClick={() => setAllSections(open)}
+            className="min-h-8 cursor-pointer text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:text-ink focus-visible:underline disabled:cursor-default disabled:opacity-40 disabled:no-underline"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <section id="insights" className="mt-10 scroll-mt-24">
         <LoadingSwap
           loading={!topReady}
           delay={0.08}

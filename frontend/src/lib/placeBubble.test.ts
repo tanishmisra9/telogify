@@ -61,3 +61,25 @@ describe('placeBubble vertical', () => {
     expect(placeBubble(anchor(100, 1010), size, v).above).toBe(false)
   })
 })
+
+describe('placeBubble prefer above (keep the anchor region clear)', () => {
+  it('goes above when it fits, even though below fits too', () => {
+    const r = placeBubble(anchor(100, 300), size, view, 'center', 8, 8, 'above')
+    expect(r.above).toBe(true)
+    expect(r.top).toBe(300 - 8 - 50)
+  })
+
+  it('falls back below when above does not fit', () => {
+    const r = placeBubble(anchor(100, 20), size, view, 'center', 8, 8, 'above')
+    expect(r.above).toBe(false)
+    expect(r.top).toBe(40 + 8)
+  })
+
+  it('never overlaps the anchor whichever side it takes', () => {
+    for (const top of [20, 300, 760]) {
+      const a = anchor(100, top)
+      const r = placeBubble(a, size, view, 'center', 8, 8, 'above')
+      expect(r.top + size.h <= a.top || r.top >= a.bottom).toBe(true)
+    }
+  })
+})

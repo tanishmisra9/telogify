@@ -375,25 +375,44 @@ def _stride_cap(points: list, max_n: int) -> list:
     return points[::stride]
 
 
-def build_season_accel_scatter(year: int, db: DBSession) -> dict[str, list[list[float]]]:
-    """Pooled (speed_kmh, longitudinal_accel_ms2) points per constructor across every ingested
-    race this season, from AccelSample (up to a handful of representative race laps per driver
-    per weekend, already filtered to full-throttle/no-brake/low-lateral-g). Raw pooling capped
-    by a deterministic stride, not a per-round mean or trend line: the scatter's shape across
-    the season IS the visualization."""
-    weekends = db.exec(select(RaceWeekend).where(RaceWeekend.year == year)).all()
-    out: dict[str, list[list[float]]] = defaultdict(list)
+def build_season_accel_by_round(year: int, db: DBSession) -> dict[int, dict[str, list[list[float]]]]:
+    """{round: {constructor: [[speed_kmh, longitudinal_accel_ms2], ...]}} from AccelSample (up to a
+    handful of representative race laps per driver per weekend, already filtered to
+    full-throttle/no-brake/low-lateral-g). The one reader of AccelSample for the season: the pooled
+    scatter below and the per-round deployment form are both built from it."""
+    weekends = db.exec(
+        select(RaceWeekend).where(RaceWeekend.year == year).order_by(RaceWeekend.round.asc())
+    ).all()
+    out: dict[int, dict[str, list[list[float]]]] = {}
     for w in weekends:
         race = db.exec(
             select(Session).where(Session.weekend_id == w.id, Session.session_type == "R")
         ).first()
         if race is None:
             continue
-        samples = db.exec(select(AccelSample).where(AccelSample.session_id == race.id)).all()
-        for s in samples:
+        per_team: dict[str, list[list[float]]] = defaultdict(list)
+        for s in db.exec(select(AccelSample).where(AccelSample.session_id == race.id)).all():
             if not s.constructor:
                 continue
-            out[s.constructor].extend(
+            per_team[s.constructor].extend(
                 [sp, ac] for sp, ac in zip(s.speed_kmh_json or [], s.longitudinal_accel_ms2_json or [])
             )
+        if per_team:
+            out[w.round] = dict(per_team)
+    return out
+
+
+def build_season_accel_scatter(
+    year: int, db: DBSession, by_round: dict[int, dict[str, list[list[float]]]] | None = None
+) -> dict[str, list[list[float]]]:
+    """Pooled (speed_kmh, longitudinal_accel_ms2) points per constructor across every ingested
+    race this season. Raw pooling capped by a deterministic stride, not a per-round mean or trend
+    line: the scatter's shape across the season IS the visualization. Pass `by_round` to reuse an
+    already-built read."""
+    if by_round is None:
+        by_round = build_season_accel_by_round(year, db)
+    out: dict[str, list[list[float]]] = defaultdict(list)
+    for rnd in sorted(by_round):
+        for team, pts in by_round[rnd].items():
+            out[team].extend(pts)
     return {team: _stride_cap(pts, _MAX_SCATTER_POINTS_PER_TEAM) for team, pts in out.items()}

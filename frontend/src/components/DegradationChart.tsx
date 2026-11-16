@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
+import { PointPopup } from '@/components/PointPopup'
 import { TeamMark } from '@/components/TeamMark'
 import { TeamSelectLegend, type TeamSelectRow } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
+import { useChartPointHover } from '@/lib/useChartPointHover'
 import { useSvgTextScale } from '@/lib/useSvgTextScale'
 import type { DegradationData } from '@/lib/api'
 
@@ -48,18 +50,30 @@ export function DegradationChart({ data }: { data: DegradationData }) {
   // Empty = show every team (today's default). Not reset on compound switch,
   // so a comparison survives moving between Hard/Medium/Soft.
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Hover a fit line for its numbers. The line IS the finding (the raw laps carry no driver or lap number, so a
+  // readout on a dot would be invented detail). The readout follows the cursor along the line rather than
+  // anchoring to the line's whole bounding box, which for a long diagonal line sits far from the pointer.
+  const plotRef = useRef<HTMLDivElement>(null)
+  const { hovered, setHovered } = useChartPointHover(plotRef)
+  const hoverAt = (team: string) => (e: React.MouseEvent) => {
+    const x = e.clientX + window.scrollX
+    const y = e.clientY + window.scrollY
+    setHovered({ key: team, round: 0, box: { left: x, right: x, top: y, bottom: y } })
+  }
 
   if (!compound) {
     return <p className="text-sm text-muted">No race tyre data yet.</p>
   }
 
-  const toggleTeam = (team: string) =>
+  const toggleTeam = (team: string) => {
+    setHovered(null)
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(team)) next.delete(team)
       else next.add(team)
       return next
     })
+  }
 
   const fits = data.fits.filter((f) => f.compound === compound)
   const points = data.points.filter((p) => p.compound === compound)
@@ -83,6 +97,21 @@ export function DegradationChart({ data }: { data: DegradationData }) {
 
   const x = (v: number) => (v / xMax) * INNER_W
   const y = (v: number) => INNER_H * (1 - (v - yMin) / (yMax - yMin))
+
+  const hoveredFit = hovered ? fits.find((f) => f.constructor === hovered.key) : undefined
+  const tip = hoveredFit
+    ? {
+        title: `${hoveredFit.constructor}, ${hoveredFit.compound.toLowerCase()}`,
+        lines: [
+          `${hoveredFit.slope_s_per_lap >= 0 ? '+' : ''}${hoveredFit.slope_s_per_lap.toFixed(3)} s per lap of tyre age`,
+          ...(data.reference_age_laps != null
+            ? [`${hoveredFit.cost_at_reference_s >= 0 ? '+' : ''}${hoveredFit.cost_at_reference_s.toFixed(2)} s by lap ${data.reference_age_laps}`]
+            : []),
+          `${hoveredFit.n_laps} laps`,
+          ...(hoveredFit.flagged ? ["Wears at least 1.5 times the field's median rate"] : []),
+        ],
+      }
+    : null
 
   const ageRangeByConstructor: Record<string, [number, number]> = {}
   for (const p of points) {
@@ -125,7 +154,10 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         <ChartTabs
           ariaLabel="Compound"
           active={compound}
-          onChange={setCompound}
+          onChange={(c) => {
+            setHovered(null) // the lines under an open readout change with the compound
+            setCompound(c)
+          }}
           tabs={compounds.map((c) => ({ value: c, label: c, hint: `${c.toLowerCase()} tyre degradation` }))}
         />
       </div>
@@ -133,7 +165,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
       {points.length === 0 ? (
         <p className="text-sm text-muted">No {compound.toLowerCase()} laps this race.</p>
       ) : (
-        <div className="hidden md:block">
+        <div ref={plotRef} className="hidden md:block">
           <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Fuel-corrected lap time vs tyre age">
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
               {/* Two coexisting techniques, split by what the element is. The gridline ROWS are
@@ -201,6 +233,28 @@ export function DegradationChart({ data }: { data: DegradationData }) {
                 })}
               </AnimatePresence>
 
+              {/* Hover targets: a wide transparent stroke over each visible fit line (above the dots, below nothing). */}
+              {visibleFits.map((f) => {
+                const range = ageRangeByConstructor[f.constructor]
+                if (!range) return null
+                const [lo, hi] = range
+                return (
+                  <line
+                    key={`hit-${f.constructor}`}
+                    x1={x(lo)}
+                    y1={y(f.slope_s_per_lap * lo + f.intercept_s)}
+                    x2={x(hi)}
+                    y2={y(f.slope_s_per_lap * hi + f.intercept_s)}
+                    stroke="transparent"
+                    strokeWidth={16}
+                    strokeLinecap="round"
+                    onMouseEnter={hoverAt(f.constructor)}
+                    onMouseMove={hoverAt(f.constructor)}
+                    onMouseLeave={() => setHovered(null)}
+                  />
+                )
+              })}
+
               <text x={INNER_W / 2} y={INNER_H + 42} textAnchor="middle" fill="var(--color-muted)" fontSize={textPx(12)}>
                 Tyre age (laps)
               </text>
@@ -208,6 +262,8 @@ export function DegradationChart({ data }: { data: DegradationData }) {
           </svg>
         </div>
       )}
+
+      <PointPopup hovered={hovered} tip={tip} gap={14} prefer="above" />
 
       <DesktopOnlyNote className="mt-4">
         Open this weekend on a larger screen to compare wear lines. The ranking below still

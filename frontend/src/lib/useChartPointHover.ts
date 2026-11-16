@@ -24,7 +24,6 @@ export function useChartPointHover(containerRef: RefObject<HTMLElement | null>, 
 
   useEffect(() => {
     const el = containerRef.current
-    if (!el) return
     let t: ReturnType<typeof setTimeout>
     const onScroll = () => {
       // The dot moves under a readout that is anchored to where it WAS, so scrolling the chart closes it.
@@ -34,10 +33,12 @@ export function useChartPointHover(containerRef: RefObject<HTMLElement | null>, 
       t = setTimeout(() => setIsScrolling(false), 200)
     }
     const onResize = () => setHovered(null)
-    el.addEventListener('scroll', onScroll, { passive: true })
+    // The container can be absent on the first run (a chart that renders it only once it has data): the resize
+    // listener must not depend on it.
+    el?.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', onResize)
     return () => {
-      el.removeEventListener('scroll', onScroll)
+      el?.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       clearTimeout(t)
     }

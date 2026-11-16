@@ -1,4 +1,7 @@
+import { useState } from 'react'
+import { ChartTabs } from '@/components/ChartTabs'
 import { driverName } from '@/lib/drivers'
+import { canSwitchGap, gapText, type GapTo } from '@/lib/finishing'
 import { teamColorWithAlpha } from '@/lib/teamColors'
 import type { ResultRow } from '@/lib/api'
 
@@ -20,9 +23,27 @@ const HEAD = 'border-b border-border px-2 pb-2 text-sm font-semibold text-ink'
 // contrast on this site's cream/espresso backgrounds, so the hue lives in the background wash
 // where a low alpha can't break readability.
 export function Results({ rows }: { rows: ResultRow[] }) {
+  const [gapTo, setGapTo] = useState<GapTo>('leader')
   if (rows.length === 0) return <p className="text-sm text-muted">No results.</p>
+  const switchable = canSwitchGap(rows)
 
   return (
+    <div>
+      {switchable && (
+        // Same labelled-switcher shape as the Race start chart's control bar.
+        <div className="mb-5 flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:gap-7">
+          <span className="shrink-0 whitespace-nowrap font-display text-sm font-medium tracking-tight text-muted sm:w-[4.25rem] sm:text-base">Gap to</span>
+          <ChartTabs
+            ariaLabel="Gap to the leader or to the car ahead"
+            active={gapTo}
+            onChange={setGapTo}
+            tabs={[
+              { value: 'leader', label: 'Leader', hint: 'Seconds behind the winner' },
+              { value: 'ahead', label: 'Car ahead', hint: 'Seconds behind the car directly in front' },
+            ]}
+          />
+        </div>
+      )}
     <div className="overflow-x-auto">
       <ol className={`${GRID} min-w-[450px] sm:min-w-[586px]`} aria-label="Finishing order">
         <li className="contents" aria-hidden>
@@ -49,11 +70,12 @@ export function Results({ rows }: { rows: ResultRow[] }) {
               <span className={`px-2 py-3 text-sm text-ink ${b}`} style={cell}>{r.constructor}</span>
               <span className={`num px-2 py-3 text-center text-sm tracking-wide text-ink ${b}`} style={cell}>{r.strategy}</span>
               <span className={`num px-2 py-3 text-center text-sm font-medium text-ink ${b}`} style={cell}>{r.points > 0 ? r.points : ''}</span>
-              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell}>{r.gap_label}</span>
+              <span className={`num px-2 py-3 text-center text-sm text-ink ${b}`} style={cell}>{gapText(r, gapTo)}</span>
             </li>
           )
         })}
       </ol>
+    </div>
     </div>
   )
 }

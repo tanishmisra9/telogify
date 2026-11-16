@@ -1,14 +1,17 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
+import { PointPopup } from '@/components/PointPopup'
 import { TeamSelectLegend } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
-import { binBySpeed } from '@/lib/seasonAccel'
+import { BIN_WIDTH_KMH, binBySpeed } from '@/lib/seasonAccel'
 import { drawTransition } from '@/lib/motion'
 import { smoothPath } from '@/lib/svgPath'
+import { formArrow, formMoveSentence } from '@/lib/seasonStart'
+import { useChartPointHover } from '@/lib/useChartPointHover'
 import { useSvgTextScale } from '@/lib/useSvgTextScale'
-import type { PuGroup, SeasonDeploymentScatter } from '@/lib/api'
+import type { DeploymentRankingRow, PuGroup, SeasonDeploymentScatter } from '@/lib/api'
 
 const WIDTH = 1100
 const HEIGHT = 460
@@ -41,9 +44,11 @@ function poolByPu(scatter: SeasonDeploymentScatter, groups: PuGroup[]): SeasonDe
 export function SeasonDeploymentChart({
   scatter,
   puGroups,
+  ranking = [],
 }: {
   scatter: SeasonDeploymentScatter
   puGroups: PuGroup[]
+  ranking?: DeploymentRankingRow[]
 }) {
   const reduce = useReducedMotion()
   const { ref, textPx } = useSvgTextScale(WIDTH)
@@ -53,18 +58,24 @@ export function SeasonDeploymentChart({
   // the works team (e.g. "Aston Martin" for the "Honda" row), since only real team names
   // resolve to a color.
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // A dot per binned median on each trend line, with a readout (same hook and popup as the by-round charts).
+  const plotRef = useRef<HTMLDivElement>(null)
+  const { hovered, setHovered, pointHandlers } = useChartPointHover(plotRef)
 
-  const toggleRow = (colorKey: string) =>
+  const toggleRow = (colorKey: string) => {
+    setHovered(null) // touch has no mouseleave: an open readout must not outlive its hidden line
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(colorKey)) next.delete(colorKey)
       else next.add(colorKey)
       return next
     })
+  }
 
   const changeView = (next: View) => {
     setView(next)
     setSelected(new Set())
+    setHovered(null)
   }
 
   const puScatter = poolByPu(scatter, puGroups)
@@ -101,6 +112,19 @@ export function SeasonDeploymentChart({
     .filter((t) => t.bins.length >= 2)
   const visibleTrends = isFiltering ? trends.filter((t) => selected.has(colorKeyFor(t.row))) : trends
 
+  const hoveredBin = hovered ? trends.find((t) => t.row === hovered.key)?.bins[hovered.round] : undefined
+  const tip =
+    hovered && hoveredBin
+      ? {
+          title: hovered.key,
+          lines: [
+            `${hoveredBin.speedMid - BIN_WIDTH_KMH / 2} to ${hoveredBin.speedMid + BIN_WIDTH_KMH / 2} km/h`,
+            `Median acceleration ${hoveredBin.medianAccel >= 0 ? '+' : ''}${hoveredBin.medianAccel.toFixed(2)} m/s²`,
+            `${hoveredBin.n} samples${hoveredBin.n < 30 ? ' (few: read with care)' : ''}`,
+          ],
+        }
+      : null
+
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4)
   const xTicks = Array.from({ length: 6 }, (_, i) => Math.round(xMin + ((xMax - xMin) * i) / 5))
 
@@ -125,7 +149,7 @@ export function SeasonDeploymentChart({
         />
       </div>
 
-      <div>
+      <div ref={plotRef}>
         <svg ref={ref} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full max-w-full" role="img" aria-label="Season deployment: longitudinal acceleration vs speed">
           <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
             {yTicks.map((t) => (
@@ -184,12 +208,34 @@ export function SeasonDeploymentChart({
                 )
               })}
             </AnimatePresence>
+
+            {/* One dot per binned median on each visible trend line: hover or tap for the speed band, the median
+                acceleration and how many samples it rests on. */}
+            {visibleTrends.map(({ row, bins }) => {
+              const color = resolveTeamColor(colorKeyFor(row))
+              return bins.map((b, bi) => (
+                <g key={`${view}-${row}-${bi}`} {...pointHandlers(row, bi)}>
+                  <circle cx={x(b.speedMid)} cy={y(b.medianAccel)} r={10} fill="transparent" />
+                  <circle cx={x(b.speedMid)} cy={y(b.medianAccel)} r={3.5} fill={color} />
+                </g>
+              ))
+            })}
           </g>
         </svg>
+        <PointPopup hovered={hovered} tip={tip} />
 
         <div className="mt-6 border-t border-border pt-5">
           <TeamSelectLegend
-            rows={rows.map((row) => ({ team: colorKeyFor(row), label: view === 'pu' ? row : undefined }))}
+            rows={rows.map((row) => {
+              // Power units carry their ranking's form arrow (teams have no per-team ranking here).
+              const rk = view === 'pu' ? ranking.find((r) => r.pu === row) : undefined
+              return {
+                team: colorKeyFor(row),
+                label: view === 'pu' ? row : undefined,
+                value: rk ? formArrow(rk.form_places) || undefined : undefined,
+                title: rk ? formMoveSentence(rk.form_places) ?? undefined : undefined,
+              }
+            })}
             selected={selected}
             onToggle={toggleRow}
             isFiltering={isFiltering}
@@ -197,14 +243,10 @@ export function SeasonDeploymentChart({
         </div>
 
         <p className="mt-4 text-sm text-muted">
-          Every point is a full-throttle, no-braking sample from up to five of each driver&apos;s fastest
-          race laps per weekend, pooled across the season. Cornering samples (lateral acceleration of
-          2 m/s² or more) are excluded, so only straight-line deployment and harvesting show. Each line is
-          that {view === 'pu' ? "manufacturer's" : "team's"} median acceleration at each speed. A line
-          dropping toward or below zero at high speed is consistent with electrical deployment running out
-          (clipping); lower full-throttle acceleration at low-to-mid speed is consistent with energy being
-          harvested there rather than deployed. Click a row to isolate its line, click again to bring it
-          back.
+          The faint points are full-throttle, no-braking samples from up to five of each driver&apos;s
+          fastest race laps per weekend, pooled across the season; cornering samples (lateral acceleration
+          of 2 m/s² or more) are excluded, so only straight-line deployment and harvesting show. Click a
+          row to isolate its line, click again to bring it back.
         </p>
       </div>
     </div>

@@ -2,7 +2,9 @@
 // so it can live in a portal on <body> and scroll with the page instead of being clipped by a card.
 // It prefers below the anchor, flips above only when below doesn't fit and above does, and is clamped
 // `margin` px inside the viewport horizontally so it can never run off a phone. `align` is the preferred
-// horizontal anchor: centered on the anchor, or its left / right edge.
+// horizontal anchor: centered on the anchor, or its left / right edge. `prefer` flips the vertical
+// preference ('above' tries above first, falling back below): pass the WHOLE region the reader is looking
+// at as the anchor and the bubble lands outside it, so a readout never covers the data it describes.
 export interface Box {
   left: number
   top: number
@@ -23,6 +25,7 @@ export function placeBubble(
   align: 'center' | 'start' | 'end' = 'center',
   gap = 8,
   margin = 8,
+  prefer: 'below' | 'above' = 'below',
 ): { left: number; top: number; above: boolean } {
   const pref =
     align === 'start' ? anchor.left : align === 'end' ? anchor.right - size.w : (anchor.left + anchor.right) / 2 - size.w / 2
@@ -34,6 +37,6 @@ export function placeBubble(
   const fitsBelow = below + size.h <= view.scrollY + view.h - margin
   const aboveTop = anchor.top - gap - size.h
   const fitsAbove = aboveTop >= view.scrollY + margin
-  const above = !fitsBelow && fitsAbove
+  const above = prefer === 'above' ? fitsAbove : !fitsBelow && fitsAbove
   return { left, top: above ? aboveTop : below, above }
 }

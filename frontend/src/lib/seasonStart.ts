@@ -53,3 +53,13 @@ export function formSentence(row: {
       : `${row.form_places > 0 ? 'Gains' : 'Loses'} ${Math.abs(row.form_places)} place${Math.abs(row.form_places) === 1 ? '' : 's'}`
   return `${move} on recent form: #${row.rank_weighted} recently, #${row.rank_flat} over the season`
 }
+
+// The arrow in words for a RANKING row. Unlike formSentence it never prints "#N recently": a ranking's own
+// rank can come from a different blend than the per-round ranks behind the arrow, and two different "#N"
+// beside each other would read as a contradiction.
+export function formMoveSentence(places: number | null): string | null {
+  if (places == null) return null
+  if (places === 0) return 'Holds the same place on recent form as over the whole season'
+  const n = Math.abs(places)
+  return `${places > 0 ? 'Gains' : 'Loses'} ${n} place${n === 1 ? '' : 's'} on recent form versus the whole season`
+}

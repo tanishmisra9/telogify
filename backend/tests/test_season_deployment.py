@@ -5,7 +5,9 @@ from telogify.analysis.season_deployment import (
     PU_GROUPS,
     PuGroup,
     bin_by_speed,
+    build_ranking,
     measure_group,
+    package_form,
     rank_groups_best_to_worst,
 )
 
@@ -120,6 +122,73 @@ def test_pu_groups_cover_2026_supply_map():
     assert names == {"Mercedes", "Ferrari", "Red Bull", "Honda", "Audi"}
     all_teams = {t for g in PU_GROUPS for t in g.teams}
     assert "Ferrari" in all_teams and "Aston Martin" in all_teams
+
+
+# --- per-round form + the ranking table -------------------------------------------------
+
+def _round(punch: dict[str, float], hold: dict[str, float | None] | None = None) -> dict[str, list[list[float]]]:
+    """One round's scatter keyed by each PU's works team. hold=None for a team drops the hold band."""
+    hold = hold or {t: 0.0 for t in punch}
+    out = {}
+    for team, p in punch.items():
+        pts = _scatter_for(team, p, hold[team] if hold[team] is not None else 0.0)
+        if hold[team] is None:
+            pts = [pt for pt in pts if pt[0] < 290]
+        out[team] = pts
+    return out
+
+
+def test_package_form_gains_for_a_power_unit_that_improves_late():
+    # Ferrari leads big early (Mercedes gap 1.0), Mercedes leads narrowly late (Ferrari gap 0.8): over the whole
+    # season Ferrari is ahead (flat means 0.5 vs 0.4), on recent form Mercedes is, so Mercedes gains a place.
+    by_round = {}
+    for r in range(1, 9):
+        late = r > 4
+        by_round[r] = _round({"Mercedes": 3.0 if late else 1.0, "Ferrari": 1.4 if late else 3.0, "Audi": 0.0})
+    form = package_form(by_round, current_round=8)
+    assert form["Mercedes"]["form_places"] > 0
+    assert form["Ferrari"]["form_places"] < 0
+
+
+def test_package_form_none_below_min_rounds():
+    by_round = {r: _round({"Mercedes": 2.0, "Ferrari": 1.0}) for r in range(1, 4)}  # 3 < MIN_ROUNDS_FOR_FORM
+    form = package_form(by_round, current_round=3)
+    assert form["Mercedes"]["form_places"] is None
+
+
+def test_package_form_skips_a_round_where_the_bands_differ_from_the_best():
+    # Round 1: Ferrari only has the punch band, Mercedes (the best) has both: Ferrari is not compared that round.
+    by_round = {1: _round({"Mercedes": 2.0, "Ferrari": 1.0}, {"Mercedes": 0.0, "Ferrari": None})}
+    by_round.update({r: _round({"Mercedes": 2.0, "Ferrari": 1.0}) for r in range(2, 6)})
+    form = package_form(by_round, current_round=5)
+    # Ferrari's flat mean is over rounds 2-5 only (4 rounds, so the arrow exists); had round 1 counted
+    # it would be a 5-value mean including a score built on punch alone.
+    assert form["Ferrari"]["form_places"] is not None
+    assert package_form({1: by_round[1]}, 1).get("Ferrari") is None
+
+
+def test_build_ranking_orders_best_first_and_gap_is_to_the_best():
+    scatter = {"Mercedes": _scatter_for("Mercedes", 2.0, 0.0), "Ferrari": _scatter_for("Ferrari", 1.0, 0.0)}
+    by_round = {r: scatter for r in range(1, 6)}
+    ranking = build_ranking(scatter, by_round)
+    assert [r["pu"] for r in ranking] == ["Mercedes", "Ferrari"]
+    assert ranking[0]["rank"] == 1 and ranking[0]["gap"] == 0
+    assert ranking[1]["gap"] == 0.5  # package = mean(punch, hold): 1.0 vs 0.5
+    assert ranking[1]["form_places"] == 0  # same order every round: no movement
+
+
+def test_build_ranking_shows_no_gap_for_a_score_from_a_different_band_set():
+    scatter = {
+        "Mercedes": _scatter_for("Mercedes", 2.0, 0.0),
+        "Ferrari": [pt for pt in _scatter_for("Ferrari", 0.5, 0.0) if pt[0] < 290],  # punch band only
+    }
+    ranking = {r["pu"]: r for r in build_ranking(scatter, {1: scatter})}
+    assert ranking["Mercedes"]["gap"] == 0
+    assert ranking["Ferrari"]["gap"] is None and ranking["Ferrari"]["rank"] == 2
+
+
+def test_build_ranking_empty_without_data():
+    assert build_ranking({}, {}) == []
 
 
 if __name__ == "__main__":

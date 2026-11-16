@@ -1,4 +1,3 @@
-import { useReducedMotion, m } from 'framer-motion'
 import { Navigate, useParams } from 'react-router-dom'
 import { BackHomeButton } from '@/components/BackHomeButton'
 import { BackToTopButton } from '@/components/BackToTopButton'
@@ -9,166 +8,21 @@ import { SeasonDeploymentChart } from '@/components/SeasonDeploymentChart'
 import { SeasonTrendChart } from '@/components/SeasonTrendChart'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
 import { CollapsibleSection } from '@/components/SectionTitle'
-import { SeasonStartChart } from '@/components/SeasonStartChart'
+import { SeasonStartSection } from '@/components/SeasonStartChart'
 import { SkeletonCard } from '@/components/Skeleton'
-import { TeamRule } from '@/components/TeamMark'
+import { RankingTable, type RankingRow } from '@/components/RankingTable'
+import { SectionLede, SubTitle } from '@/components/SectionLede'
 import { deploymentInsights } from '@/lib/deploymentInsights'
-import { axisTicks, barFractions, gapCells } from '@/lib/gapLadder'
-import { resolveTeamColor, teamColorWithAlpha, teamShortName } from '@/lib/teamColors'
+import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { useIsMobile } from '@/lib/useIsMobile'
 import {
   useApi,
-  type SeasonConstructorRow,
   type SeasonDeployment,
   type SeasonDeploymentInsightItem,
   type SeasonStartData,
   type SeasonSnapshot,
   type WeekendSummary,
 } from '@/lib/api'
-
-const CONF_LABEL: Record<string, string> = { low: 'low data', med: 'partial data' }
-
-function ConfidenceChip({ confidence }: { confidence: string }) {
-  if (confidence === 'high') return null
-  return (
-    <span className="whitespace-nowrap rounded-panel border border-border px-2 py-0.5 text-xs text-muted">
-      {CONF_LABEL[confidence] ?? confidence}
-    </span>
-  )
-}
-
-// gapCells' sentinel string stays "best" (lib/gapLadder.ts + its tests); only the displayed
-// label changes here.
-const renderGap = (text: string | null) =>
-  text == null ? '–' : text === 'best' ? <span className="font-sans font-semibold text-ink">leader</span> : text
-
-// Fixed column widths shared by the header and every row so the axis ticks land directly above
-// the bars they describe, and so a team's bar always starts at the same x position regardless
-// of its name length -- the zero rule reads as one continuous line down the panel. One row shape
-// at every width (team name and bar stay on the same line on mobile too); only the widths shrink
-// -- the team name truncates rather than wrapping to a second line.
-const RANK_W = 'w-6 sm:w-9'
-const TEAM_W = 'w-24 sm:w-44'
-const FIGURE_W = 'w-14 sm:w-24'
-
-function RankingTable({ rows }: { rows: SeasonConstructorRow[] }) {
-  const reduce = useReducedMotion()
-
-  // Bar and figure show the same locked 60/40 race+qualifying blend that sets row order
-  // (r.overall_rank), rescaled onto race pace's own seconds span server-side
-  // (overall_gap_s) -- so the displayed gap and the ranking order can never disagree.
-  const paceValues = rows.map((r) => r.overall_gap_s)
-  const present = paceValues.filter((v): v is number => v != null)
-  const maxGap = present.length > 0 ? Math.max(...present) - Math.min(...present) : 0
-  const ticks = axisTicks(maxGap)
-  const tickMax = ticks[ticks.length - 1] || 1 // guards a flat field (every gap 0, ticks = [0])
-
-  const paceCells = gapCells(paceValues, (d) => `+${d.toFixed(3)}s`)
-  const fractions = barFractions(paceValues)
-
-  return (
-    <div>
-      {/* Header mirrors each row's 4 columns (rank / team / track / figure) so its axis ticks
-          sit directly above the bars. Desktop only -- "Team" doesn't fit the mobile column
-          widths below, and the per-row figure already carries the exact number, so a squeezed
-          mobile header would add clutter without adding information. The figure column's own
-          label ("Race pace") was removed -- the bars already read as pace, a caption calling out
-          one column was redundant; the trailing spacer stays so the tick axis above still lines
-          up with the track column, not the row's full width. */}
-      <div className="hidden items-center gap-3 border-b border-border pb-2 sm:flex">
-        <span className={`${RANK_W} shrink-0`} aria-hidden />
-        <span className={`${TEAM_W} shrink-0 text-lg font-semibold text-ink`}>Team</span>
-        <span className="relative h-4 flex-1">
-          {ticks.map((t, i) => (
-            <span
-              key={t}
-              className="absolute top-0 whitespace-nowrap text-xs text-muted"
-              style={{
-                left: `${(t / tickMax) * 100}%`,
-                transform:
-                  i === 0 ? 'translateX(0)' : i === ticks.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
-              }}
-            >
-              {t === 0 ? '0' : `+${t}s`}
-            </span>
-          ))}
-        </span>
-        <span className={`${FIGURE_W} shrink-0`} aria-hidden />
-      </div>
-
-      <ol>
-        {rows.map((r, i) => {
-          const b = i > 0 ? 'border-t border-border' : ''
-          const fraction = fractions[i]
-          const figure = renderGap(paceCells[i])
-
-          // Confidence chip only fits on wider rows: its own text ("partial data") is close to
-          // the entire mobile team column's width, so it would crowd out the name it's meant to
-          // annotate. Every team is "high" confidence at time of writing; when a thin-data team
-          // does show a chip, the desktop-only reveal is the tradeoff for keeping mobile scannable.
-          // Mobile uses the same short names as the pace-chart axis ("Red Bull Racing" -> "Red
-          // Bull", "Racing Bulls" -> "RB") instead of truncating the full name with an ellipsis
-          // -- a real name that fits beats a clipped one. truncate stays as a safety net; every
-          // short name already fits TEAM_W without needing it.
-          const team = (
-            <span className="flex min-w-0 items-center gap-2">
-              <TeamRule team={r.constructor} />
-              <span className="truncate font-medium text-ink">
-                <span className="hidden sm:inline">{r.constructor}</span>
-                <span className="sm:hidden">{teamShortName(r.constructor)}</span>
-              </span>
-              <span className="hidden shrink-0 sm:inline-flex">
-                <ConfidenceChip confidence={r.confidence} />
-              </span>
-            </span>
-          )
-
-          // The zero rule (border-l) marks every row's baseline -- the season's best -- as one
-          // continuous vertical line. The bar itself grows rightward from it in team color; a
-          // team with no pace data (fraction null) shows the rule with no fill, not a fabricated
-          // zero-length bar that would misread as tied for best. On the leader's own row
-          // (fraction === 0) there's no bar next to the rule to give it color, so it reads as a
-          // bare gray sliver -- thicken it and color it with that team's own color there only;
-          // every other row's rule stays the plain neutral baseline.
-          const isLeaderRow = fraction === 0
-          const track = (
-            <span
-              className="relative h-[1.375rem] flex-1 border-l-[1.5px] border-ink/25"
-              style={isLeaderRow ? { borderLeftWidth: '2px', borderLeftColor: resolveTeamColor(r.constructor) } : undefined}
-            >
-              {fraction != null && (
-                <m.span
-                  className={`absolute inset-y-0 left-0 block rounded-r-[1px] ${fraction > 0 ? 'min-w-[3px]' : ''}`}
-                  style={{
-                    width: `${fraction * 100}%`,
-                    backgroundColor: teamColorWithAlpha(r.constructor, 0.55),
-                    transformOrigin: 'left',
-                  }}
-                  initial={reduce ? false : { scaleX: 0 }}
-                  animate={{ scaleX: 1 }}
-                  transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: reduce ? 0 : i * 0.03 }}
-                />
-              )}
-            </span>
-          )
-
-          // One row shape at every width: team name and bar always share a line, columns aligned
-          // to the header above on sm+. Narrower fixed widths (RANK_W/TEAM_W/FIGURE_W) do the
-          // work below sm -- the team name truncates into the space it's given rather than the
-          // row wrapping to a second line.
-          return (
-            <li key={r.constructor} className={`flex items-center gap-2 py-3 sm:gap-3 ${b}`}>
-              <span className={`num ${RANK_W} shrink-0 text-sm text-muted`}>{r.overall_rank ?? '–'}</span>
-              <span className={`${TEAM_W} shrink-0`}>{team}</span>
-              {track}
-              <span className={`num ${FIGURE_W} shrink-0 text-right text-sm text-ink`}>{figure}</span>
-            </li>
-          )
-        })}
-      </ol>
-    </div>
-  )
-}
 
 // The LLM-written verdicts (telogify run-season-deployment) are the primary read, already in
 // rank order. Until that's been run for this year, fall back to a deterministic read of the
@@ -191,15 +45,36 @@ function SeasonView({ year }: { year: number }) {
   const deployment = useApi<SeasonDeployment>(`/season/${year}/deployment`)
   const raceStart = useApi<SeasonStartData>(`/season/${year}/race-start`)
   const rows = season.data?.constructors ?? []
+  // The ranking's own blend (overall_gap_s, the same one that sets overall_rank); the arrow is the cumulative
+  // form, which is that blend computed per round.
+  const paceRankingRows: RankingRow[] = rows.map((r) => ({
+    key: r.constructor,
+    colorTeam: r.constructor,
+    label: r.constructor,
+    rank: r.overall_rank,
+    gap: r.overall_gap_s,
+    formPlaces: r.form?.cumulative?.form_places ?? null,
+    confidence: r.confidence,
+  }))
   const hasRaceStart = !!raceStart.data && Object.keys(raceStart.data.views).length > 0
   const hasDeployment = !!deployment.data && Object.keys(deployment.data.scatter).length > 0
   const deploymentPanelItems = deployment.data ? deploymentPanels(deployment.data) : []
+  const deploymentMaxGap = Math.max(0, ...(deployment.data?.ranking ?? []).map((r) => r.gap ?? 0))
+  // Quarter m/s² ticks, since the gaps are a fraction of an m/s².
+  const deploymentTicks = Array.from({ length: Math.floor(deploymentMaxGap * 4) + 1 }, (_, i) => i / 4)
+  const deploymentRankingRows: RankingRow[] = (deployment.data?.ranking ?? []).map((r) => ({
+    key: r.pu,
+    colorTeam: r.works_team,
+    label: r.pu,
+    rank: r.rank,
+    gap: r.gap,
+    formPlaces: r.form_places,
+  }))
 
   const navSections: NavSection[] = [
-    rows.length > 0 ? { id: 'ranking', label: 'Ranking' } : null,
-    rows.length > 0 ? { id: 'gap-by-round', label: 'Gap by round' } : null,
-    rows.length > 0 && hasRaceStart ? { id: 'race-starts', label: 'Race starts' } : null,
-    rows.length > 0 && hasDeployment ? { id: 'deployment', label: 'Deployment' } : null,
+    rows.length > 0 ? { id: 'ranking', label: 'Pace ranking' } : null,
+    rows.length > 0 && hasRaceStart ? { id: 'race-starts', label: 'Race start ranking' } : null,
+    rows.length > 0 && hasDeployment ? { id: 'deployment', label: 'Deployment ranking' } : null,
   ].filter((s): s is NavSection => s !== null)
 
   return (
@@ -226,65 +101,68 @@ function SeasonView({ year }: { year: number }) {
       </BlurFade>
 
       <section id="ranking" className="mt-16 scroll-mt-24">
-        <CollapsibleSection title="Ranking" delay={0.08}>
-          {/* LoadingSwap reserves the table's real footprint while loading and crossfades the
-              skeleton into the resolved content in place, instead of the page suddenly growing
-              underneath a one-line "Loading…" string. Heights measured from the real rendered
-              panel (673px desktop / 744px mobile at an 11-constructor field), not estimated.
-              Breakpoint is sm: (640px), matching RankingTable's own column-width swap (RANK_W /
-              TEAM_W / FIGURE_W) -- md: (768px) would leave a 640-768px dead zone where the real
-              content has already widened to its desktop columns but the skeleton hasn't. */}
+        <CollapsibleSection title="Pace ranking" delay={0.08}>
+          {/* Lede first: what is ranked and what the arrow means is read BEFORE the table. LoadingSwap
+              reserves the real footprint while loading (heights measured from the rendered panels). Its
+              breakpoint is sm: (640px), matching RankingTable's own column-width swap. */}
+          <SectionLede>
+            Teams ranked on a 60/40 blend of race and qualifying pace, with recent rounds counting a little
+            more. The leader shows "leader"; every other team shows how far behind it is, in seconds a lap.
+            The arrow is places gained or lost on recent form versus the whole season.
+          </SectionLede>
           <LoadingSwap
             loading={season.loading}
             delay={0.08}
-            placeholder={<SkeletonCard className="min-h-[744px] sm:min-h-[673px]" />}
+            placeholder={<SkeletonCard className="min-h-[880px] sm:min-h-[681px]" />}
           >
             {season.error ? (
               <p className="text-sm text-muted">No season data for {year}.</p>
             ) : rows.length > 0 ? (
               <div className="glass rounded-panel p-6">
-                <RankingTable rows={rows} />
+                <RankingTable
+                  rows={paceRankingRows}
+                  fmtGap={(d) => `+${d.toFixed(3)}s`}
+                  tickLabel={(t) => (t === 0 ? '0' : `+${t}s`)}
+                />
                 <p className="mt-4 text-sm text-muted">
-                  Ranked on the season's blend of race and qualifying pace (60/40), weighted so
-                  recent rounds count somewhat more than early ones. Each bar is that same blend:
-                  the season's best team shows "leader", every other team its gap to it, scaled in
-                  seconds. A "partial data" or "low data" tag marks a team seen in too few rounds
-                  to read at full confidence.
+                  Each bar is that same blend rescaled to seconds, so the order and the bars can never disagree.
+                  A "partial data" or "low data" tag marks a team seen in too few rounds to read at full confidence.
                 </p>
               </div>
             ) : null}
           </LoadingSwap>
-        </CollapsibleSection>
-      </section>
 
-      {/* Always rendered (not gated on rows.length): keeps the same skeleton-then-content
-          swap as the Ranking table above, instead of these sections popping into existence
-          all at once the moment the season fetch resolves and shoving the footer down. */}
-      {(season.loading || rows.length > 0) && (
-        <>
-          <section id="gap-by-round" className="mt-20 scroll-mt-24">
-            <CollapsibleSection title="Gap by round" delay={0.16}>
-              {/* Measured 927px desktop / 947px mobile -- close enough to use one value. */}
+          {/* Always rendered (not gated on rows.length) so the swap stays in place instead of popping in. */}
+          {(season.loading || rows.length > 0) && (
+            <div id="gap-by-round" className="scroll-mt-24">
+              <SubTitle lede="The same ranking round by round: how far each team was from the round's fastest. A line near the top ran at the front; a line dropping away lost ground.">
+                Gap by round
+              </SubTitle>
+              {/* Measured on the real card: 967px at 1280, 1291px at 390 (the legend stacks). */}
               <LoadingSwap
                 loading={season.loading}
                 delay={0.16}
-                placeholder={<SkeletonCard className="min-h-[950px]" />}
+                placeholder={<SkeletonCard className="min-h-[1291px] md:min-h-[967px]" />}
               >
                 <SeasonTrendChart rows={rows} rounds={season.data?.rounds ?? []} />
               </LoadingSwap>
-            </CollapsibleSection>
-          </section>
+            </div>
+          )}
+        </CollapsibleSection>
+      </section>
 
+      {(season.loading || rows.length > 0) && (
+        <>
           {(raceStart.loading || hasRaceStart) && (
             <section id="race-starts" className="mt-20 scroll-mt-24">
-              <CollapsibleSection title="Race starts" delay={0.24}>
+              <CollapsibleSection title="Race start ranking" delay={0.24}>
                 <LoadingSwap
                   loading={raceStart.loading}
                   delay={0.24}
-                  // Measured on the real card: 947px desktop (Teams), 1199px phone (legend stacks).
-                  placeholder={<SkeletonCard className="min-h-[1200px] md:min-h-[950px]" />}
+                  // The whole section body (lede, tabs, ranking table, subheading, chart), measured: 1986px at 1280, 2479px at 390.
+                  placeholder={<SkeletonCard className="min-h-[2479px] md:min-h-[1986px]" />}
                 >
-                  {raceStart.data && <SeasonStartChart data={raceStart.data} />}
+                  {raceStart.data && <SeasonStartSection data={raceStart.data} />}
                 </LoadingSwap>
               </CollapsibleSection>
             </section>
@@ -292,7 +170,7 @@ function SeasonView({ year }: { year: number }) {
 
           {(deployment.loading || hasDeployment) && (
             <section id="deployment" className="mt-20 scroll-mt-24">
-              <CollapsibleSection title="Deployment" delay={0.32}>
+              <CollapsibleSection title="Deployment ranking" delay={0.32}>
                 <LoadingSwap
                   loading={deployment.loading}
                   delay={0.32}
@@ -303,6 +181,9 @@ function SeasonView({ year }: { year: number }) {
                           so the reserved height matches what actually renders below. Measured
                           225-266px per panel across mobile (collapsed) and desktop (open) alike --
                           closer together than assumed, so one value covers both. */}
+                      {/* Lede + ranking table + the "Deployment curve" subheading, measured as the difference between
+                          the old placeholder total and the real body: 3073px at 1280, 2233px at 390 in all. */}
+                      <SkeletonCard className="mb-8 min-h-[755px] md:min-h-[585px]" />
                       <div className="mb-8 grid gap-4">
                         {[0, 1, 2, 3, 4].map((i) => (
                           <SkeletonCard key={i} className="min-h-[270px]" />
@@ -315,6 +196,26 @@ function SeasonView({ year }: { year: number }) {
                     </>
                   }
                 >
+                  <SectionLede>
+                    Power units ranked on how hard they accelerate at full throttle, averaging the 250 to 290 km/h
+                    band and everything faster, pooled across the season. The bar is the gap to the best package in
+                    m/s². The arrow is places gained or lost on recent rounds versus the whole season.
+                  </SectionLede>
+                  {deploymentRankingRows.length > 0 && (
+                    <div className="glass mb-8 rounded-panel p-6">
+                      <RankingTable
+                        rows={deploymentRankingRows}
+                        fmtGap={(d) => `+${d.toFixed(2)}`}
+                        ticks={deploymentTicks}
+                        tickLabel={(t) => (t === 0 ? '0' : `+${t}`)}
+                        nameHeader="Power unit"
+                      />
+                      <p className="mt-4 text-sm text-muted">
+                        Figures are m/s² behind the best package. Each round is compared with that round&apos;s best,
+                        so the arrow is not thrown by tracks where the top speed band was never reached.
+                      </p>
+                    </div>
+                  )}
                   {deploymentPanelItems.length > 0 && (
                     // Full section width (matching the Ranking table above), not the narrower
                     // max-w-5xl WeekendPage uses for its 3-insight hero column: on this denser,
@@ -363,8 +264,15 @@ function SeasonView({ year }: { year: number }) {
                       </div>
                     </div>
                   )}
+                  <SubTitle lede="Median acceleration at each speed, one line per team or power unit. A line dropping toward zero at high speed is consistent with electrical deployment running out (clipping); lower acceleration at low-to-mid speed is consistent with energy being harvested there. Hover a dot for its speed band and sample count.">
+                    Deployment curve
+                  </SubTitle>
                   <BlurFade delay={0.06 * deploymentPanelItems.length}>
-                    <SeasonDeploymentChart scatter={deployment.data?.scatter ?? {}} puGroups={deployment.data?.pu_groups ?? []} />
+                    <SeasonDeploymentChart
+                      scatter={deployment.data?.scatter ?? {}}
+                      puGroups={deployment.data?.pu_groups ?? []}
+                      ranking={deployment.data?.ranking}
+                    />
                   </BlurFade>
                 </LoadingSwap>
               </CollapsibleSection>

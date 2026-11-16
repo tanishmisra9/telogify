@@ -14,9 +14,15 @@ const TIP_W = 220
 export function PointPopup({
   hovered,
   tip,
+  prefer = 'below',
+  gap = 0,
 }: {
   hovered: HoveredPoint | null
   tip: { title: string; lines: string[] } | null
+  // For a readout over a whole region (a box-plot column): pass that region as `hovered.box`, `prefer="above"`
+  // and a small `gap`, and the bubble lands outside the region instead of on top of the marks.
+  prefer?: 'below' | 'above'
+  gap?: number
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [h, setH] = useState(60)
@@ -30,7 +36,7 @@ export function PointPopup({
     typeof window === 'undefined'
       ? null
       : { w: document.documentElement.clientWidth, h: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY }
-  const pos = hovered && view ? placeBubble(hovered.box, { w: TIP_W, h }, view, 'center', 0) : null
+  const pos = hovered && view ? placeBubble(hovered.box, { w: TIP_W, h }, view, 'center', gap, 8, prefer) : null
 
   return createPortal(
     <AnimatePresence>

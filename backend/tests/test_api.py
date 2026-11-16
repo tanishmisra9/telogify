@@ -458,6 +458,9 @@ def test_results(client):
     assert rows[1]["gap_label"] == "+2.5s"
     assert rows[2]["gap_label"] == "+3 Laps"
     assert rows[0]["points"] == 25
+    # Numeric gaps for the Finishing order switcher: lead-lap finishers only, interval to the car ahead.
+    assert [r["gap_to_leader_s"] for r in rows] == [0.0, 2.5, None]
+    assert [r["interval_s"] for r in rows] == [None, 2.5, None]
 
 
 def test_sprint_session_endpoints(client, test_engine):
@@ -871,10 +874,28 @@ def test_season_stats_ok_for_seeded_year(client):
     assert out is not None and "total_laps" in out
 
 
+def test_traced_insights_serves_only_insights_with_an_unambiguous_source(client, test_engine):
+    import json as _json
+
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        trace = [{"tool": "get_constructor_ranking", "args": {}, "result": _json.dumps([{"constructor": "Ferrari", "race_pace_gap_s": 0.2501}])}]
+        db.add(Insight(weekend_id=wk.id, slot=2, header="H2", explanation_web="Ferrari were 0.25 seconds behind.", explanation_email="E", source_tool_calls_json=trace))
+        db.add(Insight(weekend_id=wk.id, slot=3, header="H3", explanation_web="Ferrari were 9.9 seconds behind.", explanation_email="E", source_tool_calls_json=trace))
+        db.commit()
+    resp = client.get("/insights/traced")
+    assert resp.headers["cache-control"] == "public, max-age=3600"
+    out = resp.json()
+    assert [e["header"] for e in out] == ["H2"]  # slot 1's empty trace and slot 3's absent number are left out
+    assert out[0]["row"] == {"constructor": "Ferrari", "race_pace_gap_s": 0.2501} and out[0]["traced"] == "0.25"
+    assert out[0]["event_name"]
+
+
 def test_season_deployment_shape_without_insights(client):
     out = client.get("/season/2025/deployment").json()
     assert "scatter" in out and "pu_groups" in out and "insights" in out
     assert out["insights"] == []
+    assert out["ranking"] == []  # 2025: the PU supply map is 2026-only, so no ranking is claimed
     pu_names = {g["name"] for g in out["pu_groups"]}
     assert "Mercedes" in pu_names and "Ferrari" in pu_names
 

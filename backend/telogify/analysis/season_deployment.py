@@ -119,3 +119,61 @@ def rank_groups_best_to_worst(scatter: dict[str, list[list[float]]]) -> list[Gro
         return (score is None, -(score or 0.0))
 
     return sorted(metrics, key=sort_key)
+
+
+def package_form(
+    by_round: dict[int, dict[str, list[list[float]]]], current_round: int
+) -> dict[str, dict]:
+    """Rank movement per power unit from its per-round package score, same meaning as the other Trends
+    arrows (places gained on recent form versus the whole season; None below MIN_ROUNDS_FOR_FORM).
+
+    A raw package score is NOT comparable across rounds (a track with no bins past MID_HI scores on punch
+    alone, which reads higher), so each round's value is the gap to that round's best package, counted only
+    for a group whose measured bands match the best group's. Lower is better, as form_movement expects."""
+    from telogify.analysis.season import form_movement  # local: season.py is the heavier module
+
+    values: dict[str, list[tuple[int, float]]] = {}
+    for rnd, scatter in by_round.items():
+        scored = [
+            (m, _package_score(m))
+            for m in (measure_group(g, scatter) for g in PU_GROUPS if any(scatter.get(t) for t in g.teams))
+        ]
+        scored = [(m, sc) for m, sc in scored if sc is not None]
+        if not scored:
+            continue
+        best_m, best = max(scored, key=lambda t: t[1])
+        sig = (best_m.punch is not None, best_m.hold is not None)
+        for m, sc in scored:
+            if (m.punch is not None, m.hold is not None) == sig:
+                values.setdefault(m.group.name, []).append((rnd, best - sc))
+    return form_movement(values, current_round)
+
+
+def build_ranking(
+    scatter: dict[str, list[list[float]]], by_round: dict[int, dict[str, list[list[float]]]]
+) -> list[dict]:
+    """The Deployment ranking table: every power unit ranked best to worst on the season-pooled package
+    score (the same order the verdict panels use), its gap to the best, and the form arrow. `gap` and
+    `score` are m/s^2; None when neither band could be measured."""
+    form = package_form(by_round, max(by_round)) if by_round else {}
+    ranked = rank_groups_best_to_worst(scatter)
+    scores = [_package_score(m) for m in ranked]
+    best = max((s for s in scores if s is not None), default=None)
+    # A score built from one band (the other too thin to read) is not like-for-like with the best group's two-band
+    # mean: it keeps its rank but shows no gap, rather than a misleading m/s^2 figure.
+    best_sig = next(((m.punch is not None, m.hold is not None) for m, sc in zip(ranked, scores) if sc == best), None)
+    return [
+        {
+            "pu": m.group.name,
+            "works_team": m.group.works_team,
+            "rank": i + 1,
+            "score": sc,
+            "gap": None
+            if sc is None or best is None or (m.punch is not None, m.hold is not None) != best_sig
+            else best - sc,
+            "form_places": form.get(m.group.name, {}).get("form_places"),
+            "rank_weighted": form.get(m.group.name, {}).get("rank_weighted"),
+            "rank_flat": form.get(m.group.name, {}).get("rank_flat"),
+        }
+        for i, (m, sc) in enumerate(zip(ranked, scores))
+    ]

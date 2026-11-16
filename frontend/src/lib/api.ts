@@ -112,8 +112,28 @@ export interface ResultRow {
   driver: string
   constructor: string | null
   gap_label: string
+  // Seconds behind the leader / the car directly ahead; null for a car with no honest figure (lapped, retired,
+  // no time). Absent on an API that predates them.
+  gap_to_leader_s?: number | null
+  interval_s?: number | null
   points: number
   strategy: string
+}
+
+// One published figure and the exact tool-return row it traces to (GET /insights/traced), for /how-it-works.
+export interface TracedExample {
+  year: number
+  round: number
+  event_name: string
+  header: string
+  explanation_web: string
+  traced: string // the figure as published, e.g. "0.167"
+  traced_with_unit: string // e.g. "0.167 seconds"
+  raw: string // the logged value, unrounded
+  key: string // the field it came from
+  tool: string
+  args: Record<string, unknown>
+  row: Record<string, string | number | boolean | null>
 }
 
 export interface SessionInfo {
@@ -346,8 +366,22 @@ export interface SeasonStartData {
   views: { teams?: { rows: SeasonStartRow[] }; pu?: { rows: SeasonStartRow[] } }
 }
 
+// One power unit in the Deployment ranking table (backend analysis/season_deployment.py build_ranking).
+export interface DeploymentRankingRow {
+  pu: string
+  works_team: string
+  rank: number
+  score: number | null // mean of the punch and hold bands, m/s^2
+  gap: number | null // m/s^2 behind the best package
+  form_places: number | null // places gained (+) or lost (-) on recent rounds vs the whole season; null below 4 rounds
+  rank_weighted: number | null
+  rank_flat: number | null
+}
+
 export interface SeasonDeployment {
   scatter: SeasonDeploymentScatter
+  // Absent on an API that predates it, and empty for a year the power-unit supply map doesn't describe.
+  ranking?: DeploymentRankingRow[]
   pu_groups: PuGroup[]
   // LLM-written verdict per power-unit manufacturer, ranked best to worst (slot = rank);
   // empty until `telogify run-season-deployment` has generated one for this year.

@@ -8,7 +8,10 @@ export interface AccelBin {
   n: number
 }
 
-export function binBySpeed(points: [number, number][], binWidthKmh = 10): AccelBin[] {
+// The bin width every caller uses; the Deployment readout states its km/h range from this, not a literal.
+export const BIN_WIDTH_KMH = 10
+
+export function binBySpeed(points: [number, number][], binWidthKmh = BIN_WIDTH_KMH): AccelBin[] {
   if (points.length === 0) return []
   const buckets = new Map<number, number[]>()
   for (const [speed, accel] of points) {
