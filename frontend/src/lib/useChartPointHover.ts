@@ -45,7 +45,9 @@ export function useChartPointHover(containerRef: RefObject<HTMLElement | null>, 
   }, [containerRef])
 
   const showTip = (key: string, round: number, el: Element) => {
-    const c = el.getBoundingClientRect()
+    // A chart whose hit area is bigger than the thing it describes (a full-height catcher) marks the real extent
+    // with `data-anchor`, so the readout lands by the data and not by the catcher's edge.
+    const c = (el.querySelector('[data-anchor]') ?? el).getBoundingClientRect()
     const sx = window.scrollX
     const sy = window.scrollY
     setHovered({ key, round, box: { left: c.left + sx, top: c.top + sy, right: c.right + sx, bottom: c.bottom + sy } })

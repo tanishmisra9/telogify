@@ -155,6 +155,9 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                   {/* Full-height, full-band-width invisible catcher so hover doesn't flicker
                       when the cursor moves through the gaps between marks. */}
                   <rect x={cx - band.step / 2} y={0} width={band.step} height={INNER_H} fill="transparent" />
+                  {/* The readout anchors to THIS group (the marks + labels), not the catcher above: the catcher spans the
+                      plot top, which one car's slow outlier stretches, so every bubble would float up to it. */}
+                  <g data-anchor>
                   <line x1={cx} x2={cx} y1={y(s.whisker_high)} y2={yQ3} stroke={stroke} strokeWidth={1.5} />
                   <line x1={cx} x2={cx} y1={yQ1} y2={y(s.whisker_low)} stroke={stroke} strokeWidth={1.5} />
                   <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(s.whisker_high)} y2={y(s.whisker_high)} stroke={stroke} strokeWidth={1.5} />
@@ -203,6 +206,7 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
                       </text>
                     </>
                   )}
+                  </g>
                 </g>
               )
             })}
@@ -214,8 +218,8 @@ export function PaceSpreadChart({ pace }: { pace: PaceData }) {
         <ScrollFadeEdge visible={canScrollRight} />
         </div>
       )}
-      {/* The readout is anchored to the hovered COLUMN's whole box (plot top to its bottom labels) and prefers the
-          side above it, so it sits outside the column and never covers the box, whiskers, outliers or labels. It
+      {/* The readout is anchored to the hovered column's own marks and labels (`data-anchor`: its highest mark down to
+          its bottom labels, NOT the plot top) and prefers the side above it, so it sits outside the column and never covers the box, whiskers, outliers or labels. It
           renders on the page surface (portal), so it may leave the card; the shared hook closes it on scroll. */}
       <PointPopup hovered={hovered} tip={tip} prefer="above" gap={10} />
 
