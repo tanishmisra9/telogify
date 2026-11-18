@@ -103,7 +103,7 @@ export function Nav() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b-[1.5px] border-ink bg-glass backdrop-blur-md">
+      <header className="nav-glass sticky top-0 z-40 border-b-[1.5px] border-ink">
       <nav className="mx-auto flex h-16 max-w-[1312px] items-center justify-between px-6">
         <Link
           to="/"

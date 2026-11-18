@@ -99,6 +99,21 @@
   box-shadow: 4px 4px 0 var(--color-shadow);
 }
 
+/* Nav glass lives on a pseudo-element, NOT on the header: Safari 26 tints its top strip from the
+   header's own background-color when it has one (a translucent blend it never re-samples on a theme
+   flip) and otherwise falls back to the opaque html/body background, which flips instantly. Same
+   look as bg-glass + backdrop-blur-md. */
+.nav-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--color-glass);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
 /* Cards that should react to the cursor: lift and deepen the shadow on hover. */
 .lift {
   transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
