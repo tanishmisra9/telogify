@@ -55,9 +55,12 @@ from telogify.ingest.quali_trace import store_quali_traces
 from telogify.ingest.race_start import (
     Skipped,
     extract_race_start_detail,
+    extract_restarts,
+    has_restart_rows,
     has_timed_rows,
     should_write,
     store_race_start,
+    write_race_restarts,
     write_race_start,
 )
 from telogify.ingest.deployment import store_deployment
@@ -511,11 +514,11 @@ def run_refresh_results(year: int, round: int, dry_run: bool = False) -> list[Re
 
 def run_refresh_race_start(
     year: int, round: int, dry_run: bool = False
-) -> tuple[dict[str, dict], Skipped] | None:
+) -> tuple[dict[str, dict], Skipped, list[dict[str, dict]]] | None:
     """Race-start-only backfill for an already-ingested round: re-fetches just the race's
-    laps/telemetry (FastF1, then OpenF1 as in a normal ingest) and rewrites only its RaceStart and
-    RaceStartSkip rows, so published insights and every other table are untouched. Returns
-    `(rows, skipped)` (what was, or with `dry_run` would be, written), or None when the read has
+    laps/telemetry (FastF1, then OpenF1 as in a normal ingest) and rewrites only its RaceStart,
+    RaceStartSkip and RaceRestart rows, so published insights and every other table are untouched.
+    Returns `(rows, skipped, restarts)` (what was, or with `dry_run` would be, written), or None when the read has
     nothing worth storing (see `should_write`: no telemetry, or a failed read), in which case
     nothing is written. Everything is fetched and extracted before the first write."""
     with Session(engine) as db:
@@ -531,10 +534,18 @@ def run_refresh_race_start(
         ).first()
         if not should_write(found, skipped, has_timed_rows(db, race.id)):
             return None  # a failed or degraded read must never replace an earlier good one
+        restarts: list[dict[str, dict]] = []
+        if found:  # restarts are searched from the original start: no measured start, nothing to anchor them to
+            try:
+                restarts = extract_restarts(ses)
+            except Exception:  # noqa: BLE001 - optional table: the original start must still be written
+                logger.warning("restart extraction failed for %s round %s; keeping existing rows", year, round, exc_info=True)
         if not dry_run:
             write_race_start(db, race.id, found, skipped)  # reuse the read above: no second extraction
+            if restarts or not has_restart_rows(db, race.id):  # never wipe good restarts with an empty read
+                write_race_restarts(db, race.id, restarts)
             db.commit()
-        return found, skipped
+        return found, skipped, restarts
 
 
 @dataclass

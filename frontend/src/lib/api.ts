@@ -354,6 +354,8 @@ export interface SeasonStartPoint {
   gap_pct: number // % slower than that round's best group
   gap_s: number
   n_cars: number
+  // Standing starts combined into this round's point (2 after a red-flag restart). Absent on an older API build.
+  n_starts?: number
 }
 
 export interface SeasonStartRow {

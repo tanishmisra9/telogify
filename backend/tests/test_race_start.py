@@ -386,7 +386,8 @@ def test_refresh_extracts_once_and_never_replaces_good_rows_with_an_empty_read(t
 
     monkeypatch.setattr(pipeline, "extract_race_start_detail", counting)
     monkeypatch.setattr(pipeline, "load_race_for_backfill", lambda y, r: _FakeSession(_FIELD))
-    found, skipped = pipeline.run_refresh_race_start(2033, 1)
+    found, skipped, restarts = pipeline.run_refresh_race_start(2033, 1)
+    assert restarts == []
     assert len(found) == 10 and calls["n"] == 1  # one extraction, not two
     with Session(test_engine) as db:
         assert len(db.exec(select(RaceStart)).all()) == 10  # replaced the old row
@@ -605,3 +606,220 @@ def test_no_wording_names_a_cause_the_data_cannot_prove():
         assert not any(w in text.lower() for w in ("pit-lane", "pit lane", "stall", "held up", "safety car", "crash", "red flag", "rain", "did not all leave"))
     for text in NO_START_SUMMARY.values():
         assert not any(w in text.lower() for w in ("safety car", "crash", "red flag", "rain"))
+
+
+# ---- red-flag standing restarts --------------------------------------------------------------
+
+from telogify.analysis.race_start import restart_clusters, stationary_launches
+from telogify.ingest.race_start import extract_restarts, red_flag_times
+from telogify.models import RaceRestart
+
+
+def _race_car(restarts: list[float], rate: float = 40.0, top: float = 330.0, pit_exit: float | None = None, rates=None):
+    """One car over a whole red-flagged race, seconds from `_T0`: original start launching at 0.4 s,
+    driving until 120 s, stationary through the stoppage, then a standing launch at each time in
+    `restarts` (each preceded by 60 s still). `pit_exit` adds a slow 80 km/h pit-exit release."""
+    t, v = [], []
+    for x in [i * 0.2 for i in range(-40, 100)]:  # original start window
+        t.append(x)
+        v.append(min(top, max(0.0, (x - 0.4) * rate)))
+    for x in range(21, 121, 2):
+        t.append(float(x))
+        v.append(150.0)
+    for k, launch in enumerate(restarts):
+        stop = 130.0 + 1000.0 * k
+        if pit_exit is not None:
+            for x in [stop + i * 0.2 for i in range(0, 60)]:
+                t.append(x)
+                v.append(0.0 if x < stop + 1 else min(80.0, (x - stop - 1) * 20.0))
+            stop += 40
+        for x in [stop + i * 1.0 for i in range(0, int(launch - 8 - stop))]:
+            t.append(x)
+            v.append(0.0)
+        for x in [launch - 8 + i * 0.2 for i in range(0, 140)]:
+            t.append(x)
+            v.append(min(top, max(0.0, (x - launch) * (rates[k] if rates else rate))) if x >= launch - 0.5 else 0.0)
+        for x in range(int(launch + 21), int(launch + 120), 2):
+            t.append(float(x))
+            v.append(150.0)
+    return pd.DataFrame({"Date": [_T0 + pd.Timedelta(seconds=x) for x in t], "Speed": v})
+
+
+class _RedFlagSession(_FakeSession):
+    def __init__(self, restarts_by_car, messages, **kw):
+        super().__init__(_FIELD, **kw)
+        self._cars = {str(i + 1): _race_car(r) for i, r in enumerate(restarts_by_car)}
+        self._rc = pd.DataFrame(messages, columns=["Time", "Message", "Flag"])
+
+    @property
+    def race_control_messages(self):
+        return self._rc
+
+
+def _red(at: float, flag="RED", msg="RED FLAG - RACE SUSPENDED"):
+    return (_T0 + pd.Timedelta(seconds=at), msg, flag)
+
+
+def _field(*launches):
+    return [list(launches) for _ in _FIELD]
+
+
+def test_stationary_launches_need_a_real_stop_not_a_slow_corner():
+    t = [float(i) for i in range(20)]
+    stop_then_go = [0.0] * 10 + [50.0] * 10
+    slowing = [50.0] * 5 + [1.0] * 2 + [60.0] * 13  # 2 s at <= 2 km/h: a corner, not a start
+    assert stationary_launches(t, stop_then_go) == [10.0]
+    assert stationary_launches(t, slowing) == []
+
+
+def test_restart_clusters_need_min_field_cars_launching_together():
+    five = {f"D{i}": [100.0 + i * 0.5] for i in range(5)}
+    assert restart_clusters(five, 0.0) == [pytest.approx(101.0)]
+    assert restart_clusters({k: v for k, v in list(five.items())[:4]}, 0.0) == []
+    spread = {f"D{i}": [100.0 + i * 10] for i in range(5)}  # one car every 10 s: not a field
+    assert restart_clusters(spread, 0.0) == []
+    assert restart_clusters(five, 200.0) == []  # nothing after the cutoff
+
+
+def test_a_red_flag_standing_restart_is_found_and_timed_like_a_start():
+    ses = _RedFlagSession(_field(2000.0), [_red(130.0)])
+    out = extract_restarts(ses)
+    assert len(out) == 1 and len(out[0]) == 10
+    assert all(0 < v["t_0_100_s"] < v["t_0_200_s"] < 8 for v in out[0].values())
+    # the original start is untouched by the restart machinery
+    assert len(extract_race_start(ses)) == 10
+
+
+def test_two_stoppages_give_two_restarts_in_race_order():
+    ses = _RedFlagSession(_field(1000.0, 3000.0), [_red(130.0), _red(1100.0)])
+    assert len(extract_restarts(ses)) == 2
+
+
+def test_no_red_flag_means_no_restart_even_if_cars_launch_again():
+    # a safety-car rolling restart never stops the whole field, but even a full standing cluster with no red flag is not a start
+    assert extract_restarts(_RedFlagSession(_field(2000.0), [])) == []
+
+
+def test_a_red_flag_before_the_original_start_is_not_a_restart():
+    # Belgium 2025 / Bahrain 2026: red-flagged before the race started
+    assert extract_restarts(_RedFlagSession(_field(2000.0), [_red(-3600.0)])) == []
+
+
+def test_chequered_flag_is_not_a_red_flag():
+    ses = _RedFlagSession(_field(2000.0), [(_T0 + pd.Timedelta(seconds=130), "CHEQUERED FLAG", "CHEQUERED")])
+    assert red_flag_times(ses) == []
+    assert extract_restarts(ses) == []
+
+
+def test_red_flag_is_read_from_the_flag_column_or_the_message():
+    by_flag = _RedFlagSession(_field(2000.0), [_red(130.0, flag="RED", msg="RACE SUSPENDED")])
+    by_text = _RedFlagSession(_field(2000.0), [_red(130.0, flag=None)])
+    assert len(extract_restarts(by_flag)) == 1 and len(extract_restarts(by_text)) == 1
+
+
+def test_a_red_flag_with_no_restart_cluster_finds_nothing():
+    assert extract_restarts(_RedFlagSession(_field(), [_red(130.0)])) == []
+
+
+def test_extractor_has_nothing_to_say_without_race_control_or_telemetry():
+    ses = _RedFlagSession(_field(2000.0), [_red(130.0)])
+    ses._raises = True
+    assert extract_restarts(ses) == []
+    assert extract_restarts(_FakeSession(_FIELD)) == []  # no race_control_messages attribute at all
+
+
+def test_store_writes_restarts_idempotently_and_a_degraded_read_keeps_them(test_engine):
+    from telogify.ingest.loader import WeekendData
+
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2032, round=1, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        db.add(SessionRow(weekend_id=wk.id, session_type="R", status="loaded"))
+        db.commit()
+        good = _RedFlagSession(_field(2000.0), [_red(130.0)])
+        store_race_start(WeekendData(weekend=wk, sessions={"R": good}), db)
+        store_race_start(WeekendData(weekend=wk, sessions={"R": good}), db)
+        rows = db.exec(select(RaceRestart)).all()
+        assert len(rows) == 10 and {r.start_index for r in rows} == {1}
+        assert len(db.exec(select(RaceStart)).all()) == 10  # the original start's table is separate
+        # a degraded re-read that finds no restart must not wipe the stored ones
+        store_race_start(WeekendData(weekend=wk, sessions={"R": _RedFlagSession(_field(), [])}), db)
+        assert len(db.exec(select(RaceRestart)).all()) == 10
+
+
+def test_a_pit_exit_style_release_that_never_reaches_100_is_not_a_start():
+    ses = _RedFlagSession(_field(2000.0), [_red(130.0)])
+    ses._cars = {str(i + 1): _race_car([2000.0], top=80.0) for i in range(len(_FIELD))}
+    assert extract_restarts(ses) == []
+
+
+def test_one_restart_per_stoppage_is_the_last_standing_cluster_before_the_next_red_flag():
+    # an extra formation-lap-style launch (slower, 30 km/h/s) at 1500 s, the real restart (50 km/h/s) at 2000 s
+    ses = _RedFlagSession(_field(), [_red(130.0)])
+    ses._cars = {str(i + 1): _race_car([1500.0, 2000.0], rates=[30.0, 50.0]) for i in range(len(_FIELD))}
+    out = extract_restarts(ses)
+    assert len(out) == 1
+    # 50 km/h/s reaches 100 km/h in ~2 s, 30 km/h/s in ~3.3 s
+    assert max(v["t_0_100_s"] for v in out[0].values()) < 2.6
+
+
+def test_a_launch_too_slow_to_be_a_field_start_is_not_a_restart():
+    # every car is timed, but 17 km/h/s takes ~5.9 s to reach 100 km/h: not a standing start
+    ses = _RedFlagSession(_field(), [_red(130.0)])
+    ses._cars = {str(i + 1): _race_car([2000.0], rate=17.0) for i in range(len(_FIELD))}
+    assert extract_restarts(ses) == []
+
+
+def test_refresh_writes_restarts_with_the_start_and_a_dry_run_writes_neither(test_engine, monkeypatch):
+    from telogify import pipeline
+
+    monkeypatch.setattr(pipeline, "engine", test_engine)
+    with Session(test_engine) as db:
+        _weekend_with_race(db, year=2034)
+    monkeypatch.setattr(pipeline, "load_race_for_backfill", lambda y, r: _RedFlagSession(_field(2000.0), [_red(130.0)]))
+    _, _, restarts = pipeline.run_refresh_race_start(2034, 1, dry_run=True)
+    assert len(restarts) == 1
+    with Session(test_engine) as db:
+        assert db.exec(select(RaceRestart)).all() == []
+    pipeline.run_refresh_race_start(2034, 1)
+    with Session(test_engine) as db:
+        assert len(db.exec(select(RaceRestart)).all()) == 10
+    # a later read that finds no restart keeps the stored ones
+    monkeypatch.setattr(pipeline, "load_race_for_backfill", lambda y, r: _RedFlagSession(_field(), []))
+    pipeline.run_refresh_race_start(2034, 1)
+    with Session(test_engine) as db:
+        assert len(db.exec(select(RaceRestart)).all()) == 10
+
+
+def test_restarts_are_not_stored_for_a_race_whose_original_start_was_not_measured(test_engine):
+    from telogify.ingest.loader import WeekendData
+
+    with Session(test_engine) as db:
+        wk = RaceWeekend(year=2035, round=1, circuit_name="X", country="Y", event_name="Z GP")
+        db.add(wk)
+        db.commit()
+        db.refresh(wk)
+        db.add(SessionRow(weekend_id=wk.id, session_type="R", status="loaded"))
+        db.commit()
+        ses = _RedFlagSession(_field(2000.0), [_red(130.0)])
+        # the original start's telemetry is missing but the restart's is intact
+        ses._cars = {k: v[v["Date"] > _T0 + pd.Timedelta(seconds=100)] for k, v in ses._cars.items()}
+        assert extract_restarts(ses)  # the restart IS readable, so only the guard keeps it out
+        store_race_start(WeekendData(weekend=wk, sessions={"R": ses}), db)
+        assert db.exec(select(RaceRestart)).all() == [] and db.exec(select(RaceStart)).all() == []
+
+
+def test_a_restart_read_that_raises_never_blocks_the_original_start_refresh(test_engine, monkeypatch):
+    from telogify import pipeline
+
+    monkeypatch.setattr(pipeline, "engine", test_engine)
+    with Session(test_engine) as db:
+        _weekend_with_race(db, year=2036, with_rows=False)
+    monkeypatch.setattr(pipeline, "load_race_for_backfill", lambda y, r: _FakeSession(_FIELD))
+    monkeypatch.setattr(pipeline, "extract_restarts", lambda s: (_ for _ in ()).throw(ValueError("odd feed")))
+    found, _, restarts = pipeline.run_refresh_race_start(2036, 1)
+    assert len(found) == 10 and restarts == []
+    with Session(test_engine) as db:
+        assert len(db.exec(select(RaceStart)).all()) == 10

@@ -63,6 +63,16 @@ SPEED_DISTANCE_M = 75.0
 # that flag reads true under 70-100% throttle on some launches (China, Japan 2026).
 SPEED_DROP_KMH = 3.0
 
+# Red-flag standing restarts (see `restart_clusters`). A car must have sat still this long before a
+# launch for that launch to count: a car that is merely slowing for a turn is not a start.
+RESTART_MIN_STOP_S = 4.0
+# Cars of one start launch within this span of each other (reaction times are tenths of a second;
+# a pit-exit release is a separate, earlier cluster).
+RESTART_CLUSTER_S = 6.0
+# A restart whose median 0-100 km/h time is above this is not a standing start of the field. Measured
+# on the 2026 Dutch, Italian and Monaco restarts and Monaco 2024: 2.6-2.9 s (original starts 2.9-3.0 s).
+RESTART_MAX_T100_S = 4.5
+
 # (t_0_100, t_0_200 or None) in seconds after lights out.
 Launch = tuple[float, float | None]
 
@@ -210,6 +220,47 @@ def launch_outcome(
     if t200 is not None and t200 - lights_out_s > MAX_WINDOW_S:
         t200 = None
     return (t100 - lights_out_s, (None if t200 is None else t200 - lights_out_s)), None
+
+
+def stationary_launches(time_s: list[float], speed_kmh: list[float]) -> list[float]:
+    """Instants a car pulled away from a standstill that lasted at least `RESTART_MIN_STOP_S`: the
+    first sample above `STATIONARY_KMH` after the stop. Candidates only; `restart_clusters` and the
+    launch maths decide which of them are a start."""
+    out: list[float] = []
+    run_start: float | None = None
+    last = 0.0
+    for t, v in zip(time_s, speed_kmh):
+        if v <= STATIONARY_KMH:
+            if run_start is None:
+                run_start = t
+            last = t
+        else:
+            if run_start is not None and last - run_start >= RESTART_MIN_STOP_S:
+                out.append(t)
+            run_start = None
+    return out
+
+
+def restart_clusters(launches: dict[str, list[float]], after_s: float) -> list[float]:
+    """Candidate lights-out instants after `after_s`: a moment when at least `MIN_FIELD` different cars
+    pulled away from a standstill within `RESTART_CLUSTER_S` of each other, as the median of that
+    group. Pit-exit releases and extra formation laps form clusters too; they time as "too slow" and
+    are rejected by the launch maths, so being generous here costs nothing."""
+    events = sorted((t, d) for d, ts in launches.items() for t in ts if t > after_s)
+    found: list[float] = []
+    i = 0
+    while i < len(events):
+        group: dict[str, float] = {}
+        j = i
+        while j < len(events) and events[j][0] - events[i][0] <= RESTART_CLUSTER_S:
+            group.setdefault(events[j][1], events[j][0])
+            j += 1
+        if len(group) >= MIN_FIELD:
+            found.append(float(median(group.values())))
+            i = j
+        else:
+            i += 1
+    return found
 
 
 def launch_times(time_s: list[float], speed_kmh: list[float], lights_out_s: float) -> Launch | None:

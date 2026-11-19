@@ -1,9 +1,15 @@
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from telogify.analysis.season_deployment import pu_map_applies
-from telogify.analysis.season_start import MIN_ROUNDS_FOR_FORM, build_season_start, build_view, round_gaps
-from telogify.models import RaceStart, RaceWeekend
+from telogify.analysis.season_start import (
+    MIN_ROUNDS_FOR_FORM,
+    build_season_start,
+    build_view,
+    combine_starts,
+    round_gaps,
+)
+from telogify.models import RaceRestart, RaceStart, RaceWeekend
 from telogify.models import Session as SessionRow
 
 
@@ -165,3 +171,73 @@ def test_pu_map_applies_only_to_its_season_and_only_when_it_covers_every_team():
     assert pu_map_applies(2026, {"Ferrari", "McLaren", "Audi"})
     assert not pu_map_applies(2025, {"Ferrari", "McLaren"})  # Red Bull ran Honda in 2025
     assert not pu_map_applies(2026, {"Ferrari", "Brand New Team"})
+
+
+# ---- red-flag restarts: every start of a race counts ----------------------------------------
+
+
+def test_a_round_with_one_start_is_exactly_round_gaps_plus_one_start():
+    cars = [car("A", 2.4, 4.4), car("B", 2.5, 4.8)]
+    metric, gaps = round_gaps(cars, IDENT)
+    assert combine_starts([cars], IDENT) == (metric, {k: {**v, "n_starts": 1} for k, v in gaps.items()})
+    assert combine_starts([cars, []], IDENT) == combine_starts([cars], IDENT)  # an empty restart adds nothing
+
+
+def test_starts_are_compared_with_their_own_best_not_pooled():
+    # The restart is 0.3 s faster for everyone. Pooled raw, B (one car per start) would be fine, but A
+    # (original only, its car retired before the restart) would look 0.3 s slower than it is.
+    original = [car("A", 3.0, 5.0), car("B", 3.1, 5.2)]
+    restart = [car("B", 2.7, 4.6), car("C", 2.8, 4.7)]
+    metric, out = combine_starts([original, restart], IDENT)
+    assert metric == 200
+    assert out["A"]["gap_pct"] == pytest.approx(0.0)  # best in the original, the only start it has
+    # B: 4% behind in the original, 100*(0.1/2.7)... on 0-200: (5.2-5.0)/5.0 = 4.0%, (4.6-4.6)/4.6 = 0%
+    assert out["B"]["gap_pct"] == pytest.approx(2.0)  # mean of 4.0% and 0.0%, one car each
+    assert out["C"]["gap_pct"] == pytest.approx((4.7 - 4.6) / 4.6 * 100)
+    assert out["A"]["n_starts"] == 2 and out["B"]["n_cars"] == 2
+
+
+def test_gaps_are_weighted_by_the_cars_each_start_measured():
+    original = [car("A", 3.0, 5.0), car("A", 3.0, 5.0), car("A", 3.0, 5.0), car("B", 3.0, 5.5)]
+    restart = [car("A", 2.8, 4.6), car("B", 2.8, 4.6)]  # A: 3 cars then 1; B: 1 then 1
+    _, out = combine_starts([original, restart], IDENT)
+    assert out["B"]["gap_pct"] == pytest.approx((10.0 * 1 + 0.0 * 1) / 2)  # B has 1 car in each start
+    assert out["A"]["gap_pct"] == pytest.approx(0.0)  # best in both starts
+
+
+def test_the_rounds_best_group_is_rebased_to_exactly_zero():
+    # A is best in the original, B in the restart: the weighted mean leaves neither at 0
+    original = [car("A", 3.0, 5.0), car("B", 3.3, 5.5)]
+    restart = [car("A", 2.9, 4.8), car("B", 2.7, 4.5)]
+    _, out = combine_starts([original, restart], IDENT)
+    assert min(v["gap_pct"] for v in out.values()) == 0.0
+    assert min(v["gap_s"] for v in out.values()) == 0.0
+
+
+def test_a_restart_on_a_coarser_metric_than_the_round_is_left_out():
+    original = [car("A", 3.0, 5.0), car("B", 3.1, 5.3)]
+    restart = [car("A", 2.7), car("B", 2.9)]  # 0-100 only
+    metric, out = combine_starts([original, restart], IDENT)
+    assert metric == 200 and out["A"]["n_starts"] == 1 and out["B"]["n_starts"] == 1
+    assert out == combine_starts([original], IDENT)[1]
+
+
+def test_build_season_start_counts_restart_rows_but_the_weekend_table_is_untouched(db_session):
+    _seed(db_session, 2026, {1: [("Ferrari", 3.0, 5.0), ("McLaren", 3.1, 5.2)]})
+    race = db_session.exec(select(SessionRow).where(SessionRow.session_type == "R")).all()[-1]
+    for team, a, b in [("McLaren", 2.7, 4.6), ("Ferrari", 2.9, 4.8)]:
+        db_session.add(RaceRestart(session_id=race.id, start_index=1, driver=f"{team}1", constructor=team, t_0_100_s=a, t_0_200_s=b))
+    db_session.commit()
+    out = build_season_start(2026, db_session)
+    teams = {r["key"]: r for r in out["views"]["teams"]["rows"]}
+    assert teams["McLaren"]["points"][0]["n_starts"] == 2
+    assert teams["McLaren"]["points"][0]["gap_pct"] == pytest.approx(0.0)  # best of the restart pulls it to 0
+    assert len(db_session.exec(select(RaceStart).where(RaceStart.session_id == race.id)).all()) == 2  # card rows only
+
+
+def test_the_original_start_sets_the_rounds_metric_even_when_a_restart_has_more():
+    original = [car("A", 3.0), car("B", 3.1)]  # 0-100 only
+    restart = [car("A", 2.7, 4.6), car("B", 2.9, 4.8)]  # full 0-200
+    metric, out = combine_starts([original, restart], IDENT)
+    assert metric == 100 and out["A"]["n_starts"] == 1  # the restart must not replace the main measurement
+    assert out == combine_starts([original], IDENT)[1]

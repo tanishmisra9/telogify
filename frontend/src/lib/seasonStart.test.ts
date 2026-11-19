@@ -65,6 +65,15 @@ describe('pointCopy', () => {
   })
 })
 
+describe('pointCopy restarts', () => {
+  const p = { round: 12, metric: 200 as const, gap_pct: 1.8, gap_s: 0.09, n_cars: 4, n_starts: 2 }
+  it('says when a round combines a restart, and stays silent for one start or an older API', () => {
+    expect(pointCopy('Ferrari', 'Dutch Grand Prix', p).lines).toContain('All 2 starts of the race (red-flag restart included)')
+    expect(pointCopy('Ferrari', 'Dutch Grand Prix', { ...p, n_starts: 1 }).lines.join()).not.toMatch(/starts/)
+    expect(pointCopy('Ferrari', 'Dutch Grand Prix', { ...p, n_starts: undefined }).lines.join()).not.toMatch(/starts/)
+  })
+})
+
 describe('formSentence', () => {
   it('says what the arrow means, with both ranks', () => {
     expect(formSentence(row())).toBe('Gains 2 places on recent form: #2 recently, #4 over the season')

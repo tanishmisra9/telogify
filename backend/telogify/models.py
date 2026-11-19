@@ -246,6 +246,23 @@ class RaceStart(SQLModel, table=True):
     v_75m_kmh: float | None = None
 
 
+class RaceRestart(SQLModel, table=True):
+    """A red-flag standing restart of the main race: same figures as `race_start`, one row per timed
+    driver per restart (`start_index` 1..n in race order). Kept apart from `race_start` on purpose:
+    the weekend card reads only the original start, and only the season ranking reads restarts, so no
+    reader of the original can pick one up by a missed filter. See `ingest.race_start.extract_restarts`."""
+
+    __tablename__ = "race_restart"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+    start_index: int
+    driver: str = Field(index=True)
+    constructor: str | None = None
+    t_0_100_s: float
+    t_0_200_s: float | None = None
+
+
 class RaceStartSkip(SQLModel, table=True):
     """A driver in a race's classification who is NOT on its start list, and why (main race only).
     Written with `race_start` in one transaction, by the same extraction. `reason` values are the

@@ -2,6 +2,7 @@
 
 import logging
 import signal
+import statistics
 import time
 from datetime import datetime, timedelta
 
@@ -568,7 +569,8 @@ def refresh_race_start_cmd(
     """Backfill a round's race-start (0-100 / 0-200 km/h) numbers from lap-1 telemetry.
 
     For a race ingested before race starts were extracted. Re-fetches only that race's telemetry
-    and rewrites only its RaceStart rows (no LLM, no other tables)."""
+    and rewrites only its RaceStart rows, plus any red-flag restarts (season ranking only; no LLM, no
+    other tables)."""
     from telogify.pipeline import run_refresh_race_start
 
     from telogify.analysis.race_start import SKIP_LABEL
@@ -577,7 +579,7 @@ def refresh_race_start_cmd(
     if result is None:
         console.print(f"[yellow]No usable race-start data for {year} round {round} (no telemetry, or a failed read); nothing written.[/yellow]")
         return
-    found, skipped = result
+    found, skipped, restarts = result
 
     def fmt(v: float | None, spec: str) -> str:
         return "   -  " if v is None else format(v, spec)
@@ -594,6 +596,9 @@ def refresh_race_start_cmd(
         console.print(f"  not listed, {label}: {', '.join(drivers)}")
     verb = "would be written" if dry_run else "written"
     console.print(f"[green]{len(found)} drivers {verb}, {len(skipped)} not listed.[/green]")
+    for i, rows in enumerate(restarts, start=1):
+        med = statistics.median(r["t_0_100_s"] for r in rows.values())
+        console.print(f"  restart {i} (season ranking only): {len(rows)} drivers, median 0-100 {med:.2f}s, {verb}.")
 
 
 @app.command("refresh-results")

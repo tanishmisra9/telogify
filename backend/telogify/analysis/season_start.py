@@ -1,6 +1,6 @@
 """Season race starts: per round, how far each team / power unit's launch was from that round's
-best, then a recency-weighted season read. Aggregation of the SAME per-driver `RaceStart` numbers
-the weekend card shows, not a new measurement. Teams and power units only (a season of drivers is
+best, then a recency-weighted season read. Aggregation of the per-driver `RaceStart` numbers
+the weekend card shows (plus `RaceRestart` for red-flag restarts, below), not a new measurement. Teams and power units only (a season of drivers is
 unreadable).
 
 Per round and group the figure is the MEDIAN of the group's cars on the round's metric: the full
@@ -13,6 +13,14 @@ team gaps is ~1.3x wider on 0-100 than on 0-200 (7.9% vs 6.0%, 2026). So 0-100-o
 plotted but kept OUT of the weighted gap, the flat mean and the form ranks (unless the whole
 season has no 0-200 round, in which case they are all there is).
 
+A race with red-flag standing restarts has several starts, and all of them count (the weekend card
+shows only the original). Starts are NOT pooled raw: a restart is faster than the original (2026
+Dutch GP field median 0-100 2.73 s vs 2.96 s, a shift as large as the whole team spread), so each
+start is first compared with its own best group, and a group's round gap is the mean of those gaps
+weighted by the cars it had in each start, rebased so the round's best group is exactly 0. A restart
+on a different metric from the original start's (0-100 vs 0-200) is left out. The round stays ONE
+point, so the weighting, ranks and form maths are unchanged.
+
 Pure functions; `build_season_start` is the thin DB orchestrator.
 """
 
@@ -24,7 +32,7 @@ from sqlmodel import select
 
 from telogify.analysis.season import MIN_ROUNDS_FOR_FORM, weighted_aggregate
 from telogify.analysis.season_deployment import PU_GROUPS, pu_map_applies
-from telogify.models import RaceStart, RaceWeekend, Session
+from telogify.models import RaceRestart, RaceStart, RaceWeekend, Session
 
 Car = dict  # {"constructor": str, "t_0_100_s": float, "t_0_200_s": float | None}
 
@@ -51,15 +59,45 @@ def round_gaps(cars: list[Car], group_of) -> tuple[int, dict[str, dict]]:
     }
 
 
+def combine_starts(starts: list[list[Car]], group_of) -> tuple[int, dict[str, dict]]:
+    """`round_gaps` over every start of one round (see the module docstring). A round with one start
+    returns exactly what `round_gaps` does, plus `n_starts: 1`."""
+    per = [round_gaps(cars, group_of) for cars in starts if cars]
+    per = [(m, g) for m, g in per if g]
+    if not per:
+        return 100, {}
+    metric = per[0][0]  # the original start sets the round's metric; a restart on any other one is left out
+    per = [g for m, g in per if m == metric]
+    if len(per) == 1:
+        return metric, {k: {**v, "n_starts": 1} for k, v in per[0].items()}
+    combined: dict[str, dict] = {}
+    for key in {k for g in per for k in g}:
+        parts = [g[key] for g in per if key in g]
+        n = sum(p["n_cars"] for p in parts)
+        combined[key] = {
+            "gap_pct": sum(p["gap_pct"] * p["n_cars"] for p in parts) / n,
+            "gap_s": sum(p["gap_s"] * p["n_cars"] for p in parts) / n,
+            "n_cars": n,
+            "n_starts": len(per),
+        }
+    low_pct = min(c["gap_pct"] for c in combined.values())
+    low_s = min(c["gap_s"] for c in combined.values())
+    for c in combined.values():
+        c["gap_pct"] -= low_pct
+        c["gap_s"] -= low_s
+    return metric, combined
+
+
 def build_view(
-    rounds: list[tuple[int, list[Car]]], group_of, labels: dict[str, tuple[str, str]], current_round: int
+    rounds: list[tuple], group_of, labels: dict[str, tuple[str, str]], current_round: int
 ) -> list[dict]:
     """One view (teams or power units): a row per group with its real per-round points (no
     interpolation), recency-weighted and flat season gaps, and rank movement. `labels` maps
-    key -> (display label, colour team). Rows are sorted by the weighted gap, best first."""
+    key -> (display label, colour team). Each round is `(round, original_cars[, [restart_cars, ...]])`.
+    Rows are sorted by the weighted gap, best first."""
     points: dict[str, list[dict]] = defaultdict(list)
-    for rnd, cars in rounds:
-        metric, gaps = round_gaps(cars, group_of)
+    for rnd, cars, *rest in rounds:
+        metric, gaps = combine_starts([cars, *(rest[0] if rest else [])], group_of)
         for key, g in gaps.items():
             points[key].append({"round": rnd, "metric": metric, **g})
 
@@ -107,7 +145,7 @@ def build_season_start(year: int, db: DBSession) -> dict:
     if not weekends:
         return {"rounds": [], "views": {}}
 
-    by_round: list[tuple[int, list[Car]]] = []
+    by_round: list[tuple[int, list[Car], list[list[Car]]]] = []
     for w in weekends:
         race = db.exec(select(Session).where(Session.weekend_id == w.id, Session.session_type == "R")).first()
         if race is None:
@@ -116,13 +154,18 @@ def build_season_start(year: int, db: DBSession) -> dict:
         cars = [
             {"constructor": s.constructor, "t_0_100_s": s.t_0_100_s, "t_0_200_s": s.t_0_200_s} for s in starts
         ]
+        restarts: dict[int, list[Car]] = defaultdict(list)
+        for r in db.exec(select(RaceRestart).where(RaceRestart.session_id == race.id)):
+            restarts[r.start_index].append(
+                {"constructor": r.constructor, "t_0_100_s": r.t_0_100_s, "t_0_200_s": r.t_0_200_s}
+            )
         if cars:
-            by_round.append((w.round, cars))
+            by_round.append((w.round, cars, [restarts[i] for i in sorted(restarts)]))
     if not by_round:
         return {"rounds": rounds_meta, "views": {}}
 
     current_round = weekends[-1].round
-    teams = {c["constructor"] for _, cars in by_round for c in cars if c.get("constructor")}
+    teams = {c["constructor"] for _, cars, _r in by_round for c in cars if c.get("constructor")}
     views = {"teams": {"rows": build_view(by_round, lambda c: c, {t: (t, t) for t in teams}, current_round)}}
 
     team_to_pu = {t: g.name for g in PU_GROUPS for t in g.teams}

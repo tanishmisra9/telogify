@@ -79,7 +79,7 @@ def test_refresh_race_start_lists_times_and_groups_unlisted_drivers_by_reason(mo
         "HAM": {"t_0_100_s": 2.4, "t_0_200_s": None, "v_75m_kmh": None},
     }
     skipped = {"ALO": (None, Skip.TOO_SLOW), "STR": (None, Skip.TOO_SLOW), "LEC": (None, Skip.NO_DATA)}
-    monkeypatch.setattr("telogify.pipeline.run_refresh_race_start", lambda y, r, dry_run=False: (found, skipped))
+    monkeypatch.setattr("telogify.pipeline.run_refresh_race_start", lambda y, r, dry_run=False: (found, skipped, []))
     out = plain(_invoke("refresh-race-start", "2026", "5", "--dry-run").output)
     assert "VER" in out and "5.00s" in out and "140 km/h" in out
     ham = next(line for line in out.splitlines() if "HAM" in line)
@@ -90,8 +90,16 @@ def test_refresh_race_start_lists_times_and_groups_unlisted_drivers_by_reason(mo
 
 def test_refresh_race_start_reports_written_when_not_a_dry_run(monkeypatch):
     found = {"VER": {"t_0_100_s": 2.5, "t_0_200_s": 5.0, "v_75m_kmh": 140.0}}
-    monkeypatch.setattr("telogify.pipeline.run_refresh_race_start", lambda y, r, dry_run=False: (found, {}))
+    monkeypatch.setattr("telogify.pipeline.run_refresh_race_start", lambda y, r, dry_run=False: (found, {}, []))
     assert "1 drivers written, 0 not listed" in plain(_invoke("refresh-race-start", "2026", "5").output)
+
+
+def test_refresh_race_start_reports_each_restart_as_season_only(monkeypatch):
+    found = {"VER": {"t_0_100_s": 2.5, "t_0_200_s": 5.0, "v_75m_kmh": 140.0}}
+    restart = {"VER": {"t_0_100_s": 2.4, "t_0_200_s": 4.9}, "HAM": {"t_0_100_s": 2.6, "t_0_200_s": 5.1}}
+    monkeypatch.setattr("telogify.pipeline.run_refresh_race_start", lambda y, r, dry_run=False: (found, {}, [restart]))
+    out = plain(_invoke("refresh-race-start", "2026", "5", "--dry-run").output)
+    assert "restart 1 (season ranking only): 2 drivers" in out and "would be written" in out
 
 
 def test_refresh_results_with_no_ingested_race_says_so(monkeypatch):

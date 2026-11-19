@@ -199,7 +199,8 @@ export function SeasonStartSection({ data }: { data: SeasonStartData }) {
     <div>
       <SectionLede>
         Who launches best from a standing start. Each {unit} is ranked on the median 0 to 200 km/h time of its cars,
-        as a percentage slower than the best start of each round, with recent rounds counting a little more. The
+        as a percentage slower than the best start of each round, with recent rounds counting a little more. A race with a
+        red-flag restart counts every standing start, each compared with its own fastest {unit}. The
         arrow is places gained or lost on recent form versus the whole season.
       </SectionLede>
       {hasPu && (

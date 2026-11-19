@@ -37,6 +37,7 @@ export function pointCopy(
     p.metric === 100 ? '0 to 100 km/h only this round' : 'Full run, 0 to 200 km/h',
   ]
   if (p.n_cars === 1) lines.push('1 car')
+  if ((p.n_starts ?? 1) > 1) lines.push(`All ${p.n_starts} starts of the race (red-flag restart included)`)
   return { title: `${label}, ${eventName ?? `round ${p.round}`}`, lines }
 }
 
