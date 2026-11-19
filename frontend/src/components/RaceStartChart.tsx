@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { TeamRule } from '@/components/TeamMark'
-import { Tooltip } from '@/components/Tooltip'
+import { FollowTip } from '@/components/FollowTip'
 import { driverName } from '@/lib/drivers'
 import {
   aggregateRows,
@@ -16,6 +16,7 @@ import {
   type StartView,
 } from '@/lib/raceStart'
 import { teamColorWithAlpha, resolveTeamColor, teamShortName } from '@/lib/teamColors'
+import { useFollowTip } from '@/lib/useFollowTip'
 import type { RaceStartData } from '@/lib/api'
 
 // Column widths shared by the header axis and every row so tick marks sit directly above the
@@ -45,6 +46,9 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
   const reduce = useReducedMotion()
   const [view, setView] = useState<StartView>('drivers')
   const [sortBy, setSortBy] = useState<StartSort>('total')
+  // Each segment's readout follows the pointer (FollowTip) and keeps clear of the segment being read (`data-row`).
+  const listRef = useRef<HTMLOListElement>(null)
+  const { at, setAt, handlers, pointer } = useFollowTip()
   const toKmh = data.to_kmh === 100 ? 100 : 200
   const distance = data.speed_distance_m ?? 75
   const puGroups = data.pu_groups ?? []
@@ -87,6 +91,18 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
   const grouped = view !== 'drivers'
   const hasSpeed = rows.some((r) => r.v_75m_kmh != null)
   const max = axisMax(rows, toKmh)
+  // The readout for the hovered segment: whose, and which phase of the launch it covers.
+  const hoveredRow = at ? rows.find((r) => at.key.startsWith(`${r.key}:`)) : undefined
+  const tip = hoveredRow
+    ? {
+        title: hoveredRow.name,
+        lines: [
+          at?.key.endsWith(':b')
+            ? `100 to 200 km/h: ${fmtSeconds(hoveredRow.t_100_200_s as number)} s`
+            : `0 to 100 km/h: ${fmtSeconds(hoveredRow.t_0_100_s)} s`,
+        ],
+      }
+    : null
   const ticks = secondTicks(max)
   const nameW = grouped ? GROUP_W : DRIVER_W
 
@@ -103,7 +119,10 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
           <ChartTabs
             ariaLabel="Group by driver, team or power unit"
             active={view}
-            onChange={setView}
+            onChange={(v) => {
+              setAt(null)
+              setView(v)
+            }}
             tabs={[
               { value: 'drivers', label: 'Drivers', hint: 'Every car' },
               { value: 'teams', label: 'Teams', hint: 'Median of each team’s cars' },
@@ -119,7 +138,10 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
             <ChartTabs
               ariaLabel="Rank by full run, first phase or second phase"
               active={sortBy}
-              onChange={setSortBy}
+              onChange={(v) => {
+                setAt(null)
+                setSortBy(v)
+              }}
               tabs={[
                 { value: 'total', label: 'Full', hint: 'Fastest time from the start to 200 km/h' },
                 { value: 'first', label: 'First phase', hint: 'Fastest time from the start to 100 km/h' },
@@ -182,7 +204,7 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
         )}
       </div>
 
-      <ol>
+      <ol ref={listRef}>
         {rows.map((r, i) => {
           const { first, second } = segmentFractions(r, max)
           const delay = reduce ? 0 : i * 0.03
@@ -225,10 +247,7 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
                   {r.t_100_200_s != null && `. 100 to 200 km/h: ${fmtSeconds(r.t_100_200_s)} s`}
                 </span>
                 <span className="absolute inset-y-0 left-0" style={{ width: `${first * 100}%` }}>
-                  <Tooltip
-                    className="relative flex h-full w-full"
-                    label={`0 to 100 km/h: ${fmtSeconds(r.t_0_100_s)} s`}
-                  >
+                  <span className="relative flex h-full w-full" data-row={`${r.key}:a`} {...handlers(`${r.key}:a`)}>
                     <m.span
                       className="block h-full w-full rounded-l-[1px]"
                       style={{ backgroundColor: color, transformOrigin: 'left' }}
@@ -237,17 +256,14 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
                       viewport={{ once: true }}
                       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay }}
                     />
-                  </Tooltip>
+                  </span>
                 </span>
                 {second > 0 && r.t_100_200_s != null && (
                   <span
                     className="absolute inset-y-0"
                     style={{ left: `${first * 100}%`, width: `${second * 100}%` }}
                   >
-                    <Tooltip
-                      className="relative flex h-full w-full"
-                      label={`100 to 200 km/h: ${fmtSeconds(r.t_100_200_s)} s`}
-                    >
+                    <span className="relative flex h-full w-full" data-row={`${r.key}:b`} {...handlers(`${r.key}:b`)}>
                       <m.span
                         className="block h-full w-full rounded-r-[1px]"
                         style={{ backgroundColor: teamColorWithAlpha(r.colorTeam, 0.5), transformOrigin: 'left' }}
@@ -256,7 +272,7 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
                         viewport={{ once: true }}
                         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: delay + 0.05 }}
                       />
-                    </Tooltip>
+                    </span>
                   </span>
                 )}
               </span>
@@ -277,6 +293,7 @@ export function RaceStartChart({ data }: { data: RaceStartData }) {
           )
         })}
       </ol>
+      <FollowTip at={at} tip={tip} pointer={pointer} container={listRef} />
 
       <p className="mt-4 text-sm text-muted">
         Times run from one shared instant for the whole field: when the median car left the grid. A

@@ -13,7 +13,9 @@ import { Insight } from '@/components/Insight'
 import { LoadingSwap } from '@/components/LoadingSwap'
 import { PaceSpreadChart } from '@/components/PaceSpreadChart'
 import { QualiCharacterTable } from '@/components/QualiCharacterTable'
+import { QualiSegmentsChart } from '@/components/QualiSegmentsChart'
 import { RaceStartChart } from '@/components/RaceStartChart'
+import { RaceResultsChart } from '@/components/RaceResultsChart'
 import { Results } from '@/components/Results'
 import { ScrollReveal } from '@/components/ScrollReveal'
 import { SectionNav, type NavSection } from '@/components/SectionNav'
@@ -21,6 +23,7 @@ import { CollapsibleSection, setAllSections } from '@/components/SectionTitle'
 import { Skeleton, SkeletonCard } from '@/components/Skeleton'
 import { Tooltip } from '@/components/Tooltip'
 import { expandTransition } from '@/lib/motion'
+import { availableViews } from '@/lib/raceResults'
 import {
   useApi,
   type DegradationData,
@@ -28,6 +31,7 @@ import {
   type PaceData,
   type QualiCharacterData,
   type QualiInsightItem,
+  type QualiSegmentsData,
   type QualiTraceData,
   type RaceStartData,
   type ResultRow,
@@ -353,9 +357,11 @@ export function WeekendPage() {
   const qualiCharacter = useApi<QualiCharacterData>(`${base}/quali-character`)
   const qualiInsights = useApi<QualiInsightItem[]>(`${base}/quali-insights`)
   const qualiTrace = useApi<QualiTraceData>(`${base}/quali-trace`)
+  const qualiSegments = useApi<QualiSegmentsData>(`${base}/quali-results`)
   const sprintQualiCharacter = useApi<QualiCharacterData>(`${base}/quali-character?session=SQ`)
   const sprintQualiInsights = useApi<QualiInsightItem[]>(`${base}/quali-insights?session=SQ`)
   const sprintQualiTrace = useApi<QualiTraceData>(`${base}/quali-trace?session=SQ`)
+  const sprintQualiSegments = useApi<QualiSegmentsData>(`${base}/quali-results?session=SQ`)
   const sprintPace = useApi<PaceData>(`${base}/pace?session=SPRINT`)
   const pace = useApi<PaceData>(`${base}/pace`)
   const degradation = useApi<DegradationData>(`${base}/degradation`)
@@ -419,16 +425,21 @@ export function WeekendPage() {
     topReady && insights.data && insights.data.length > 0 ? { id: 'insights', label: 'Insights' } : null,
     sessionsLoaded ? { id: 'practice', label: 'Practice' } : null,
     sessionsLoaded && isSprintWeekend ? { id: 'sprint-qualifying', label: 'Sprint Qualifying' } : null,
+    sessionsLoaded && isSprintWeekend && sprintQualiSegments.data?.segments.length
+      ? { id: 'sprint-quali-results', label: 'Sprint Quali Results' }
+      : null,
     sessionsLoaded && isSprintWeekend && sprintQualiTrace.data?.drivers.length
       ? { id: 'fight-to-sprint-pole', label: 'Fight to Sprint Pole' }
       : null,
     sessionsLoaded && isSprintWeekend ? { id: 'sprint', label: 'Sprint' } : null,
     sessionsLoaded ? { id: 'qualifying', label: 'Qualifying' } : null,
+    sessionsLoaded && qualiSegments.data?.segments.length ? { id: 'quali-results', label: 'Quali Results' } : null,
     sessionsLoaded && qualiTrace.data?.drivers.length ? { id: 'fight-to-pole', label: 'Fight to Pole' } : null,
     sessionsLoaded ? { id: 'race', label: 'Race' } : null,
     sessionsLoaded && raceStart.data?.rows.length ? { id: 'race-start', label: 'Race Start' } : null,
     sessionsLoaded && degradation.data?.points.length ? { id: 'tyre-degradation', label: 'Tyre Degradation' } : null,
     sessionsLoaded && results.data?.length ? { id: 'finishing-order', label: 'Finishing Order' } : null,
+    sessionsLoaded && results.data && availableViews(results.data).length > 0 ? { id: 'race-results', label: 'Race Results' } : null,
   ].filter((s): s is NavSection => s !== null)
 
   if (weekend.error || sessions.error) {
@@ -644,6 +655,13 @@ export function WeekendPage() {
                 ) : (
                   <SkeletonCard label="Car character" className="min-h-[520px]" />
                 )}
+                {(sprintQualiSegments.data?.segments.length ?? 0) > 0 && sprintQualiSegments.data && (
+                  <div id="sprint-quali-results" className="min-w-0 scroll-mt-24">
+                    <ScrollReveal>
+                      <QualiSegmentsChart data={sprintQualiSegments.data} sprint />
+                    </ScrollReveal>
+                  </div>
+                )}
                 <div id="fight-to-sprint-pole" className="hidden scroll-mt-24 md:block">
                   {sprintQualiTrace.data ? (
                     <ScrollReveal delay={0.06}>
@@ -708,6 +726,15 @@ export function WeekendPage() {
                 </ScrollReveal>
               ) : (
                 <SkeletonCard label="Car character" className="min-h-[520px]" />
+              )}
+              {/* No skeleton on purpose: an API that predates the route, or a round ingested before segment times
+                  were stored, has no segments, and a reserved placeholder would collapse and shift what is below. */}
+              {(qualiSegments.data?.segments.length ?? 0) > 0 && qualiSegments.data && (
+                <div id="quali-results" className="min-w-0 scroll-mt-24">
+                  <ScrollReveal>
+                    <QualiSegmentsChart data={qualiSegments.data} />
+                  </ScrollReveal>
+                </div>
               )}
               <div id="fight-to-pole" className="hidden scroll-mt-24 md:block">
                 {qualiTrace.data ? (
@@ -783,6 +810,15 @@ export function WeekendPage() {
                   <SkeletonCard label="Finishing order" className="mx-auto min-h-[400px] w-full max-w-4xl" />
                 )}
               </div>
+              {/* No skeleton on purpose: a round with no status or stints (an API that predates them, or a position-only
+                  degraded round) has no views, and a reserved placeholder would collapse and shift the page. */}
+              {results.data && availableViews(results.data).length > 0 && (
+                <div id="race-results" className="min-w-0 scroll-mt-24">
+                  <ScrollReveal delay={0.12}>
+                    <RaceResultsChart rows={results.data} />
+                  </ScrollReveal>
+                </div>
+              )}
             </div>
           </SessionGate>
         </CollapsibleSection>

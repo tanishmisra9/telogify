@@ -101,6 +101,13 @@ class SessionResult(SQLModel, table=True):
     q1_time_s: float | None = None
     q2_time_s: float | None = None
     q3_time_s: float | None = None
+    # Official starting grid slot (Race/Sprint sessions only), from FastF1's `GridPosition`: unlike the classified
+    # qualifying position it covers a car that set no time and includes grid penalties. None when upstream had none.
+    grid: int | None = None
+    # Lapped finishers only: seconds behind the leader when both had completed this car's last lap (from the lap-end
+    # timestamps), i.e. roughly a lap time more than the car's delay at the flag. Kept out of `gap_to_leader`, which agent
+    # tools read: a lapped car must never look like a lead-lap gap.
+    lapped_gap_s: float | None = None
 
 
 class SectorBest(SQLModel, table=True):

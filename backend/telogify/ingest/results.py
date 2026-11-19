@@ -1,15 +1,20 @@
 """Session results / finishing order ingest.
 
 For race and sprint sessions FastF1's results `Time` column is the gap to the leader
-for on-lead-lap finishers only. Lapped drivers carry `Status` = "Lapped" and a `Time`
-that is their gap to the car ahead, not the leader, so it must not be shown as a
-leader gap. Use the `Laps` column vs the winner's lap count for "+N Lap(s)" instead.
+for on-lead-lap finishers. Lapped drivers carry `Status` = "Lapped"; their `Time` is NOT a
+gap to the leader (it is how long after the winner took the flag that car crossed the line,
+measured on 2026 rounds 1, 5, 9 and 14 against the lap-end timestamps), so `gap_to_leader`
+stays empty for them (agent tools read it). Their real gap to the leader comes from the
+lap-end timestamps instead: the car's clock at the end of its last lap minus the leader's
+clock at the end of that same lap (`lapped_gap`, stored as `lapped_gap_s`). Use the `Laps`
+column vs the winner's lap count for "+N Lap(s)".
 `compute_gap` is pure and tested.
 """
 
 from dataclasses import dataclass
 
 import pandas as pd
+from fastf1.exceptions import DataNotLoadedError
 from sqlmodel import Session as DBSession
 from sqlmodel import delete, select
 
@@ -61,6 +66,8 @@ class ResultRow:
     q1_time_s: float | None = None
     q2_time_s: float | None = None
     q3_time_s: float | None = None
+    grid: int | None = None
+    lapped_gap_s: float | None = None
 
 
 # Championship points by finishing position for a race. The fastest-lap point was
@@ -215,6 +222,59 @@ def compute_gap(
     return float(time_s)
 
 
+def lap_clock(session) -> dict[tuple[str, int], float]:
+    """(driver, lap number) -> session clock seconds at the end of that lap, from FastF1's lap table. Empty when the table
+    is missing or lacks the columns (a fake or degraded session): every caller then gets None, never a guess."""
+    try:
+        laps = getattr(session, "laps", None)
+    except DataNotLoadedError:  # a results-only load: no lap table, so no clock
+        return {}
+    if laps is None or not {"Driver", "LapNumber", "Time"} <= set(getattr(laps, "columns", [])):
+        return {}
+    out: dict[tuple[str, int], float] = {}
+    for d, n, t in zip(laps["Driver"], laps["LapNumber"], laps["Time"]):
+        if pd.notna(t) and pd.notna(n):
+            out[(str(d), int(n))] = t.total_seconds()
+    return out
+
+
+# FastF1's own `Time` for a lapped row is the car's delay at the flag, and the lap table must reproduce it. Official time
+# only ever exceeds the on-track clock by a post-race time penalty (2026: exactly +5.000 s or +10.000 s, once +8.436 s), so a
+# difference below -_FLAG_TOLERANCE_S, or above _MAX_PENALTY_S, means a truncated or renumbered table (2026 R9: the clock put a
+# car 121 s AHEAD of the leader's flag): no gap is published rather than a plausible wrong one. Heuristics measured on 2026 only.
+_FLAG_TOLERANCE_S = 1.0
+_MAX_PENALTY_S = 30.0
+
+
+def lapped_gap(
+    clock: dict[tuple[str, int], float],
+    driver: str | None,
+    leader: str | None,
+    laps: float | None,
+    is_race: bool,
+    *,
+    status: str | None = None,
+    leader_laps: float | None = None,
+    flag_delay_s: float | None = None,
+) -> float | None:
+    """Seconds behind the leader for a LAPPED car: its clock at the end of its last lap minus the leader's clock at the end of
+    that same lap. Only status "Lapped"; None when either lap is missing (never bridged or guessed) or the result is negative.
+    Cross-check: when the results carry the car's delay at the flag (`flag_delay_s`, FastF1's `Time`), the lap table must agree
+    with it (the car's last lap minus the leader's last lap) up to a time penalty, else None. The figure is the on-track clock,
+    so a penalised car can sit slightly out of classified order."""
+    if not is_race or (status or "").strip().lower() != "lapped" or not driver or not leader or laps is None:
+        return None
+    n = int(laps)
+    car, lead = clock.get((driver, n)), clock.get((leader, n))
+    if car is None or lead is None or car < lead:
+        return None
+    if flag_delay_s is not None:
+        lead_end = clock.get((leader, int(leader_laps))) if leader_laps is not None else None
+        if lead_end is None or not -_FLAG_TOLERANCE_S <= flag_delay_s - (car - lead_end) <= _MAX_PENALTY_S:
+            return None
+    return car - lead
+
+
 def _int(value) -> int | None:
     try:
         return int(value)
@@ -231,6 +291,17 @@ def _float(value) -> float | None:
         return None
 
 
+def _grid(value) -> int | None:
+    """Official grid slot: 1.. for a slot, 0 for a PIT-LANE start, None when missing or nonsense. 0 is kept on purpose: a
+    pit-lane start is not a slot and must not read as one. MEASURED against FastF1 results (2021-2025): 2021-2023 sessions
+    encode a pit-lane start as 0 (23 of 23 checked, e.g. Perez Bahrain 2021, Stroll Miami 2022), but 2025 sessions do NOT:
+    Bearman (20) and Lawson (18) at Australia 2025 and Lawson (19) at Canada 2025 all started from the pit lane and carry
+    the last slots, so there a pit-lane start reads as "Started P20" (still behind everyone, but unlabelled). No 2024-25
+    session in the sample has a zero, and no 2026 one has either: PL appears only where the feed says 0."""
+    g = _int(value)
+    return g if g is not None and g >= 0 else None
+
+
 def _segment_time_s(row, column: str) -> float | None:
     value = row.get(column)
     if value is None or pd.isna(value):
@@ -244,10 +315,13 @@ def extract_results(session) -> list[ResultRow]:
     is_quali = session.name in _QUALI_LIKE
 
     leader_laps: float | None = None
+    leader: str | None = None
     if is_race:
         leaders = res[res["Position"] == 1]
         if len(leaders):
             leader_laps = _float(leaders.iloc[0].get("Laps"))
+            leader = leaders.iloc[0].get("Abbreviation")
+    clock = lap_clock(session) if is_race else {}
 
     rows: list[ResultRow] = []
     for _, r in res.iterrows():
@@ -271,11 +345,17 @@ def extract_results(session) -> list[ResultRow]:
                 ),
                 # For the winner, FastF1's Time is the total race time (not a gap).
                 total_time_s=time_s if (is_race and pos == 1) else None,
+                lapped_gap_s=lapped_gap(
+                    clock, r.get("Abbreviation"), leader, laps, is_race,
+                    status=status, leader_laps=leader_laps, flag_delay_s=time_s,
+                ),
                 laps=laps,
                 status=status,
                 q1_time_s=_segment_time_s(r, "Q1") if is_quali else None,
                 q2_time_s=_segment_time_s(r, "Q2") if is_quali else None,
                 q3_time_s=_segment_time_s(r, "Q3") if is_quali else None,
+                # Official grid slot (0 = pit lane), race-like sessions only.
+                grid=_grid(r.get("GridPosition")) if is_race else None,
             )
         )
     rows.sort(key=lambda x: (x.position is None, x.position or 0))
@@ -306,6 +386,8 @@ def store_results(data: WeekendData, db: DBSession) -> None:
                     q1_time_s=r.q1_time_s,
                     q2_time_s=r.q2_time_s,
                     q3_time_s=r.q3_time_s,
+                    grid=r.grid,
+                    lapped_gap_s=r.lapped_gap_s,
                 )
             )
     db.commit()

@@ -31,6 +31,7 @@ from telogify.analysis.race_pace import (
     driver_stop_counts,
     stop_count_spread,
 )
+from telogify.analysis.results_views import build_quali_segments, places_gained
 from telogify.analysis.sectors import best_across_sessions, best_top_speeds, sector_dominance
 from telogify.traced_examples import example_for, parse_trace
 from telogify.analysis.season import (
@@ -55,6 +56,7 @@ from telogify.ingest.results import (
     finishing_intervals,
     format_gap_label,
     format_total_time,
+    laps_down,
     points_for_session,
     strategy_string,
 )
@@ -680,6 +682,28 @@ def weekend_quali_trace(
     }
 
 
+@router.get("/weekends/{year}/{round}/quali-results")
+def weekend_quali_results(
+    year: int, round: int, session: Literal["Q", "SQ"] = "Q", db: Session = Depends(get_session)
+):
+    """Segment ladder (Q3/Q2/Q1 or SQ3/SQ2/SQ1): every runner's best time in each segment they entered,
+    the cut time and gaps, all computed here. `segments` is empty when the session is missing or carries
+    no segment times, so the page can hide the graphic."""
+    w = _weekend(db, year, round)
+    session_row = _session_of(db, w.id, session)
+    if session_row is None:
+        return {"session_type": None, "segments": []}
+    results = db.exec(select(SessionResult).where(SessionResult.session_id == session_row.id)).all()
+    return build_quali_segments(
+        [
+            {"driver": r.driver, "constructor": r.constructor, "position": r.position,
+             "q1_s": r.q1_time_s, "q2_s": r.q2_time_s, "q3_s": r.q3_time_s}
+            for r in results
+        ],
+        session_row.session_type,
+    )
+
+
 @router.get("/weekends/{year}/{round}/degradation")
 def weekend_degradation(
     year: int, round: int, session: str = "R", db: Session = Depends(get_session)
@@ -829,8 +853,39 @@ def weekend_results(
         select(Stint).where(Stint.session_id == race.id).order_by(Stint.stint_number)
     ).all()
     compounds_by_driver: dict[str, list[str | None]] = {}
+    stints_by_driver: dict[str, list[dict]] = {}
     for s in stints:
         compounds_by_driver.setdefault(s.driver, []).append(s.compound)
+        # compound None = no known tyre data (is_known_compound), drawn as an unlabelled segment
+        stints_by_driver.setdefault(s.driver, []).append({
+            "compound": s.compound if is_known_compound(s.compound) else None,
+            "lap_start": s.lap_start,
+            "lap_end": s.lap_end,
+        })
+
+    # Start position. ONE source per race, never per row (a penalised official grid compared with an unpenalised
+    # qualifying slot would invent gains): the official grid when every starter has one, else the classified
+    # Q/SQ position for everyone. Grid penalties and pit-lane starts are only reflected by the official grid.
+    # A car with no grid slot AND no completed lap never started, whatever the feed calls it ("Did not start", "Withdrew",
+    # "Illness", "Accident": 2021-2023 Italian/Abu Dhabi/Azerbaijan sprint cases); only a car that DID run and still has no slot is
+    # missing data. (laps == 0 exactly, not "no laps recorded": a degraded feed with empty laps must still fall back.)
+    starters = [
+        r for r in rows
+        if (r.status or "").strip().lower() != "did not start" and not (r.grid is None and r.laps == 0)
+    ]
+    # ...and at least one real slot: a feed that fills every cell with 0 (unknown, not "everyone from the pit lane") must
+    # fall back, not paint the whole field PL.
+    official = bool(starters) and all(r.grid is not None for r in starters) and any((r.grid or 0) > 0 for r in starters)
+    grid_by_driver: dict[str, int | None] = {}
+    if official:
+        grid_by_driver = {r.driver: r.grid for r in rows}
+    else:
+        grid_session = _session_of(db, w.id, {"R": "Q", "SPRINT": "SQ"}.get(session, ""))
+        if grid_session is not None:
+            grid_by_driver = {
+                g.driver: g.position
+                for g in db.exec(select(SessionResult).where(SessionResult.session_id == grid_session.id)).all()
+            }
 
     def gap_or_time(r: SessionResult) -> str:
         if r.position == 1 and r.total_time_s is not None:
@@ -852,6 +907,17 @@ def weekend_results(
             "interval_s": intervals[i],
             "points": points_for_session(race.session_type, r.position),
             "strategy": strategy_string(compounds_by_driver.get(r.driver, [])),
+            "status": (r.status or "").strip() or None,
+            # Only a Lapped finisher is "laps down": a car that retired on lap 10 is not "+61 laps".
+            "laps_down": laps_down(r.laps, leader_laps) if (r.status or "").strip().lower() == "lapped" else None,
+            # Lapped cars only: seconds behind the leader when both had completed this car's last lap.
+            "lapped_gap_s": r.lapped_gap_s if (r.status or "").strip().lower() == "lapped" else None,
+            # A pit-lane start (official grid 0) is not a slot: grid is None and `pit_lane` says why.
+            "grid": grid_by_driver.get(r.driver) or None,
+            "pit_lane": official and grid_by_driver.get(r.driver) == 0 and (r.status or "").strip().lower() != "did not start",
+            "grid_source": "official" if official else "qualifying",
+            "places_gained": places_gained(grid_by_driver.get(r.driver) or None, r.position, r.status),
+            "stints": stints_by_driver.get(r.driver, []),
         }
         for i, r in enumerate(rows)
     ]

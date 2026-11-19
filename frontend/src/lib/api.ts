@@ -118,6 +118,15 @@ export interface ResultRow {
   interval_s?: number | null
   points: number
   strategy: string
+  // Race-graphic fields; all optional because Vercel deploys ~2 min before Railway (an older API omits them).
+  status?: string | null // as stored: Finished / Lapped / Retired / ...; null on a degraded (position-only) round
+  laps_down?: number | null
+  lapped_gap_s?: number | null // Lapped cars only: seconds behind the leader when both had completed this car's last lap
+  grid?: number | null // starting slot: the official grid when `grid_source` is 'official', else the classified qualifying position
+  grid_source?: 'official' | 'qualifying'
+  pit_lane?: boolean // started from the pit lane (official grid 0): not a slot, so `grid` and `places_gained` are null
+  places_gained?: number | null // grid - finish for a classified finisher with a grid, else null
+  stints?: ResultStint[]
 }
 
 // One published figure and the exact tool-return row it traces to (GET /insights/traced), for /how-it-works.
@@ -534,4 +543,35 @@ export function latestWeekendPath(weekends: WeekendSummary[] | null | undefined)
 // who clicks early lands on the list rather than nowhere.
 export function useLatestWeekendPath(): string {
   return latestWeekendPath(useApi<WeekendSummary[]>('/weekends').data)
+}
+
+export interface QualiSegmentRow {
+  driver: string
+  constructor: string | null
+  position: number | null
+  // Null = the car reached this segment but set no time in it.
+  time_s: number | null
+  gap_to_fastest_s: number | null
+  // Seconds to the cut: negative = through by that margin, positive = out by it. Null for the last segment.
+  gap_to_cut_s: number | null
+  advanced: boolean | null
+}
+
+export interface QualiSegment {
+  name: string // Q3 / Q2 / Q1 (SQ3 / SQ2 / SQ1 for sprint qualifying), top band first
+  fastest_s: number | null
+  // The slowest time that went through to the next segment (null for the last segment).
+  cut_s: number | null
+  rows: QualiSegmentRow[]
+}
+
+export interface QualiSegmentsData {
+  session_type: string | null
+  segments: QualiSegment[]
+}
+
+export interface ResultStint {
+  compound: string | null // null = no known tyre data for that stint
+  lap_start: number
+  lap_end: number
 }

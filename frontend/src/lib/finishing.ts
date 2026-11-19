@@ -9,6 +9,10 @@ export const canSwitchGap = (rows: ResultRow[]): boolean => rows.some((r) => r.i
 
 const seconds = (s: number) => `+${s.toFixed(3)}s`
 
+/** A lapped car's gap to the leader in seconds ("+95.167s"), null when the API sent none (an older API, a round not re-ingested,
+ * or a lap missing from the timing). It always travels beside the laps down: the figure is the gap at the car's last lap. */
+export const lappedGapText = (r: ResultRow, digits = 3): string | null => (r.lapped_gap_s == null ? null : `+${r.lapped_gap_s.toFixed(digits)}s`)
+
 // `gap_label` is the server's wording (winner's total time, "+1 Lap", "DNF", "DNS"): kept for every car with no
 // honest seconds figure, so a lapped or retired car never gets an invented one. A lead-lap car whose neighbour
 // ahead has no time shows a dash for "Car ahead" rather than bridging to the car before it.

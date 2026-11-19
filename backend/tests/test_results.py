@@ -7,6 +7,8 @@ from telogify.ingest.results import (
     compute_gap,
     extract_results,
     finishing_intervals,
+    lap_clock,
+    lapped_gap,
     format_gap_label,
     format_total_time,
     is_lapped,
@@ -81,6 +83,47 @@ def test_extract_results_no_quali_segments_for_race_session():
     assert rows[0].q1_time_s is None
     assert rows[0].q2_time_s is None
     assert rows[0].q3_time_s is None
+
+
+def _race_row(abbr, position, grid="absent", **extra):
+    row = {"Position": position, "Abbreviation": abbr, "TeamName": "T", "Time": pd.NaT, "Laps": 50.0, "Status": "Finished", **extra}
+    if grid != "absent":
+        row["GridPosition"] = grid
+    return row
+
+
+def test_extract_results_reads_the_official_grid_for_race_and_sprint_only():
+    race = pd.DataFrame([_race_row("VER", 1, 20.0), _race_row("NOR", 2, 3.0)])
+    for name in ("Race", "Sprint"):
+        grids = {r.driver: r.grid for r in extract_results(_FakeSession(name, race))}
+        assert grids == {"VER": 20, "NOR": 3}  # VER set no quali time and started P20: the point of the field
+    # Qualifying ignores the column even when present (its "grid" is the classification itself)
+    assert {r.grid for r in extract_results(_FakeSession("Qualifying", race))} == {None}
+
+
+def test_extract_results_grid_zero_is_a_pit_lane_start_and_junk_is_none():
+    race = pd.DataFrame([_race_row("AAA", 1, float("nan")), _race_row("BBB", 2, 0.0), _race_row("CCC", 3, -1.0), _race_row("DDD", 4)])
+    # 0 is KEPT (pit lane, not a slot); NaN, negative and a missing column are None
+    assert [r.grid for r in extract_results(_FakeSession("Race", race))] == [None, 0, None, None]
+
+
+def test_store_results_persists_the_official_grid(db_session):
+    from telogify.ingest.loader import WeekendData
+    from telogify.ingest.results import store_results
+    from telogify.models import RaceWeekend, Session as SessionRow, SessionResult
+
+    wk = RaceWeekend(year=2067, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    frame = pd.DataFrame([_race_row("VER", 1, 20.0), _race_row("NOR", 2, float("nan"))])
+    store_results(WeekendData(weekend=wk, sessions={"R": _FakeSession("Race", frame)}), db_session)
+    stored = {r.driver: r.grid for r in db_session.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all()}
+    assert stored == {"VER": 20, "NOR": None}
 
 
 def test_race_points_by_position():
@@ -330,3 +373,99 @@ def test_finishing_intervals_never_negative():
 def test_finishing_intervals_empty_and_single():
     assert finishing_intervals([]) == []
     assert finishing_intervals([0.0]) == [None]
+
+
+class _LapSession(_FakeSession):
+    def __init__(self, name, results, laps):
+        super().__init__(name, results)
+        self.laps = laps
+
+
+def _laps(driver, ends):
+    """One lap row per (lap number, session clock at the end of that lap)."""
+    return [{"Driver": driver, "LapNumber": float(n), "Time": pd.Timedelta(seconds=t)} for n, t in ends]
+
+
+def test_lapped_gap_is_the_gap_to_the_leader_at_the_cars_last_lap_not_its_delay_at_the_flag():
+    # WIN does 3 laps (100 s each).
+    # LAP is a lap down: it ends lap 1 at 110 and lap 2 at 305, i.e. it crossed the line 5 s after the winner.
+    results = pd.DataFrame(
+        [
+            _race_row("WIN", 1, 1.0, Time=pd.Timedelta(seconds=300), Laps=3.0),
+            _race_row("AHD", 2, 2.0, Time=pd.Timedelta(seconds=3.0), Laps=3.0),
+            _race_row("LAP", 3, 3.0, Time=pd.Timedelta(seconds=5.0), Laps=2.0, Status="Lapped"),
+            _race_row("RET", 4, 4.0, Time=pd.Timedelta(seconds=40.0), Laps=1.0, Status="Retired"),
+        ]
+    )
+    laps = pd.DataFrame(
+        _laps("WIN", [(1, 100), (2, 200), (3, 300)]) + _laps("AHD", [(1, 101), (2, 201), (3, 303)])
+        + _laps("LAP", [(1, 110), (2, 305)]) + _laps("RET", [(1, 140)])
+    )
+    rows = {r.driver: r for r in extract_results(_LapSession("Race", results, laps))}
+    # LAP: its clock after lap 2 (305) minus the leader's after lap 2 (200) = 105, NOT the 5 s it crossed the line after the winner
+    assert rows["LAP"].lapped_gap_s == 105.0
+    assert rows["LAP"].gap_to_leader is None  # agent tools read gap_to_leader: a lapped car must never look like a lead-lap gap
+    assert [rows[d].lapped_gap_s for d in ("WIN", "AHD", "RET")] == [None, None, None]
+    assert rows["AHD"].gap_to_leader == 3.0  # lead-lap behaviour unchanged
+
+
+def test_lapped_gap_is_none_rather_than_guessed_when_a_lap_is_missing_or_not_a_race():
+    clock = lap_clock(_LapSession("Race", pd.DataFrame(), pd.DataFrame(_laps("WIN", [(1, 100), (2, 200)]) + _laps("LAP", [(1, 110)]))))
+    assert clock == {("WIN", 1): 100.0, ("WIN", 2): 200.0, ("LAP", 1): 110.0}
+    assert lapped_gap(clock, "LAP", "WIN", 1.0, True, status="Lapped") == 10.0
+    assert lapped_gap(clock, "LAP", "WIN", 2.0, True, status="Lapped") is None  # the car's lap 2 is not in the table
+    assert lapped_gap(clock, "LAP", "WIN", 1.0, False, status="Lapped") is None  # not a race
+    assert lapped_gap(clock, "LAP", "WIN", 1.0, True, status="Retired") is None
+    assert lapped_gap(clock, "LAP", None, 1.0, True, status="Lapped") is None  # no leader
+    assert lapped_gap({("WIN", 1): 100.0, ("LAP", 1): 90.0}, "LAP", "WIN", 1.0, True, status="Lapped") is None  # negative is junk
+    # a session with no lap table (FakeSession) simply has no clock
+    assert lap_clock(_FakeSession("Race", pd.DataFrame())) == {}
+
+
+def test_lap_clock_is_empty_for_a_results_only_load_that_raises_on_laps():
+    from fastf1.exceptions import DataNotLoadedError
+
+    class _ResultsOnly(_FakeSession):
+        @property
+        def laps(self):
+            raise DataNotLoadedError("laps not loaded")
+
+    assert lap_clock(_ResultsOnly("Race", pd.DataFrame())) == {}
+
+
+def test_store_results_persists_the_lapped_gap(db_session):
+    from telogify.ingest.loader import WeekendData
+    from telogify.ingest.results import store_results
+    from telogify.models import RaceWeekend, Session as SessionRow, SessionResult
+
+    wk = RaceWeekend(year=2068, round=1, circuit_name="X", country="Y", event_name="Z")
+    db_session.add(wk)
+    db_session.commit()
+    db_session.refresh(wk)
+    race = SessionRow(weekend_id=wk.id, session_type="R", status="loaded")
+    db_session.add(race)
+    db_session.commit()
+    db_session.refresh(race)
+    frame = pd.DataFrame(
+        [_race_row("WIN", 1, 1.0, Time=pd.Timedelta(seconds=200), Laps=2.0), _race_row("LAP", 2, 2.0, Time=pd.Timedelta(seconds=7.5), Laps=1.0, Status="Lapped")]
+    )
+    laps = pd.DataFrame(_laps("WIN", [(1, 100), (2, 200)]) + _laps("LAP", [(1, 207.5)]))  # crosses 7.5 s after the winner, a lap down
+    store_results(WeekendData(weekend=wk, sessions={"R": _LapSession("Race", frame, laps)}), db_session)
+    stored = {r.driver: r.lapped_gap_s for r in db_session.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all()}
+    assert stored == {"WIN": None, "LAP": 107.5}
+
+
+def test_lapped_gap_is_not_published_when_the_lap_table_disagrees_with_the_results_delay():
+    clock = {("WIN", 2): 200.0, ("WIN", 3): 300.0, ("LAP", 2): 305.0}
+    # results say the car crossed 5 s after the winner and the table agrees (305 - 300): published
+    assert lapped_gap(clock, "LAP", "WIN", 2.0, True, status="Lapped", leader_laps=3.0, flag_delay_s=5.0) == 105.0
+    # results say 60 s but the table says 5 s: a truncated or renumbered table, so no figure rather than a plausible wrong one
+    assert lapped_gap(clock, "LAP", "WIN", 2.0, True, status="Lapped", leader_laps=3.0, flag_delay_s=60.0) is None
+    # a 10 s post-race time penalty makes the official delay 10 s longer than the clock's: still published (the on-track clock)
+    assert lapped_gap(clock, "LAP", "WIN", 2.0, True, status="Lapped", leader_laps=3.0, flag_delay_s=15.0) == 105.0
+    # official LESS than the clock says is impossible with a penalty: the table is wrong
+    assert lapped_gap(clock, "LAP", "WIN", 2.0, True, status="Lapped", leader_laps=3.0, flag_delay_s=3.0) is None
+    # the leader's final lap is not in the table: cannot verify, so None
+    assert lapped_gap({("WIN", 2): 200.0, ("LAP", 2): 305.0}, "LAP", "WIN", 2.0, True, status="Lapped", leader_laps=3.0, flag_delay_s=5.0) is None
+    # no upstream delay at all (3 of 141 in 2026): nothing to cross-check against, the table alone is used
+    assert lapped_gap(clock, "LAP", "WIN", 2.0, True, status="Lapped", leader_laps=3.0, flag_delay_s=None) == 105.0

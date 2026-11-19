@@ -48,8 +48,8 @@ def client(test_engine):
         db.refresh(race)
 
         db.add(SessionResult(session_id=race.id, position=1, driver="NOR", constructor="McLaren", gap_to_leader=0.0, laps=71.0, status="Finished"))
-        db.add(SessionResult(session_id=race.id, position=2, driver="LEC", constructor="Ferrari", gap_to_leader=2.5, laps=71.0, status="Finished"))
-        db.add(SessionResult(session_id=race.id, position=3, driver="ALO", constructor="Aston Martin", gap_to_leader=None, laps=68.0, status="Lapped"))
+        db.add(SessionResult(session_id=race.id, position=2, driver="LEC", constructor="Ferrari", gap_to_leader=2.5, laps=71.0, status="Finished", lapped_gap_s=9.9))  # a stray lapped gap on a lead-lap car must not be served
+        db.add(SessionResult(session_id=race.id, position=3, driver="ALO", constructor="Aston Martin", gap_to_leader=None, laps=68.0, status="Lapped", lapped_gap_s=104.2))
         db.add(Stint(session_id=race.id, driver="NOR", stint_number=1, compound="MEDIUM", lap_start=1, lap_end=20, avg_pace=70.1, lap_times_json=[70.5, 70.0, 69.9], tyre_ages_json=[1, 2, 3]))
         db.add(Stint(
             session_id=race.id, driver="LEC", stint_number=1, compound="MEDIUM", lap_start=1, lap_end=6,
@@ -461,6 +461,8 @@ def test_results(client):
     # Numeric gaps for the Finishing order switcher: lead-lap finishers only, interval to the car ahead.
     assert [r["gap_to_leader_s"] for r in rows] == [0.0, 2.5, None]
     assert [r["interval_s"] for r in rows] == [None, 2.5, None]
+    # A lapped car's seconds behind the leader at its last lap, served for Lapped rows only (gap_to_leader_s stays None for it).
+    assert [r["lapped_gap_s"] for r in rows] == [None, None, 104.2]
 
 
 def test_sprint_session_endpoints(client, test_engine):
@@ -1115,3 +1117,159 @@ def test_race_start_with_nothing_recorded_never_claims_a_cause(client, test_engi
     assert data["status"] == "none"
     assert data["summary"] == "Start data could not be read for this race."
     assert data["not_listed"] == [{"driver": "HAM", "constructor": "Ferrari", "reason": "no_reading", "label": "No start reading recorded"}]
+
+
+def test_results_serves_status_laps_down_grid_places_gained_and_stints(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        quali = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "Q")).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        # classified start: LEC P1, NOR P3, ALO P2; RET started P4 and retired; NOQ set no time (no position)
+        for drv, pos in (("LEC", 1), ("ALO", 2), ("NOR", 3), ("RET", 4), ("NOQ", None)):
+            db.add(SessionResult(session_id=quali.id, driver=drv, constructor="X", position=pos))
+        db.add(SessionResult(session_id=race.id, position=4, driver="RET", constructor="X", laps=10.0, status="Retired"))
+        db.add(SessionResult(session_id=race.id, position=5, driver="NOQ", constructor="X", laps=71.0, status="Finished"))
+        db.add(Stint(session_id=race.id, driver="NOR", stint_number=2, compound="None", lap_start=21, lap_end=71,
+                     avg_pace=90.0, lap_times_json=[90.0], tyre_ages_json=[1]))
+        db.commit()
+
+    rows = {r["driver"]: r for r in client.get("/weekends/2025/11/results").json()}
+    assert rows["NOR"]["grid"] == 3 and rows["NOR"]["places_gained"] == 2  # P3 -> P1
+    assert rows["LEC"]["places_gained"] == -1  # P1 -> P2
+    assert rows["ALO"]["status"] == "Lapped" and rows["ALO"]["laps_down"] == 3
+    assert rows["RET"]["status"] == "Retired" and rows["RET"]["places_gained"] is None  # a DNF is not "lost 0"
+    assert rows["RET"]["laps_down"] is None and rows["NOR"]["laps_down"] is None  # only a Lapped finisher is laps down
+    assert rows["NOQ"]["grid"] is None and rows["NOQ"]["places_gained"] is None
+    assert rows["NOR"]["stints"] == [
+        {"compound": "MEDIUM", "lap_start": 1, "lap_end": 20},
+        {"compound": None, "lap_start": 21, "lap_end": 71},  # unknown tyre: still a stint, no compound
+    ]
+    assert rows["LEC"]["stints"][0]["compound"] == "MEDIUM"
+
+
+def test_results_on_a_degraded_round_has_no_status_and_no_places_gained(client, test_engine):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        quali = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "Q")).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        db.add(SessionResult(session_id=quali.id, driver="NOR", constructor="McLaren", position=2))
+        for r in db.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all():
+            r.status = ""  # FastF1's position-only fallback
+            r.laps = None
+            db.add(r)
+        db.commit()
+
+    rows = client.get("/weekends/2025/11/results").json()
+    assert all(r["status"] is None and r["places_gained"] is None and r["laps_down"] is None for r in rows)
+
+
+def test_quali_results_serves_segments_with_cut_and_hides_when_no_times(client, test_engine):
+    assert client.get("/weekends/2025/11/quali-results").json() == {"session_type": "Q", "segments": []}  # no q times yet
+    assert client.get("/weekends/2025/11/quali-results?session=SQ").json() == {"session_type": None, "segments": []}
+
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        quali = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "Q")).first()
+        db.add(SessionResult(session_id=quali.id, driver="NOR", constructor="McLaren", position=1, q1_time_s=80.1, q2_time_s=79.5, q3_time_s=78.9))
+        db.add(SessionResult(session_id=quali.id, driver="LEC", constructor="Ferrari", position=2, q1_time_s=80.3, q2_time_s=79.6, q3_time_s=79.0))
+        db.commit()
+
+    out = client.get("/weekends/2025/11/quali-results").json()
+    assert [s["name"] for s in out["segments"]] == ["Q3", "Q2", "Q1"]
+    q3 = out["segments"][0]
+    assert [r["driver"] for r in q3["rows"]] == ["NOR", "LEC"]
+    assert q3["rows"][1]["gap_to_fastest_s"] == 0.1 and q3["cut_s"] is None
+
+
+def _set_grids(test_engine, grids):
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        quali = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "Q")).first()
+        # Qualifying says NOR P1, LEC P2, ALO P3: the OFFICIAL grid below deliberately disagrees (a penalty / a no-time car).
+        for drv, pos in (("NOR", 1), ("LEC", 2), ("ALO", 3)):
+            db.add(SessionResult(session_id=quali.id, driver=drv, constructor="X", position=pos))
+        for r in db.exec(select(SessionResult).where(SessionResult.session_id == race.id)).all():
+            r.grid = grids.get(r.driver)
+            db.add(r)
+        db.commit()
+
+
+def test_results_prefers_the_official_grid_when_every_starter_has_one(client, test_engine):
+    _set_grids(test_engine, {"NOR": 5, "LEC": 2, "ALO": 22})  # ALO: no quali time, started last
+    rows = {r["driver"]: r for r in client.get("/weekends/2025/11/results").json()}
+    assert {d: r["grid_source"] for d, r in rows.items()} == {"NOR": "official", "LEC": "official", "ALO": "official"}
+    assert rows["NOR"]["grid"] == 5 and rows["NOR"]["places_gained"] == 4  # not the qualifying P1 -> 0
+    assert rows["LEC"]["places_gained"] == 0
+    assert rows["ALO"]["grid"] == 22 and rows["ALO"]["places_gained"] == 19  # lapped finisher still counts
+
+
+def test_results_falls_back_for_the_whole_race_when_one_starter_lacks_a_grid(client, test_engine):
+    _set_grids(test_engine, {"NOR": 5, "LEC": 2})  # ALO has none: mixing sources would compare unlike slots
+    rows = {r["driver"]: r for r in client.get("/weekends/2025/11/results").json()}
+    assert {r["grid_source"] for r in rows.values()} == {"qualifying"}
+    assert rows["NOR"]["grid"] == 1 and rows["LEC"]["grid"] == 2  # qualifying positions, not 5 and 2
+
+
+def test_results_a_did_not_start_car_without_a_grid_does_not_force_the_fallback(client, test_engine):
+    _set_grids(test_engine, {"NOR": 5, "LEC": 2, "ALO": 3})
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        db.add(SessionResult(session_id=race.id, position=4, driver="DNS", constructor="X", status="Did not start"))
+        db.commit()
+    rows = client.get("/weekends/2025/11/results").json()
+    assert {r["grid_source"] for r in rows} == {"official"}
+
+
+def test_results_a_withdrawn_car_with_no_grid_and_no_laps_does_not_force_the_fallback(client, test_engine):
+    # Real feeds (2023 Italian GP: Stroll "Withdrew"; 2021 Abu Dhabi: Mazepin "Illness"): no grid slot, 0 laps, a non-"did not
+    # start" word. One such car must not throw away every other car's official grid (and so every grid penalty).
+    _set_grids(test_engine, {"NOR": 5, "LEC": 2, "ALO": 3})
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        db.add(SessionResult(session_id=race.id, position=None, driver="WDR", constructor="X", status="Withdrew", laps=0.0))
+        db.commit()
+    rows = {r["driver"]: r for r in client.get("/weekends/2025/11/results").json()}
+    assert {r["grid_source"] for r in rows.values()} == {"official"}
+    assert rows["NOR"]["grid"] == 5 and rows["NOR"]["places_gained"] == 4
+    assert rows["WDR"]["grid"] is None and rows["WDR"]["places_gained"] is None
+
+
+def test_results_a_car_that_ran_but_has_no_grid_still_forces_the_fallback(client, test_engine):
+    # the other side of the same rule: laps > 0 and no slot is MISSING DATA, not a non-starter
+    _set_grids(test_engine, {"NOR": 5, "LEC": 2, "ALO": 3})
+    with Session(test_engine) as db:
+        wk = db.exec(select(RaceWeekend).where(RaceWeekend.year == 2025, RaceWeekend.round == 11)).first()
+        race = db.exec(select(SessionRow).where(SessionRow.weekend_id == wk.id, SessionRow.session_type == "R")).first()
+        db.add(SessionResult(session_id=race.id, position=4, driver="RAN", constructor="X", status="Finished", laps=71.0))
+        db.commit()
+    assert {r["grid_source"] for r in client.get("/weekends/2025/11/results").json()} == {"qualifying"}
+
+
+def test_results_a_pit_lane_start_says_so_and_is_not_a_grid_slot(client, test_engine):
+    _set_grids(test_engine, {"NOR": 5, "LEC": 0, "ALO": 3})  # LEC started from the pit lane (official grid 0)
+    rows = {r["driver"]: r for r in client.get("/weekends/2025/11/results").json()}
+    assert rows["LEC"]["pit_lane"] is True
+    assert rows["LEC"]["grid"] is None and rows["LEC"]["places_gained"] is None  # not "P0", not a gain against a slot
+    assert rows["NOR"]["pit_lane"] is False and rows["NOR"]["grid"] == 5
+    assert {r["grid_source"] for r in rows.values()} == {"official"}  # a pit-lane start is a start: no fallback
+
+
+def test_results_a_non_starter_with_grid_zero_is_not_a_pit_lane_start(client, test_engine):
+    _set_grids(test_engine, {"NOR": 5, "LEC": 0, "ALO": 3})
+    with Session(test_engine) as db:
+        lec = db.exec(select(SessionResult).where(SessionResult.driver == "LEC")).all()
+        for r in lec:
+            r.status = "Did not start"
+        db.commit()
+    rows = {r["driver"]: r for r in client.get("/weekends/2025/11/results").json()}
+    assert rows["LEC"]["pit_lane"] is False  # a DNS never started from anywhere
+
+
+def test_results_an_all_zero_grid_is_unknown_not_everyone_in_the_pit_lane(client, test_engine):
+    _set_grids(test_engine, {"NOR": 0, "LEC": 0, "ALO": 0})
+    rows = {r["driver"]: r for r in client.get("/weekends/2025/11/results").json()}
+    assert {r["grid_source"] for r in rows.values()} == {"qualifying"}
+    assert not any(r["pit_lane"] for r in rows.values())

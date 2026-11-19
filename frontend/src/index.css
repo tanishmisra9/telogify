@@ -23,6 +23,17 @@
   /* Color of the hard printed-card offset (the signature brutalist move). Retinted
      per theme so it reads as ink on paper by day and quiet depth at night. */
   --color-shadow: oklch(0.205 0.012 60);
+
+  /* Tyre compounds (Strategy view). Fill + the letter ink that sits on it + the segment outline. Both themes mute the
+     sport's saturated primaries (they shout against cream, and the hard tyre's white read as an empty bar): light mode is
+     printed-ink brick / mustard / stone / sage / steel, night mode (below) is lower-chroma mid tones. Letter-on-fill contrast
+     is >= 4.5:1 in both themes; the outline is ink at half strength so stints separate without a heavy frame. */
+  --tyre-soft: oklch(0.57 0.17 27);     --tyre-soft-ink: oklch(0.99 0.005 85);
+  --tyre-medium: oklch(0.84 0.13 88);   --tyre-medium-ink: oklch(0.2 0.012 60);
+  --tyre-hard: oklch(0.86 0.008 85);    --tyre-hard-ink: oklch(0.2 0.012 60);
+  --tyre-inter: oklch(0.68 0.12 150);   --tyre-inter-ink: oklch(0.2 0.012 60);
+  --tyre-wet: oklch(0.52 0.13 255);     --tyre-wet-ink: oklch(0.99 0.005 85);
+  --tyre-edge: oklch(0.205 0.012 60 / 50%);
 }
 
 /* Night mode: same editorial system, warm espresso paper instead of cream. Overriding
@@ -44,6 +55,13 @@
      strongly by day. Pushed close to true black so the offset silhouette is unmistakable again,
      the same brutalist move carried through instead of going quiet in the dark. */
   --color-shadow: oklch(0.03 0.004 55);
+
+  --tyre-soft: oklch(0.54 0.17 25);     --tyre-soft-ink: oklch(0.98 0.01 82);
+  --tyre-medium: oklch(0.74 0.13 88);   --tyre-medium-ink: oklch(0.2 0.012 60);
+  --tyre-hard: oklch(0.82 0.01 85);     --tyre-hard-ink: oklch(0.2 0.012 60);
+  --tyre-inter: oklch(0.64 0.13 150);   --tyre-inter-ink: oklch(0.2 0.012 60);
+  --tyre-wet: oklch(0.5 0.15 255);      --tyre-wet-ink: oklch(0.98 0.01 82);
+  --tyre-edge: oklch(0.938 0.009 82 / 40%);
 }
 
 @layer base {

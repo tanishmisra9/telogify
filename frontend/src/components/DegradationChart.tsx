@@ -2,12 +2,12 @@ import { useRef, useState } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChartTabs } from '@/components/ChartTabs'
 import { DesktopOnlyNote } from '@/components/DesktopOnlyNote'
-import { PointPopup } from '@/components/PointPopup'
+import { FollowTip } from '@/components/FollowTip'
 import { TeamMark } from '@/components/TeamMark'
 import { TeamSelectLegend, type TeamSelectRow } from '@/components/TeamSelectLegend'
 import { resolveTeamColor, teamColorWithAlpha } from '@/lib/teamColors'
 import { drawTransition, morphTransition, spring } from '@/lib/motion'
-import { useChartPointHover } from '@/lib/useChartPointHover'
+import { useFollowTip } from '@/lib/useFollowTip'
 import { useSvgTextScale } from '@/lib/useSvgTextScale'
 import type { DegradationData } from '@/lib/api'
 
@@ -50,23 +50,18 @@ export function DegradationChart({ data }: { data: DegradationData }) {
   // Empty = show every team (today's default). Not reset on compound switch,
   // so a comparison survives moving between Hard/Medium/Soft.
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  // Hover a fit line for its numbers. The line IS the finding (the raw laps carry no driver or lap number, so a
-  // readout on a dot would be invented detail). The readout follows the cursor along the line rather than
-  // anchoring to the line's whole bounding box, which for a long diagonal line sits far from the pointer.
+  // Hover a fit line for its numbers. The line IS the finding (the raw laps carry no driver or lap number, so a readout on a
+  // dot would be invented detail). The readout follows the cursor along the line (a long diagonal line has no sensible box to
+  // anchor to, so there is no `data-row` to keep clear of).
   const plotRef = useRef<HTMLDivElement>(null)
-  const { hovered, setHovered } = useChartPointHover(plotRef)
-  const hoverAt = (team: string) => (e: React.MouseEvent) => {
-    const x = e.clientX + window.scrollX
-    const y = e.clientY + window.scrollY
-    setHovered({ key: team, round: 0, box: { left: x, right: x, top: y, bottom: y } })
-  }
+  const { at, setAt, handlers, pointer } = useFollowTip(plotRef)
 
   if (!compound) {
     return <p className="text-sm text-muted">No race tyre data yet.</p>
   }
 
   const toggleTeam = (team: string) => {
-    setHovered(null)
+    setAt(null)
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(team)) next.delete(team)
@@ -98,7 +93,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
   const x = (v: number) => (v / xMax) * INNER_W
   const y = (v: number) => INNER_H * (1 - (v - yMin) / (yMax - yMin))
 
-  const hoveredFit = hovered ? fits.find((f) => f.constructor === hovered.key) : undefined
+  const hoveredFit = at ? fits.find((f) => f.constructor === at.key) : undefined
   const tip = hoveredFit
     ? {
         title: `${hoveredFit.constructor}, ${hoveredFit.compound.toLowerCase()}`,
@@ -155,7 +150,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
           ariaLabel="Compound"
           active={compound}
           onChange={(c) => {
-            setHovered(null) // the lines under an open readout change with the compound
+            setAt(null) // the lines under an open readout change with the compound
             setCompound(c)
           }}
           tabs={compounds.map((c) => ({ value: c, label: c, hint: `${c.toLowerCase()} tyre degradation` }))}
@@ -248,9 +243,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
                     stroke="transparent"
                     strokeWidth={16}
                     strokeLinecap="round"
-                    onMouseEnter={hoverAt(f.constructor)}
-                    onMouseMove={hoverAt(f.constructor)}
-                    onMouseLeave={() => setHovered(null)}
+                    {...handlers(f.constructor)}
                   />
                 )
               })}
@@ -263,7 +256,7 @@ export function DegradationChart({ data }: { data: DegradationData }) {
         </div>
       )}
 
-      <PointPopup hovered={hovered} tip={tip} gap={14} prefer="above" />
+      <FollowTip at={at} tip={tip} pointer={pointer} container={plotRef} />
 
       <DesktopOnlyNote className="mt-4">
         Open this weekend on a larger screen to compare wear lines. The ranking below still

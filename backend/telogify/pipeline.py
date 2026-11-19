@@ -489,7 +489,8 @@ def run_refresh_results(year: int, round: int, dry_run: bool = False) -> list[Re
             if code not in ingested or not requires_complete_results(name):
                 continue
             ses = fastf1.get_session(year, round, name)
-            ses.load(laps=False, telemetry=False, weather=False, messages=False)
+            # laps (no telemetry): a lapped car's gap to the leader comes from the lap-end timestamps
+            ses.load(laps=True, telemetry=False, weather=False, messages=False)
             if not race_results_complete(ses.results):
                 plan.append((code, None, []))
                 continue
